@@ -1,0 +1,145 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: cyclic test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "test.int",
+                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
+                "-c", "7", "39", "77", "35",
+                "-o", "test_result.xyz"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: startserver",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "--server-start"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/server_usage",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: acyclic test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "test.int",
+                "-r", "1", "2", "2", "6", "8", "9", "9", "10", "10", "11",
+                "-c", "6", "10", "9", "2",
+                "-o", "test_result.xyz"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/acyclic_bond_formation",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: example from server usage",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "tt.int",
+                "-c", "1", "3", "2", "4",
+                "--minimize"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/server_usage",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: policyclic_bond_formation test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "test.int",
+                "-r", "1", "3", "3", "5", "5", "7", "11", "13", "17", "6",
+                "-c", "1", "12", "2", "11", "13", "23", "14", "21", "22", "18", "17", "26",
+                "-o", "test_result.xyz",
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/policyclic_bond_formation",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: All Coordinate Conversion Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test/test_coordinate_conversion.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/test",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+             "name": "Python: Cartesian Minimization",
+             "type": "debugpy",
+             "request": "launch",
+             "program": "${workspaceFolder}/src/__main__.py",
+             "args": [
+                 "-i", "test.int",
+                 "-c", "7", "39", "77", "35",
+                 "--minimize",
+                 "--minimize-smoothing", "5.0", "2.5", "1.0", "0.0",
+                 "--minimize-iterations", "500",
+                 "-o", "test_minimized_cartesian.xyz"
+             ],
+             "console": "integratedTerminal",
+             "cwd": "${workspaceFolder}/examples/simple_minimization",
+             "justMyCode": false,
+             "env": {
+                 "PYTHONPATH": "${workspaceFolder}/src"
+             }
+        },
+        {
+            "name": "Python: Torsional Minimization",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "test.int",
+                "-c", "7", "39", "77", "35",
+                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
+                "--minimize-torsional",
+                "--minimize-smoothing", "5.0", "2.5", "1.0", "0.0",
+                "--minimize-iterations", "100",
+                "-o", "test_minimized_torsional.xyz"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/simple_minimization",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        }
+    ]
+}
+

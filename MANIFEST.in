@@ -1,0 +1,18 @@
+# Include data files
+include README.md
+include LICENSE
+include requirements.txt
+include environment.yml
+recursive-include data *.xml
+recursive-include examples *.py *.md
+recursive-include test *.py *.int *.xyz
+
+# Exclude unnecessary files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so
+prune src/__pycache__
+prune test/__pycache__
+

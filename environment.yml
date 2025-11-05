@@ -1,0 +1,9 @@
+name: rco_devel
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - numpy>=1.20.0
+  - scipy>=1.7.0
+  - openmm=8.3.1
