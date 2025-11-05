@@ -28,7 +28,7 @@ or `pip`:
 ```
 pip install rc-optimizer
 ```
-Next, see below for a (quick start)[#Quick_Start] guide.
+Next, see below for a [quick start](#quick-start) guide.
 
 ### Development Mode
 
