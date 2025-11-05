@@ -414,7 +414,8 @@ class TestMolecularSystemMinimization(unittest.TestCase):
         
         # Check results
         self.assertIsNotNone(final_zmatrix)
-        self.assertIsInstance(final_energy, (float, np.floating))
+        # Energy can be float, np.floating, or 0-d array depending on Python/NumPy version
+        self.assertTrue(np.isscalar(final_energy) or (isinstance(final_energy, np.ndarray) and final_energy.ndim == 0))
         self.assertIn('success', info)
         self.assertIn('nfev', info)
         self.assertIn('initial_energy', info)
