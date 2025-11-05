@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ringclosingmm"
+version = "1.0.0"
+description = "Ring closing molecular modeling using an OpenMM engine"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "Marco Foscato", email = "marco.foscato@uib.no"}
+]
+maintainers = [
+    {name = "Marco Foscato", email = "marco.foscato@uib.no"}
+]
+keywords = [
+    "conformational-search",
+    "torsional-optimization", 
+    "potential-energy-smoothing",
+    "genetic-algorithm",
+    "openmm",
+    "chemistry",
+    "molecular-modeling"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.8"
+
+# Core runtime dependencies
+dependencies = [
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "openmm>=7.7.0",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.10",
+    "flake8>=3.8",
+]
+
+# Documentation dependencies (if you add docs later)
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/RingClosingMM"
+Repository = "https://github.com/your-username/RingClosingMM"
+Documentation = "https://github.com/your-username/RingClosingMM/blob/main/README.md"
+"Bug Tracker" = "https://github.com/your-username/RingClosingMM/issues"
+
+[project.scripts]
+rc-optimizer = "src.__main__:main"
+
+[tool.setuptools]
+# Package discovery
+packages = ["src"]
+
+[tool.setuptools.package-data]
+# Include data files with the package
+src = ["../data/*.xml"]
+
+[tool.pytest.ini_options]
+# pytest configuration (can be here or in pytest.ini)
+testpaths = ["test"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "-ra",
+    "--showlocals",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.flake8]
+# flake8 configuration (note: flake8 doesn't officially support pyproject.toml yet)
+max-line-length = 127
+exclude = [".git", "__pycache__", "build", "dist", ".eggs"]
+
+[tool.coverage.run]
+# Coverage configuration
+source = ["src"]
+omit = ["test/*", "setup.py"]
+
+[tool.coverage.report]
+# Coverage report configuration
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+

@@ -33,15 +33,18 @@ Next, see below for a (quick start)[#Quick_Start] guide.
 git clone <repository-url> <folder-name>
 cd <folder-name>
 
-# Create conda environment 
+# Option 1: Using conda (recommended for OpenMM)
 conda env create -f environment.yml
 conda activate rco_devel
+# Package is automatically installed in development mode
 
-# Install as command-line tool
-pip install -e .
+# Option 2: Using pip only
+pip install -e .[dev]  # Installs with development dependencies
 ```
 
 After installation, you can use `rc-optimizer` from anywhere!
+
+**Note**: All package configuration is in `pyproject.toml` (modern Python standard).
 
 
 ## Quick Start

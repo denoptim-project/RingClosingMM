@@ -1,7 +1,7 @@
 # Include data files
 include README.md
 include LICENSE
-include requirements.txt
+include pyproject.toml
 include environment.yml
 recursive-include data *.xml
 recursive-include examples *.py *.md
