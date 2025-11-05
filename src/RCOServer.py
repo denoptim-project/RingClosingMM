@@ -76,7 +76,7 @@ def get_default_forcefield_path() -> Optional[str]:
     try:
         # Try to find the package root
         import sys
-        package_root = Path(sys.prefix) / 'share' / 'openmm-uffvdw-pss' / 'data'
+        package_root = Path(sys.prefix) / 'share' / 'ringclosingmm' / 'data'
         data_file = package_root / DEFAULT_FORCEFIELD_FILE
         if data_file.exists():
             return str(data_file.resolve())
@@ -96,7 +96,7 @@ def get_default_forcefield_path() -> Optional[str]:
         import site
         for site_dir in site.getsitepackages():
             # Try various possible locations
-            for subdir in ['', 'data', 'openmm-uffvdw-pss/data']:
+            for subdir in ['', 'data', 'ringclosingmm/data']:
                 if subdir:
                     data_file = Path(site_dir) / subdir / DEFAULT_FORCEFIELD_FILE
                 else:

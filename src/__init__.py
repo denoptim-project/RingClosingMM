@@ -1,5 +1,5 @@
 """
-OpenMM UFFvdW-PSS Ring Closure Optimizer
+RingClosingMM - Ring Closure Optimizer
 
 This package provides tools for molecular ring closure optimization using:
 - Ring Closing Potential (RCP) for handling ring formation

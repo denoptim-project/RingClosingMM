@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup script for OpenMM UFFvdW-PSS Ring Closure Optimizer.
+Setup script for RingClosingMM - Ring Closure Optimizer.
 
 Installation:
     pip install -e .                    # Development install
@@ -32,7 +32,7 @@ else:
     ]
 
 setup(
-    name="openmm-uffvdw-pss",
+    name="ringclosingmm",
     version="1.0.0",
     description="Ring closure optimization using hybrid genetic algorithm with OpenMM UFFvdW force field",
     long_description=long_description,
@@ -41,7 +41,7 @@ setup(
     author="Marco Foscato",
     author_email="marco.foscato@uib.no",  # Update with actual email
     
-    url="https://github.com/your-username/OpenMM_UFFvdW-PSS",  # Update with actual URL
+    url="https://github.com/your-username/RingClosingMM",  # Update with actual URL
     
     # Package configuration
     packages=find_packages(include=['src', 'src.*']),
@@ -54,7 +54,7 @@ setup(
     
     # Also install data files to a known location for easy access
     data_files=[
-        ('share/openmm-uffvdw-pss/data', ['data/RCP_UFFvdW.xml']),
+        ('share/ringclosingmm/data', ['data/RCP_UFFvdW.xml']),
     ],
     
     # Dependencies
@@ -90,9 +90,9 @@ setup(
     
     # Project URLs
     project_urls={
-        'Bug Reports': 'https://github.com/your-username/OpenMM_UFFvdW-PSS/issues',
-        'Source': 'https://github.com/your-username/OpenMM_UFFvdW-PSS',
-        'Documentation': 'https://github.com/your-username/OpenMM_UFFvdW-PSS/blob/main/README.md',
+        'Bug Reports': 'https://github.com/your-username/RingClosingMM/issues',
+        'Source': 'https://github.com/your-username/RingClosingMM',
+        'Documentation': 'https://github.com/your-username/RingClosingMM/blob/main/README.md',
     },
 )
 
