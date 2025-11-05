@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: 'Build and Test Python Package'
+name: Build and Test
 
 on:
   push:
@@ -10,8 +10,8 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
-
+  test:
+    name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -19,29 +19,58 @@ jobs:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
       with:
+        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
+        channels: conda-forge,defaults
+        channel-priority: flexible
+        activate-environment: test-env
 
     - name: Install dependencies
+      shell: bash -l {0}
       run: |
-        python -m pip install --upgrade pip setuptools wheel
-        # Install package with all dependencies (from pyproject.toml)
-        python -m pip install -e .[dev]
+        conda info
+        conda list
+        # Install OpenMM and other dependencies via conda (more reliable than pip for OpenMM)
+        conda install -y numpy>=1.20.0 scipy>=1.7.0 openmm>=7.7.0
+        # Install dev dependencies via pip
+        pip install pytest>=6.0 pytest-cov>=2.10 flake8>=3.8
+        # Install package in editable mode
+        pip install -e .
+
+    - name: Display installed packages
+      shell: bash -l {0}
+      run: |
+        conda list
+        python -c "import openmm; print(f'OpenMM version: {openmm.__version__}')"
+        python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
+        python -c "import scipy; print(f'SciPy version: {scipy.__version__}')"
 
     - name: Lint with flake8
+      shell: bash -l {0}
       run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.git,__pycache__,build,dist,.eggs
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=.git,__pycache__,build,dist,.eggs
 
     - name: Test with pytest
+      shell: bash -l {0}
       run: |
         # pytest automatically discovers and runs unittest-based tests
-        # -v for verbose output, --tb=short for shorter tracebacks
-        python -m pytest test/ -v --tb=short --color=yes
+        pytest test/ -v --tb=short --color=yes --cov=src --cov-report=term --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.10'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
 

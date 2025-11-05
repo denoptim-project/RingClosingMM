@@ -1,5 +1,9 @@
 # Ring Closure Optimizer
 
+[![Build and Test](https://github.com/your-username/RingClosingMM/actions/workflows/build_and_test_package.yml/badge.svg)](https://github.com/your-username/RingClosingMM/actions/workflows/build_and_test_package.yml)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 ## Overview
 
 The Ring Closure Optimizer is a molecular modeling tool meant to identify ring-closing conformations. It build on an (OpenMM)[https://openmm.org/] molecular modeling engine and a dedicated force field definition that favors formation of bonds where no topological bond is originally defined, by introducing ring-closing (i.e., bond-forming) interactions and excluding inter atomic repulsion terms according expected presence of the to-be-formed bonds. With this force field that allows and favors bond formation, a conformational search can identify the conformation that bring the to-be-bonded atoms in a relative position compatible with definition of a formal bond and with running of further geometrical refinements.
