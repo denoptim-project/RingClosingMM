@@ -223,6 +223,324 @@ class TestIOToolsFileIO(unittest.TestCase):
                 os.unlink(temp_path)
 
 
+class TestIOToolsElementReplacement(unittest.TestCase):
+    """Test element replacement in XYZ file writing."""
+    
+    def test_write_xyz_with_dummy_atoms(self):
+        """Test that Du elements are replaced with He in XYZ files."""
+        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        elements = ['Du', 'C']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check that Du was replaced with He
+            self.assertIn('He', lines[2])
+            self.assertNotIn('Du', lines[2])
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_write_xyz_with_atp_atoms(self):
+        """Test that ATP elements are replaced with Ne in XYZ files."""
+        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        elements = ['ATP', 'H']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check that ATP was replaced with Ne
+            self.assertIn('Ne', lines[2])
+            self.assertNotIn('ATP', lines[2])
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_write_xyz_with_atm_atoms(self):
+        """Test that ATM elements are replaced with Ar in XYZ files."""
+        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        elements = ['ATM', 'H']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check that ATM was replaced with Ar
+            self.assertIn('Ar', lines[2])
+            self.assertNotIn('ATM', lines[2])
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_write_xyz_with_all_special_elements(self):
+        """Test replacement of all special element types."""
+        coords = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ])
+        elements = ['Du', 'ATP', 'ATM', 'C']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check replacements
+            self.assertIn('He', lines[2])   # Du -> He
+            self.assertIn('Ne', lines[3])   # ATP -> Ne
+            self.assertIn('Ar', lines[4])   # ATM -> Ar
+            self.assertIn('C', lines[5])    # C stays C
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+class TestIOToolsBondModifications(unittest.TestCase):
+    """Test bond addition and removal in INT files."""
+    
+    def test_read_int_file_with_bond_additions(self):
+        """Test reading INT file with bonds to add."""
+        int_content = """4
+     1  C   6
+     2  C   6     1  1.540000
+     3  C   6     2  1.540000     1 109.470000
+     4  C   6     3  1.540000     2 109.470000     1  60.000000  0
+
+1 4
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+            f.write(int_content)
+        
+        try:
+            data = read_int_file(temp_path)
+            
+            # Check that bond (1,4) was added (0-based: 0,3)
+            bonds = data['bonds']
+            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            self.assertIn((0, 3), bond_set)
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_read_int_file_with_bond_removals(self):
+        """Test reading INT file with bonds to remove."""
+        int_content = """4
+     1  C   6
+     2  C   6     1  1.540000
+     3  C   6     2  1.540000     1 109.470000
+     4  C   6     3  1.540000     2 109.470000     1  60.000000  0
+
+
+2 3
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+            f.write(int_content)
+        
+        try:
+            data = read_int_file(temp_path)
+            
+            # Check that bond (2,3) was removed (0-based: 1,2)
+            bonds = data['bonds']
+            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            self.assertNotIn((1, 2), bond_set)
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_read_int_file_with_both_modifications(self):
+        """Test reading INT file with both bond additions and removals."""
+        int_content = """4
+     1  C   6
+     2  C   6     1  1.540000
+     3  C   6     2  1.540000     1 109.470000
+     4  C   6     3  1.540000     2 109.470000     1  60.000000  0
+
+1 4
+
+2 3
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+            f.write(int_content)
+        
+        try:
+            data = read_int_file(temp_path)
+            
+            bonds = data['bonds']
+            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            
+            # Check additions and removals
+            self.assertIn((0, 3), bond_set)   # Bond added
+            self.assertNotIn((1, 2), bond_set)  # Bond removed
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+class TestIOToolsComplexZMatrices(unittest.TestCase):
+    """Test handling of complex Z-matrix structures."""
+    
+    def test_write_zmatrix_with_dihedrals(self):
+        """Test writing Z-matrix with dihedral angles."""
+        zmatrix = [
+            {'id': 1, 'element': 'C', 'atomic_num': 6},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_zmatrix_file(zmatrix, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Verify structure
+            self.assertEqual(int(lines[0].strip()), 4)
+            
+            # Fourth atom should have dihedral
+            parts = lines[4].split()
+            self.assertEqual(len(parts), 10)  # id, element, atomic_num, bond_ref, bond_length, 
+                                               # angle_ref, angle, dihedral_ref, dihedral, chirality
+            self.assertAlmostEqual(float(parts[8]), 60.0, places=4)
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_write_zmatrix_formatting(self):
+        """Test that Z-matrix file has correct formatting."""
+        zmatrix = [
+            {'id': 1, 'element': 'H', 'atomic_num': 1},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.74},
+        ]
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_zmatrix_file(zmatrix, temp_path)
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Check formatting
+            self.assertTrue(lines[1].strip().startswith('1'))
+            self.assertTrue(lines[2].strip().startswith('2'))
+            
+            # Check bond reference is 1-based in file
+            parts = lines[2].split()
+            self.assertEqual(int(parts[3]), 1)  # bond_ref should be 1 (1-based)
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
+class TestIOToolsEdgeCases(unittest.TestCase):
+    """Test edge cases and error conditions."""
+    
+    def test_write_xyz_empty_comment(self):
+        """Test writing XYZ file with empty comment."""
+        coords = np.array([[0.0, 0.0, 0.0]])
+        elements = ['H']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path, comment="")
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Comment line should be empty (just newline)
+            self.assertEqual(lines[1].strip(), "")
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_write_xyz_single_atom(self):
+        """Test writing XYZ file with single atom."""
+        coords = np.array([[1.5, 2.5, 3.5]])
+        elements = ['C']
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_path = f.name
+        
+        try:
+            write_xyz_file(coords, elements, temp_path, comment="Single atom")
+            
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+            
+            self.assertEqual(int(lines[0].strip()), 1)
+            self.assertEqual(len(lines), 3)  # count + comment + 1 atom
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_read_int_file_minimal(self):
+        """Test reading minimal INT file (single atom)."""
+        int_content = """1
+     1  H   1
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
+            temp_path = f.name
+            f.write(int_content)
+        
+        try:
+            data = read_int_file(temp_path)
+            
+            self.assertEqual(len(data['atoms']), 1)
+            self.assertEqual(len(data['zmatrix']), 1)
+            self.assertEqual(data['zmatrix'][0]['element'], 'H')
+            self.assertEqual(len(data['bonds']), 0)
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+
 def run_tests(verbosity=2):
     """Run all tests with specified verbosity."""
     loader = unittest.TestLoader()
@@ -230,6 +548,10 @@ def run_tests(verbosity=2):
     
     # Add all test classes
     suite.addTests(loader.loadTestsFromTestCase(TestIOToolsFileIO))
+    suite.addTests(loader.loadTestsFromTestCase(TestIOToolsElementReplacement))
+    suite.addTests(loader.loadTestsFromTestCase(TestIOToolsBondModifications))
+    suite.addTests(loader.loadTestsFromTestCase(TestIOToolsComplexZMatrices))
+    suite.addTests(loader.loadTestsFromTestCase(TestIOToolsEdgeCases))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)

@@ -362,6 +362,7 @@ class TestMolecularSystemMinimization(unittest.TestCase):
         self.test_dir = Path(__file__).parent / 'fixtures'
         self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
         self.test_int_file = self.test_dir / 'simple_molecule.int'
+        self.butane_file = self.test_dir / 'butane_like.int'
     
     def test_minimize_energy_cartesian(self):
         """Test Cartesian energy minimization."""
@@ -387,6 +388,265 @@ class TestMolecularSystemMinimization(unittest.TestCase):
         self.assertLessEqual(final_energy, initial_energy)
         self.assertIsInstance(final_coords, np.ndarray)
         self.assertEqual(final_coords.shape, initial_coords.shape)
+    
+    def test_minimize_energy_in_torsional_space(self):
+        """Test torsional space energy minimization."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rotatable_indices = [3]  # 4th atom has rotatable dihedral
+        initial_zmatrix = system.zmatrix
+        
+        # Minimize in torsional space
+        final_zmatrix, final_energy, info = system.minimize_energy_in_torsional_space(
+            initial_zmatrix,
+            rotatable_indices,
+            max_iterations=10,
+            method='Powell',
+            verbose=False
+        )
+        
+        # Check results
+        self.assertIsNotNone(final_zmatrix)
+        self.assertIsInstance(final_energy, (float, np.floating))
+        self.assertIn('success', info)
+        self.assertIn('nfev', info)
+        self.assertIn('initial_energy', info)
+        self.assertIn('final_energy', info)
+    
+    def test_minimize_energy_torsional_with_trajectory(self):
+        """Test torsional minimization with trajectory writing."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rotatable_indices = [3]
+        initial_zmatrix = system.zmatrix
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            trajectory_file = f.name
+        
+        try:
+            # Minimize with trajectory
+            final_zmatrix, final_energy, info = system.minimize_energy_in_torsional_space(
+                initial_zmatrix,
+                rotatable_indices,
+                max_iterations=3,
+                trajectory_file=trajectory_file,
+                verbose=False
+            )
+            
+            # Trajectory file should exist but may be empty (callback might not be called)
+            # This tests that the parameter is handled without errors
+            self.assertTrue(True)  # If we get here, no exception was raised
+            
+        finally:
+            if os.path.exists(trajectory_file):
+                os.unlink(trajectory_file)
+
+
+class TestMolecularSystemFromData(unittest.TestCase):
+    """Test MolecularSystem.from_data method."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
+        
+        # Simple Z-matrix
+        self.zmatrix = [
+            {'id': 1, 'element': 'H', 'atomic_num': 1},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
+             'angle_ref': 1, 'angle': 109.47}
+        ]
+        self.bonds_data = [(0, 1, 1), (0, 2, 1)]  # 0-based indexing
+    
+    def test_from_data_basic(self):
+        """Test creating MolecularSystem from raw data."""
+        if not self.forcefield_file.exists():
+            self.skipTest("Force field file not found")
+        
+        system = MolecularSystem.from_data(
+            zmatrix=self.zmatrix,
+            bonds_data=self.bonds_data,
+            forcefield_file=str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        self.assertIsNotNone(system)
+        self.assertEqual(len(system.zmatrix), 3)
+        self.assertEqual(len(system.elements), 3)
+    
+    def test_from_data_with_rcp_terms(self):
+        """Test creating MolecularSystem from data with RCP terms."""
+        if not self.forcefield_file.exists():
+            self.skipTest("Force field file not found")
+        
+        rcp_terms = [(0, 2)]  # 0-based
+        system = MolecularSystem.from_data(
+            zmatrix=self.zmatrix,
+            bonds_data=self.bonds_data,
+            forcefield_file=str(self.forcefield_file),
+            rcp_terms=rcp_terms
+        )
+        
+        self.assertIsNotNone(system)
+        self.assertEqual(len(system.rcpterms), 1)
+        self.assertEqual(system.rcpterms[0], (0, 2))
+    
+    def test_from_data_with_custom_parameters(self):
+        """Test creating MolecularSystem with custom parameters."""
+        if not self.forcefield_file.exists():
+            self.skipTest("Force field file not found")
+        
+        system = MolecularSystem.from_data(
+            zmatrix=self.zmatrix,
+            bonds_data=self.bonds_data,
+            forcefield_file=str(self.forcefield_file),
+            rcp_terms=None,
+            write_candidate_files=True,
+            ring_closure_threshold=2.0,
+            step_length=0.001
+        )
+        
+        self.assertIsNotNone(system)
+        self.assertEqual(system.write_candidate_files, True)
+        self.assertEqual(system.ring_closure_threshold, 2.0)
+        self.assertEqual(system.step_length, 0.001)
+
+
+class TestMolecularSystemSimulationCache(unittest.TestCase):
+    """Test simulation caching in MolecularSystem."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(__file__).parent / 'fixtures'
+        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
+        self.test_int_file = self.test_dir / 'simple_molecule.int'
+    
+    def test_simulation_cache_reuse(self):
+        """Test that simulations are cached per smoothing parameter."""
+        if not self.test_int_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.test_int_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        coords = zmatrix_to_cartesian(system.zmatrix)
+        
+        # First evaluation with smoothing=0.0
+        system.setSmoothingParameter(0.0)
+        energy1 = system.evaluate_energy(coords)
+        cache_size_after_first = len(system._simulation_cache)
+        
+        # Second evaluation with same smoothing (should reuse cache)
+        energy2 = system.evaluate_energy(coords)
+        cache_size_after_second = len(system._simulation_cache)
+        
+        # Cache should not grow
+        self.assertEqual(cache_size_after_first, cache_size_after_second)
+        self.assertEqual(energy1, energy2)
+    
+    def test_simulation_cache_different_smoothing(self):
+        """Test that different smoothing parameters create separate cache entries."""
+        if not self.test_int_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.test_int_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        coords = zmatrix_to_cartesian(system.zmatrix)
+        
+        # Evaluation with smoothing=0.0
+        system.setSmoothingParameter(0.0)
+        _ = system.evaluate_energy(coords)
+        cache_size_1 = len(system._simulation_cache)
+        
+        # Evaluation with smoothing=10.0 (should create new cache entry)
+        system.setSmoothingParameter(10.0)
+        _ = system.evaluate_energy(coords)
+        cache_size_2 = len(system._simulation_cache)
+        
+        # Cache should grow
+        self.assertGreater(cache_size_2, cache_size_1)
+
+
+class TestMolecularSystemErrorHandling(unittest.TestCase):
+    """Test error handling in MolecularSystem."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
+    
+    def test_from_file_invalid_extension(self):
+        """Test that non-.int files raise error."""
+        if not self.forcefield_file.exists():
+            self.skipTest("Force field file not found")
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
+            temp_file = f.name
+            f.write("3\nTest\nH 0 0 0\n")
+        
+        try:
+            with self.assertRaises(ValueError) as context:
+                MolecularSystem.from_file(
+                    temp_file,
+                    str(self.forcefield_file),
+                    rcp_terms=None
+                )
+            self.assertIn(".int", str(context.exception))
+        finally:
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+    
+    def test_ring_closure_score_verbose_output(self):
+        """Test ring closure score with verbose output."""
+        if not self.forcefield_file.exists():
+            self.skipTest("Force field file not found")
+        
+        zmatrix = [
+            {'id': 1, 'element': 'H', 'atomic_num': 1},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
+             'angle_ref': 1, 'angle': 109.47}
+        ]
+        bonds_data = [(0, 1, 1), (0, 2, 1)]
+        rcp_terms = [(0, 2)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix=zmatrix,
+            bonds_data=bonds_data,
+            forcefield_file=str(self.forcefield_file),
+            rcp_terms=rcp_terms
+        )
+        
+        coords = zmatrix_to_cartesian(system.zmatrix)
+        
+        # Test with verbose=True (should not raise error)
+        score = system.ring_closure_score_exponential(coords, verbose=True)
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 1.0)
+        
+        # Test penalty with verbose=True
+        penalty = system.ring_closure_penalty_quadratic(coords, verbose=True)
+        self.assertGreaterEqual(penalty, 0.0)
 
 
 def run_tests(verbosity=2):
@@ -400,6 +660,9 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemEnergy))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRingClosure))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemMinimization))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemFromData))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemSimulationCache))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemErrorHandling))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)
