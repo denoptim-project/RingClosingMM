@@ -74,7 +74,14 @@ def _calc_angle(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> float:
     """
     v1 = p1 - p2
     v2 = p3 - p2
-    cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    norm1 = np.linalg.norm(v1)
+    norm2 = np.linalg.norm(v2)
+    
+    # Handle degenerate cases (zero-length vectors)
+    if norm1 < 1e-10 or norm2 < 1e-10:
+        return 0.0
+    
+    cos_angle = np.dot(v1, v2) / (norm1 * norm2)
     cos_angle = np.clip(cos_angle, -1.0, 1.0)
     return np.degrees(np.arccos(cos_angle))
 
@@ -100,10 +107,15 @@ def _calc_dihedral(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, p4: np.ndarra
     n1 = np.cross(b1, b2)
     n2 = np.cross(b2, b3)
     
-    if np.linalg.norm(n1) > 1e-8 and np.linalg.norm(n2) > 1e-8:
-        n1 = n1 / np.linalg.norm(n1)
-        n2 = n2 / np.linalg.norm(n2)
-        m1 = np.cross(n1, b2 / np.linalg.norm(b2))
+    norm_n1 = np.linalg.norm(n1)
+    norm_n2 = np.linalg.norm(n2)
+    norm_b2 = np.linalg.norm(b2)
+    
+    # Check for degenerate cases (collinear atoms or zero-length bonds)
+    if norm_n1 > 1e-8 and norm_n2 > 1e-8 and norm_b2 > 1e-8:
+        n1 = n1 / norm_n1
+        n2 = n2 / norm_n2
+        m1 = np.cross(n1, b2 / norm_b2)
         x = np.dot(n1, n2)
         y = np.dot(m1, n2)
         return -np.degrees(np.arctan2(y, x))
