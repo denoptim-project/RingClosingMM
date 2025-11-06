@@ -420,7 +420,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             "STATUS": "SUCCESS",
             "ENERGY": float(final_energy) if final_energy is not None else None,
             "RCSCORE": float(final_rcscore),
-            "coordinates": best_coords.tolist(),
+            "Cartesian_coordinates": best_coords.tolist(),
             "zmatrix": zmatrix_1based,
             "METADATA": {
                 "initial_closure_score": result.get('initial_closure_score', 0.0),
@@ -472,7 +472,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             "STATUS": "SUCCESS",
             "ENERGY": float(final_energy),
             "RCSCORE": float(final_rcscore),
-            "coordinates": final_coords.tolist(),
+            "Cartesian_coordinates": final_coords.tolist(),
             "zmatrix": zmatrix_1based,
             "METADATA": {
                 "initial_energy": result.get('initial_energy', 0.0),
