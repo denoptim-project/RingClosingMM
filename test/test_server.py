@@ -99,18 +99,18 @@ class TestServerMinimize(unittest.TestCase):
         # Check required fields
         self.assertIn('ENERGY', response)
         self.assertIn('RCSCORE', response)
-        self.assertIn('coordinates', response)
+        self.assertIn('Cartesian_coordinates', response)
         self.assertIn('zmatrix', response)
         self.assertIn('METADATA', response)
         
         # Check data types
         self.assertIsInstance(response['ENERGY'], (int, float))
         self.assertIsInstance(response['RCSCORE'], (int, float))
-        self.assertIsInstance(response['coordinates'], list)
+        self.assertIsInstance(response['Cartesian_coordinates'], list)
         self.assertIsInstance(response['zmatrix'], list)
         
         # Check coordinates shape
-        coords = response['coordinates']
+        coords = response['Cartesian_coordinates']
         self.assertEqual(len(coords), 4)  # 4 atoms
         self.assertEqual(len(coords[0]), 3)  # 3D coordinates
         

@@ -2,6 +2,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: tRu",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "tRu.int",
+                "-r", "122", "118", "3", "8", "8", "118", "11", "68", "10", "13", "26", "28", "76", "78", "127", "184", "192", "194", "126", "129", "142", "144",
+                "-c", "6", "122", "3", "234",
+                "--no-cartesian-refinement",
+                "--ring-closure-tolerance", "0.2", 
+                "--convergence-interval", "5"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "/tmp/pssrot2",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
             "name": "Python: cyclic test",
             "type": "debugpy",
             "request": "launch",
@@ -139,7 +159,25 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
+        },
+        {
+            "name": "Test: Graph Methods Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_ring_closure_optimizer.py::TestGeneticAlgorithmGraphMethods",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
         }
     ]
 }
+
 

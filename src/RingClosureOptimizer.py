@@ -204,24 +204,32 @@ class GeneticAlgorithm:
         self.best_individual = None
         self.generation = 0
     
-    def _build_bond_graph(self) -> Dict[int, List[int]]:
+    @staticmethod
+    def _build_bond_graph(base_zmatrix: List[Dict], topology=None) -> Dict[int, List[int]]:
         """
         Build bond connectivity graph from molecular topology or Z-matrix.
         
         Uses the complete molecular topology (including all bonds) if available,
         otherwise falls back to Z-matrix bond_ref (which only includes tree structure).
         
+        Parameters
+        ----------
+        base_zmatrix : List[Dict]
+            Z-matrix representation of the molecule
+        topology : openmm.app.Topology, optional
+            OpenMM topology object containing bond information
+        
         Returns
         -------
         Dict[int, List[int]]
             Adjacency list representation (0-based indices)
         """
-        num_atoms = len(self.base_zmatrix)
+        num_atoms = len(base_zmatrix)
         graph = {i: [] for i in range(num_atoms)}
         
-        if self.topology is not None:
+        if topology is not None:
             # Use complete topology (includes all bonds, including RCP bonds)
-            for bond in self.topology.bonds():
+            for bond in topology.bonds():
                 atom1_idx = bond.atom1.index
                 atom2_idx = bond.atom2.index
                 if atom1_idx < num_atoms and atom2_idx < num_atoms:
@@ -229,7 +237,7 @@ class GeneticAlgorithm:
                     graph[atom2_idx].append(atom1_idx)
         else:
             # Fall back to Z-matrix (only tree structure bonds)
-            for i, atom in enumerate(self.base_zmatrix):
+            for i, atom in enumerate(base_zmatrix):
                 if i == 0:
                     continue
                 bond_ref = atom['bond_ref']
@@ -238,14 +246,15 @@ class GeneticAlgorithm:
         
         return graph
     
-    def _find_path_bfs(self, graph: Dict[int, List[int]], start: int, end: int) -> Optional[List[int]]:
+    @staticmethod
+    def _find_path_bfs(graph: Dict[int, List[int]], start: int, end: int) -> Optional[List[int]]:
         """
         Find shortest path between two atoms using BFS.
         
         Parameters
         ----------
         graph : Dict[int, List[int]]
-            Bond connectivity graph
+            Bond connectivity graph (adjacency list)
         start : int
             Start atom index (0-based)
         end : int
@@ -256,6 +265,8 @@ class GeneticAlgorithm:
         Optional[List[int]]
             Path as list of atom indices, or None if no path exists
         """
+        from collections import deque
+        
         # Validate indices
         if start not in graph:
             return None
@@ -265,11 +276,12 @@ class GeneticAlgorithm:
         if start == end:
             return [start]
         
+        # BFS using deque for O(1) popleft (more efficient than list.pop(0))
         visited = {start}
-        queue = [(start, [start])]
+        queue = deque([(start, [start])])
         
         while queue:
-            node, path = queue.pop(0)
+            node, path = queue.popleft()
             
             # Safety check (should not happen if graph is well-formed)
             if node not in graph:
@@ -299,7 +311,7 @@ class GeneticAlgorithm:
         if not self.rcp_terms:
             return []
         
-        graph = self._build_bond_graph()
+        graph = self._build_bond_graph(self.base_zmatrix, self.topology)
         num_atoms = len(self.base_zmatrix)
         critical_atoms = set()
         
@@ -327,9 +339,9 @@ class GeneticAlgorithm:
             atom = self.base_zmatrix[rot_idx]
             atoms_in_rotatable_bond = [] 
             if atom.get('bond_ref'):
-                atoms_in_rotatable_bond.append(atom['bond_ref'] - 1)
+                atoms_in_rotatable_bond.append(atom['bond_ref'])
             if atom.get('angle_ref'):
-                atoms_in_rotatable_bond.append(atom['angle_ref'] - 1)
+                atoms_in_rotatable_bond.append(atom['angle_ref'])
             
             # Check if both atoms are on a critical path
             if all(atom_idx in critical_atoms for atom_idx in atoms_in_rotatable_bond):
@@ -1084,7 +1096,7 @@ class RingClosureOptimizer:
         # Create fitness function
         fitness_fn = self._create_fitness_function(ring_closure_tolerance, ring_closure_decay_rate)
         
-        # Optimization loop
+        # Genetic Algorithm 
         prev_best = np.inf
         refinement_stats = {'refined': 0, 'improved': 0}
         num_conv_gen = 0
@@ -1136,7 +1148,7 @@ class RingClosureOptimizer:
         top_indices = sorted_indices[:refinement_top_n]
         top_candidates = [self.ga.population[i] for i in top_indices]
         
-        # Smoothing-based refinement (after GA convergence)
+        # Refinement in torsional space with optional smoothing of the potential energy
         if enable_smoothing_refinement:
             if verbose:
                 print("\nApplying torsional refinement with potential energy smoothing to top candidates...")
@@ -1151,9 +1163,9 @@ class RingClosureOptimizer:
                 top_candidates[i] = refined_individual
                 refined_energy = refined_individual.energy
                 energy_improvement = refined_energy - initial_energy
-                print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol")
+                print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
 
-        # Cartesian refinement (after smoothing refinement)
+        # Refinement in Cartesian space
         if enable_cartesian_refinement:
             if verbose:
                 print("\nApplying Cartesian refinement to top candidates...")
@@ -1167,7 +1179,7 @@ class RingClosureOptimizer:
                 top_candidates[i] = refined_individual
                 refined_energy = refined_individual.energy
                 energy_improvement = refined_energy - initial_energy
-                print(f"  Cartesian refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol")
+                print(f"  Cartesian refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
 
         # Compile results
         final_closure_scores = np.array([self.system.ring_closure_score_exponential(

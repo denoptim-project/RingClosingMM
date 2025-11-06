@@ -449,6 +449,183 @@ class TestGeneticAlgorithm(unittest.TestCase):
         self.assertAlmostEqual(stats['average'], 3.0)
 
 
+class TestGeneticAlgorithmGraphMethods(unittest.TestCase):
+    """Test graph methods in GeneticAlgorithm (static methods)."""
+    
+    def test_build_graph_from_simple_zmatrix(self):
+        """Test building graph from simple linear Z-matrix."""
+        # Simple 3-atom linear chain: C-C-C
+        zmatrix = [
+            {'id': 1, 'element': 'C', 'atomic_num': 6},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        graph = GeneticAlgorithm._build_bond_graph(zmatrix, topology=None)
+        
+        # Check graph structure
+        self.assertEqual(len(graph), 3)
+        self.assertEqual(set(graph[0]), {1})      # Atom 0 bonded to 1
+        self.assertEqual(set(graph[1]), {0, 2})   # Atom 1 bonded to 0 and 2
+        self.assertEqual(set(graph[2]), {1})      # Atom 2 bonded to 1
+    
+    def test_build_graph_butane(self):
+        """Test building graph from butane-like Z-matrix."""
+        # 4-atom chain: C-C-C-C
+        zmatrix = [
+            {'id': 1, 'element': 'C', 'atomic_num': 6},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        graph = GeneticAlgorithm._build_bond_graph(zmatrix, topology=None)
+        
+        # Check graph structure
+        self.assertEqual(len(graph), 4)
+        self.assertEqual(set(graph[0]), {1})      # Atom 0 bonded to 1
+        self.assertEqual(set(graph[1]), {0, 2})   # Atom 1 bonded to 0 and 2
+        self.assertEqual(set(graph[2]), {1, 3})   # Atom 2 bonded to 1 and 3
+        self.assertEqual(set(graph[3]), {2})      # Atom 3 bonded to 2
+    
+    def test_graph_is_bidirectional(self):
+        """Test that graph edges are bidirectional."""
+        zmatrix = [
+            {'id': 1, 'element': 'C', 'atomic_num': 6},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        graph = GeneticAlgorithm._build_bond_graph(zmatrix, topology=None)
+        
+        # Check bidirectional edges
+        for atom, neighbors in graph.items():
+            for neighbor in neighbors:
+                self.assertIn(atom, graph[neighbor],
+                             f"Edge {atom}->{neighbor} exists, but reverse edge {neighbor}->{atom} missing")
+    
+    def test_path_in_linear_chain(self):
+        """Test finding path in a linear chain."""
+        # Graph: 0-1-2-3
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1, 3],
+            3: [2]
+        }
+        
+        # Path from 0 to 3
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 3)
+        self.assertEqual(path, [0, 1, 2, 3])
+        
+        # Path from 3 to 0 (reverse)
+        path_reverse = GeneticAlgorithm._find_path_bfs(graph, 3, 0)
+        self.assertEqual(path_reverse, [3, 2, 1, 0])
+    
+    def test_path_to_self(self):
+        """Test path from node to itself."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = GeneticAlgorithm._find_path_bfs(graph, 1, 1)
+        self.assertEqual(path, [1])
+    
+    def test_path_in_branched_graph(self):
+        """Test finding path in branched structure."""
+        # Graph:
+        #     2
+        #     |
+        # 0-1-3-4
+        graph = {
+            0: [1],
+            1: [0, 2, 3],
+            2: [1],
+            3: [1, 4],
+            4: [3]
+        }
+        
+        # Path from 0 to 4 (should go through 1, 3)
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 4)
+        self.assertEqual(path, [0, 1, 3, 4])
+        
+        # Path from 2 to 4
+        path = GeneticAlgorithm._find_path_bfs(graph, 2, 4)
+        self.assertEqual(path, [2, 1, 3, 4])
+    
+    def test_path_in_cycle(self):
+        """Test finding path in cyclic graph."""
+        # Graph: 0-1-2-3-0 (square)
+        graph = {
+            0: [1, 3],
+            1: [0, 2],
+            2: [1, 3],
+            3: [2, 0]
+        }
+        
+        # Path from 0 to 2 (two possible paths of equal length)
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 2)
+        self.assertIsNotNone(path)
+        self.assertEqual(len(path), 3)  # Shortest path
+        self.assertEqual(path[0], 0)
+        self.assertEqual(path[-1], 2)
+        # Path should be either [0,1,2] or [0,3,2]
+        self.assertIn(path, [[0, 1, 2], [0, 3, 2]])
+    
+    def test_no_path_disconnected(self):
+        """Test that no path is found in disconnected graph."""
+        # Two separate components: 0-1 and 2-3
+        graph = {
+            0: [1],
+            1: [0],
+            2: [3],
+            3: [2]
+        }
+        
+        # No path between disconnected components
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 3)
+        self.assertIsNone(path)
+        
+        # Path within same component works
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 1)
+        self.assertEqual(path, [0, 1])
+    
+    def test_invalid_start_node(self):
+        """Test with invalid start node."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = GeneticAlgorithm._find_path_bfs(graph, 5, 1)
+        self.assertIsNone(path)
+    
+    def test_invalid_end_node(self):
+        """Test with invalid end node."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 5)
+        self.assertIsNone(path)
+    
+    def test_single_isolated_atom(self):
+        """Test with single isolated atom."""
+        graph = {0: []}
+        
+        path = GeneticAlgorithm._find_path_bfs(graph, 0, 0)
+        self.assertEqual(path, [0])
+
+
 class TestLocalRefinementOptimizer(unittest.TestCase):
     """Test LocalRefinementOptimizer class."""
     
@@ -693,6 +870,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerUtilities))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerMinimize))
     suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithm))
+    suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithmGraphMethods))
     suite.addTests(loader.loadTestsFromTestCase(TestLocalRefinementOptimizer))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerOptimize))
     
