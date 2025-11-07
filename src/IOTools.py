@@ -41,7 +41,7 @@ def read_int_file(pathname):
         lines = f.readlines()
     
     # Read number of atoms
-    num_atoms = int(lines[0].strip())
+    num_atoms = int(lines[0].strip().split()[0])
     
     # Parse Z-matrix
     zmatrix = []
