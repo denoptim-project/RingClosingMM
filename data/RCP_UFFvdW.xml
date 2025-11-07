@@ -261,6 +261,22 @@
    <Atom type="ATN" sigma="1.0" epsilon="0.0"/>
    <Atom type="Du" sigma="1.0" epsilon="0.0"/>
   </CustomNonbondedForce>
+ <HeadTailNonbondedForce energy="scalingNonBonded*calToJoule*(amplitude+width); amplitude=(aa/tb)*exp(-ba*((distance(p1,p2)*10)^2)/ta); aa=amplHTA*eps; ba=widthHTA/radrad; width=(ab/tb)*exp(-bb*((distance(p1,p2)*10)^2)/ta); ab=amplHTB*eps; bb=widthHTB/radrad; tb=sqrt(ta^3); ta=1.0+width; width=4.0*1.0*smoothing; eps=epsilon*htRadFraction*bondDistanceFactor; radrad=(sigma*tworootsix)^2">
+   <GlobalParameter name="scalingNonBonded" defaultValue="1.0"/>
+   <GlobalParameter name="htRadFraction" defaultValue="0.2"/>
+   <GlobalParameter name="amplHTA" defaultValue="14487.100000000000"/>
+   <GlobalParameter name="widthHTA" defaultValue="11.404150184702447"/>
+   <GlobalParameter name="amplHTB" defaultValue="-5.5533799999999998"/>
+   <GlobalParameter name="widthHTB" defaultValue="1.5438568576991818"/>
+   <!-- Global parameters apply to any energy term, but need to be defined in each term!-->
+   <GlobalParameter name="smoothing" defaultValue="0.0"/>
+   <GlobalParameter name="tworootsix" defaultValue="1.122462048309372981"/>
+   <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
+   <PerBondParameter name="bondDistanceFactor"/>
+   <PerBondParameter name="sigma"/>
+   <PerBondParameter name="epsilon"/>
+   <!--Du must be ignored here-->
+  </HeadTailNonbondedForce>
   <RingClosingForce energy="scalingRCP*calToJoule*(amplitude+width+gaussc); amplitude=(aa/tb)*exp(-ba*((distance(p1,p2)*10)^2)/ta); aa=amplRcpA; ba=widthRcpA; width=(ab/tb)*exp(-bb*((distance(p1,p2)*10)^2)/ta); ab=amplRcpB; bb=widthRcpB; gaussc=(ac/tb)*exp(-bc*((distance(p1,p2)*10)^2)/ta); ac=amplRcpC; bc=widthRcpC; tb=sqrt(ta^3); ta=1.0+width; width=4.0*1.0*smoothing">
    <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <!-- NB: RCP pairs are explicitly defined in building the system file using CustomCompoundBondForce -->

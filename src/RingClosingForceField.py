@@ -14,6 +14,7 @@ import numpy as np
 # Conventions: names of energy terms
 trackedForceTypes = ['CustomNonbondedForce',  # Index 0 used below!
                      'RCPForce',  # Index 1 used below!
+                     'HeadTailNonbondedForce',  # Index 2 used below!
                      'HarmonicBondForce',
                      'HarmonicAngleForce']
 
@@ -180,18 +181,199 @@ class ConstrainedAngleGenerator(HarmonicAngleGenerator):
 
 parsers["ConstrainedAngleForce"] = ConstrainedAngleGenerator.parseElement
 
+class HeadTailNonbondedGenerator():
+    """
+    A generator for the non bonding interactions between the head and tail of a ring-closing pair.
+    User CustomCompoundBondForce.
+    """
+    def __init__(self, forcefield, energy, verbose=False):
+        self.ff = forcefield
+        self.energy = energy
+        self.globalParams = {}
+        self.perBondParams = []
+        self.functions = []
+        self.verbose = verbose
+
+    @staticmethod
+    def parseElement(element, ff):
+        generator = HeadTailNonbondedGenerator(ff, element.attrib['energy'])
+        ff.registerGenerator(generator)
+        for param in element.findall('GlobalParameter'):
+            generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
+        for param in element.findall('PerBondParameter'):
+            generator.perBondParams.append(param.attrib['name'])
+        generator.functions += _parseFunctions(element)
+
+    def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
+        """Create the head-tail nonbonded force using CustomCompoundBondForce.
+        """
+        force = mm.CustomCompoundBondForce(2, self.energy)
+        force.setName('HeadTailNonbondedForce')
+        
+        # Add global parameters (smoothing, scaling, etc.)
+        for param in self.globalParams:
+            force.addGlobalParameter(param, self.globalParams[param])
+        
+        # Add per-bond parameters if any (usually none for RCP)
+        for param in self.perBondParams:
+            force.addPerBondParameter(param)
+
+        # Add custom functions (Gaussians, etc.)
+        _createFunctions(force, self.functions)
+
+        # Add each RCP term explicitly
+        rcpterms = args.get('rcpterms', [])
+        if self.verbose:
+            print(f'Adding {len(rcpterms)} head-tail nonbonded terms to HeadTailNonbondedForce')
+        
+        # Utility to ensure we do not add the same force twice
+        pairs_added = set()
+        def addForceOnce(i, j, bondFactor):
+            """Add force ensuring no duplicates and canonical order (i < j)"""
+            pair = (min(i, j), max(i, j))
+            # ignore dummy atoms
+            if '_Du' in data.atoms[pair[0]].name or '_Du' in data.atoms[pair[1]].name:
+                return False
+            if pair not in pairs_added:
+                pairs_added.add(pair)
+                force.addBond([pair[0], pair[1]], [bondFactor, 0.4, 0.04]) # bondFactor, sigma, epsilon
+                return True
+            return False
+        
+        #TODO: this is repeated below: male it a function to get the list of atoms in 1-2,1-3, and 1-4
+
+        # Build a dictionary of bonded neighbors for each atom
+        neighbors = defaultdict(set)
+        for bond in data.bonds:
+            neighbors[bond.atom1].add(bond.atom2)
+            neighbors[bond.atom2].add(bond.atom1)
+
+        counter = 0
+        for idx, pair in enumerate(rcpterms):
+            p1 = int(pair[0])
+            p2 = int(pair[1])
+
+            # Ignore the RCP pair itself (1-1 relation): do nothing for (p1,p2) and (p2,p1)
+
+            # Labels consider the chain a-b-c-d where both p1 and p2 are the respective position 'a'
+            atoms_a1 = set([p1])
+            atoms_b1 = set(neighbors[p1])
+            atoms_c1 = set()
+            atoms_d1 = set()
+            for atm_b1 in atoms_b1:
+                for atm_c1 in neighbors[atm_b1]:
+                    if atm_c1 not in atoms_a1:
+                        atoms_c1.add(atm_c1)
+            for atm_c1 in atoms_c1:
+                for atm_d1 in neighbors[atm_c1]:
+                    if atm_d1 not in atoms_b1:
+                        atoms_d1.add(atm_d1)
+
+            atoms_a2 = set([p2])
+            atoms_b2 = set(neighbors[p2])
+            atoms_c2 = set()
+            atoms_d2 = set()
+            for atm_b in atoms_b2:
+                for atm_c in neighbors[atm_b]:
+                    if atm_c not in atoms_a2:
+                        atoms_c2.add(atm_c)
+            for atm_c2 in atoms_c2:
+                for atm_d2 in neighbors[atm_c2]:
+                    if atm_d2 not in atoms_b2:
+                        atoms_d2.add(atm_d2)
+
+            verbose=True
+            for atm_a1 in atoms_a1:
+                for atm_b2 in atoms_b2:
+                    if addForceOnce(atm_a1, atm_b2, 2.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_b2} (1-2 relation)')
+                for atm_c2 in atoms_c2:
+                    if addForceOnce(atm_a1, atm_c2, 3.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_c2} (1-3 relation)')
+                for atm_d2 in atoms_d2:
+                    if addForceOnce(atm_a1, atm_d2, 4.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_d2} (1-4 relation)')
+
+            for atm_b1 in atoms_b1:
+                for atm_b2 in atoms_b2:
+                    if addForceOnce(atm_b1, atm_b2, 3.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_b1} - {atm_b2} (1-3 relation)')
+                for atm_c2 in atoms_c2:
+                    if addForceOnce(atm_b1, atm_c2, 4.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_b1} - {atm_c2} (1-4 relation)')
+
+            for atm_a2 in atoms_a2:
+                for atm_b1 in atoms_b1:
+                    if addForceOnce(atm_a2, atm_b1, 2.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_b1} (1-2 relation)')
+                for atm_c1 in atoms_c1:
+                    if addForceOnce(atm_a2, atm_c1, 3.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_c1} (1-3 relation)')
+                for atm_d1 in atoms_d1:
+                    if addForceOnce(atm_a2, atm_d1, 4.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_d1} (1-4 relation)')
+
+            for atm_b2 in atoms_b2:
+                for atm_b1 in atoms_b1:
+                    if addForceOnce(atm_b2, atm_b1, 3.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_b2} - {atm_b1} (1-3 relation)')
+                for atm_c1 in atoms_c1:
+                    if addForceOnce(atm_b2, atm_c1, 4.0):
+                        counter += 1
+                        if verbose:
+                            print(f'    Also H-T nonbonded term: {atm_b2} - {atm_c1} (1-4 relation)')
+            
+        print(f'Added {counter} H-T nonbonded terms')
+        print(f'Force has {force.getNumBonds()} bonds')
+
+        sys.addForce(force)
+
+    def postprocessSystem(self, sys, data, args):
+        pass
+
+
+parsers["HeadTailNonbondedForce"] = HeadTailNonbondedGenerator.parseElement
+
 
 class RingClosingForceGenerator():
     """A generator that constructs a ring-closing force using CustomCompoundBondForce.
     """
 
     def __init__(self, forcefield, energy, verbose=False):
-        """Initialize the RingClosingForceGenerator.
+        """
+        Initialize the RingClosingForceGenerator.
+
+        Parameters
+        ----------
+        forcefield : openmm.app.forcefield.ForceField
+            The force field to use.
+        energy : str
+            The energy function to use.
+        verbose : bool
+            Whether to print verbose output.
         """
         self.ff = forcefield
         self.energy = energy
         self.globalParams = {}
-        self.perBondParams = []  # Changed from perParticleParams
+        self.perBondParams = []
         self.functions = []
         self.verbose = verbose
 
@@ -206,13 +388,27 @@ class RingClosingForceGenerator():
         for param in element.findall('PerBondParameter'):
             generator.perBondParams.append(param.attrib['name'])
         generator.functions += _parseFunctions(element)
-        # No need for atom type parameters or selector anymore
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
         """Create the RCP force using CustomCompoundBondForce.
-        
+
+        Parameters
+        ----------
+        sys : openmm.openmm.System
+            The system to add the force to.
+        data : openmm.openmm.Context
+            The context to add the force to.
+        nonbondedMethod : str
+            The nonbonded method to use.
+        nonbondedCutoff : float
+            The nonbonded cutoff to use.
+        args : dict
+            The arguments to add the force to.
+    
         The rcpterms must be provided in args['rcpterms'] as a list of 
-        [particle1, particle2] pairs."""
+        [particle1, particle2] pairs. 
+        Also, the atom coordinates must be provided in args['positions'] 
+        as a list of openmm.unit.Quantity objects."""
 
         # Use the position just to avoid triggering error about unused arg
         lenPositions = len(args['positions'])
@@ -423,6 +619,8 @@ def create_system(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
                               smoothing)
     setGlobalParameterOfForce(system, trackedForceTypes[1], 'smoothing',
                               smoothing)
+    setGlobalParameterOfForce(system, trackedForceTypes[2], 'smoothing',
+                              smoothing)
     if scalingNonBonded is not None:
         setGlobalParameterOfForce(system, trackedForceTypes[0],
                               'scalingNonBonded',
@@ -481,7 +679,7 @@ def create_system(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
                 if verbose:
                     print(f'  RCP term {idx}: excluding vdW between particles {p1} - {p2}')
 
-            # Labels consider the chain a-b-c-d where both p1 and p2 are the respecfive position 'a'
+            # Labels consider the chain a-b-c-d where both p1 and p2 are the respective position 'a'
             atoms_a1 = set([p1])
             atoms_b1 = set(neighbors[p1])
             atoms_c1 = set()
