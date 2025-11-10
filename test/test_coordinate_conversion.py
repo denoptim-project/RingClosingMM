@@ -119,29 +119,29 @@ class TestSimpleZMatrix(unittest.TestCase):
         """Create simple test Z-matrices."""
         # Linear molecule: H-H-H (0-based indices)
         self.linear_zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
              'angle_ref': 0, 'angle': 180.0},
         ]
         
         # Bent molecule: H-O-H (water-like) (0-based indices)
         self.bent_zmatrix = [
-            {'id': 1, 'element': 'O', 'atomic_num': 8},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96,
+            {'id': 0, 'element': 'O', 'atomic_num': 8},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96,
              'angle_ref': 1, 'angle': 104.5},
         ]
         
         # Tetrahedral: C with 4 H (methane-like) (0-based indices)
         self.tetrahedral_zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
              'angle_ref': 1, 'angle': 109.47},
-            {'id': 4, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
+            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 0},
-            {'id': 5, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
+            {'id': 4, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': -120.0, 'chirality': 0},
         ]
     
@@ -195,23 +195,23 @@ class TestConversionCycle(unittest.TestCase):
         """Create test Z-matrices with various features."""
         # Simple 4-atom chain with dihedral (0-based indices)
         self.simple_chain = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
         ]
         
         # Mixed structure with both chiral and non-chiral atoms (0-based indices)
         self.mixed_chirality = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 109.5, 'chirality': 1},
         ]
     
@@ -351,11 +351,11 @@ class TestChiralityHandling(unittest.TestCase):
         """Create test Z-matrix with chiral center."""
         # Simple branched structure with chirality (0-based indices)
         self.chiral_zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1},
         ]
     
@@ -417,8 +417,8 @@ class TestCartesianToZMatrix(unittest.TestCase):
         
         # Template Z-matrix (0-based indices)
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0}
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0}
         ]
         
         # Extract Z-matrix
@@ -438,9 +438,9 @@ class TestCartesianToZMatrix(unittest.TestCase):
         
         # Template Z-matrix (0-based indices)
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
         
@@ -463,11 +463,11 @@ class TestCartesianToZMatrix(unittest.TestCase):
         
         # Template Z-matrix
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 0.0,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 0.0,
              'angle_ref': 1, 'angle': 0.0, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0}
         ]
         
@@ -490,9 +490,9 @@ class TestCartesianToZMatrix(unittest.TestCase):
         ])
         
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
         
@@ -509,11 +509,11 @@ class TestCartesianToZMatrix(unittest.TestCase):
         """Test extraction of chirality information."""
         # Create a chiral center
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1}
         ]
         
@@ -532,11 +532,11 @@ class TestCartesianToZMatrix(unittest.TestCase):
     def test_negative_chirality_extraction(self):
         """Test extraction of negative chirality."""
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': -1}
         ]
         
@@ -549,11 +549,11 @@ class TestCartesianToZMatrix(unittest.TestCase):
     def test_reference_atoms_preserved(self):
         """Test that reference atom indices are preserved."""
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 60.0, 'chirality': 0}
         ]
         
@@ -578,9 +578,9 @@ class TestCartesianToZMatrix(unittest.TestCase):
         ])
         
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
         
@@ -594,15 +594,15 @@ class TestCartesianToZMatrix(unittest.TestCase):
         """Test extraction with larger molecule."""
         # Create a chain of 6 atoms (0-based indices)
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 110.0, 'dihedral_ref': 1, 'dihedral': -60.0, 'chirality': 0},
-            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
              'angle_ref': 3, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0}
         ]
         
@@ -633,13 +633,13 @@ class TestTorsionExtraction(unittest.TestCase):
     def setUp(self):
         """Create test Z-matrix."""
         self.zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 110.0, 'dihedral_ref': 1, 'dihedral': -60.0, 'chirality': 0},
         ]
         

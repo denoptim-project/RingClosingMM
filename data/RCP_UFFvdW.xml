@@ -261,8 +261,8 @@
    <Atom type="ATN" sigma="1.0" epsilon="0.0"/>
    <Atom type="Du" sigma="1.0" epsilon="0.0"/>
   </CustomNonbondedForce>
- <HeadTailNonbondedForce energy="scalingNonBonded*calToJoule*(amplitude+width); amplitude=(aa/tb)*exp(-ba*((distance(p1,p2)*10)^2)/ta); aa=amplHTA*eps; ba=widthHTA/radrad; width=(ab/tb)*exp(-bb*((distance(p1,p2)*10)^2)/ta); ab=amplHTB*eps; bb=widthHTB/radrad; tb=sqrt(ta^3); ta=1.0+width; width=4.0*1.0*smoothing; eps=epsilon*htRadFraction*bondDistanceFactor; radrad=(sigma*tworootsix)^2">
-   <GlobalParameter name="scalingNonBonded" defaultValue="1.0"/>
+ <HeadTailNonbondedForce energy="scalingHT*calToJoule*(amplitude+width); amplitude=(aa/tb)*exp(-ba*((distance(p1,p2)*10)^2)/ta); aa=amplHTA*eps; ba=widthHTA/radrad; width=(ab/tb)*exp(-bb*((distance(p1,p2)*10)^2)/ta); ab=amplHTB*eps; bb=widthHTB/radrad; tb=sqrt(ta^3); ta=1.0+width; width=4.0*1.0*smoothing; eps=epsilon*htRadFraction*bondDistanceFactor; radrad=(sigma*tworootsix)^2">
+   <GlobalParameter name="scalingHT" defaultValue="0.0"/>
    <GlobalParameter name="htRadFraction" defaultValue="0.2"/>
    <GlobalParameter name="amplHTA" defaultValue="14487.100000000000"/>
    <GlobalParameter name="widthHTA" defaultValue="11.404150184702447"/>
@@ -296,17 +296,17 @@
    <!-- NB: dummy values for bond stretching. This term is here only to enable
        the generation of constraints.-->
    <!-- NB: the values of equilibrium length is added programamtically.-->
-   <Bond class1="Atom" class2="Atom" k="100000"/>
-   <Bond class1="ATR"  class2="Atom" k="100000"/>
-   <Bond class1="Dummy" class2=""    k="1000000"/>
+   <Bond class1="Atom" class2="Atom" k="1500"/>
+   <Bond class1="ATR"  class2="Atom" k="1500"/>
+   <Bond class1="Dummy" class2=""    k="1500"/>
   </ConstrainedBondForce>
   <ConstrainedAngleForce>
    <!-- NB: dummy values for bending. This term is here only to enable
         the generation of constraints.-->
    <!-- NB: the values of equilibrium angle is added programamtically.-->
-   <Angle class1="" class2="Atom" class3=""  k="10000"/>
-   <Angle class1="" class2="ATR"  class3=""  k="1000"/>  
-   <Angle class1="Dummy" class2="" class3="" k="100000"/>
-   <Angle class1="" class2="Dummy" class3="" k="100000"/>
+   <Angle class1="" class2="Atom" class3=""  k="80"/>
+   <Angle class1="" class2="ATR"  class3=""  k="80"/>  
+   <Angle class1="Dummy" class2="" class3="" k="1000"/>
+   <Angle class1="" class2="Dummy" class3="" k="1000"/>
   </ConstrainedAngleForce>
 </ForceField>

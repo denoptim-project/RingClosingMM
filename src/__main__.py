@@ -22,6 +22,8 @@ import sys
 import numpy as np
 from pathlib import Path
 
+from src import IOTools
+
 # Custom formatter that removes "(default: False)" from boolean flags
 class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def _get_help_string(self, action):
@@ -61,6 +63,7 @@ DEFAULT_RING_CLOSURE_DECAY_RATE = 1.0  # Exponential decay rate
 # Smoothing refinement parameters  
 DEFAULT_REFINEMENT_TOP_N = 1
 DEFAULT_TORSIONAL_ITERATIONS = 50
+DEFAULT_ZMATRIX_ITERATIONS = 50
 DEFAULT_CARTESIAN_ITERATIONS = 500
 DEFAULT_REFINEMENT_CONVERGENCE = 0.01
 DEFAULT_SMOOTHING_SEQUENCE = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
@@ -151,6 +154,8 @@ def parse_arguments():
     mem_group = parser.add_argument_group('Refinement (Applied after GA Convergence)')
     mem_group.add_argument('--no-smoothing-refinement', action='store_true',
                           help='Disable smoothing-based torsional refinement')
+    mem_group.add_argument('--no-zmatrix-refinement', action='store_true',
+                          help='Disable Z-matrix space refinement')
     mem_group.add_argument('--no-cartesian-refinement', action='store_true',
                           help='Disable Cartesian space refinement')
     mem_group.add_argument('--refinement-top-n', type=int,
@@ -159,6 +164,9 @@ def parse_arguments():
     mem_group.add_argument('--torsional-iterations', type=int,
                           default=DEFAULT_TORSIONAL_ITERATIONS,
                           help='Iterations per torsional optimization step')
+    mem_group.add_argument('--zmatrix-iterations', type=int,
+                          default=DEFAULT_ZMATRIX_ITERATIONS,
+                          help='Iterations for Z-matrix space minimization')
     mem_group.add_argument('--cartesian-iterations', type=int,
                           default=DEFAULT_CARTESIAN_ITERATIONS,
                           help='Iterations for Cartesian minimization')
@@ -166,12 +174,16 @@ def parse_arguments():
                           default=DEFAULT_REFINEMENT_CONVERGENCE,
                           help='Fitness improvement threshold for GA convergence')
     
-    # Minimization option (alternative to full optimization)
-    min_group = parser.add_argument_group('Minimization (Alternative to GA Optimization)')
+    # Minimization option 
+    min_group = parser.add_argument_group('Standalone EnergyMinimization')
     min_group.add_argument('--minimize', action='store_true',
                           help='Perform single-structure minimization instead of GA optimization')
     min_group.add_argument('--minimize-torsional', action='store_true',
                           help='Perform torsional space minimization (automatically enables minimization)')
+    min_group.add_argument('--minimize-zmatrix', action='store_true',
+                          help='Perform Z-matrix space minimization (automatically enables minimization)')  
+    min_group.add_argument('--minimize-cartesian', action='store_true',
+                          help='Perform Cartesian space minimization (automatically enables minimization)')  
     min_group.add_argument('--minimize-smoothing', type=float, nargs='+',
                           help='Smoothing parameter(s) for minimization. '
                                'Single value or sequence (e.g., 10.0 or 50.0 25.0 10.0 0.0). '
@@ -231,7 +243,7 @@ def parse_arguments():
                      f"Got {len(args.rcp_terms)} values, need even number.")
     
     # If --minimize-torsional is set, automatically enable minimization
-    if args.minimize_torsional and not args.minimize:
+    if (args.minimize_torsional or args.minimize_zmatrix or args.minimize_cartesian) and not args.minimize:
         args.minimize = True
     
     # Validate server operations
@@ -390,10 +402,10 @@ def main():
                 print(f"  Ring closure tolerance: {args.ring_closure_tolerance} Å")
                 print(f"  Ring closure decay rate: {args.ring_closure_decay_rate}")
             
-            if args.minimize or args.minimize_torsional:
+            if args.minimize or args.minimize_torsional or args.minimize_zmatrix or args.minimize_cartesian:
                 # Minimization mode - show minimization parameters
                 print(f"\nMinimization Mode")
-                space_type = "torsional" if args.minimize_torsional else "Cartesian"
+                space_type = "torsional" if args.minimize_torsional else "zmatrix" if args.minimize_zmatrix else "Cartesian" if args.minimize_cartesian else "Unknown"
                 print(f"  Space: {space_type}")
                 if args.minimize_smoothing:
                     if len(args.minimize_smoothing) > 1:
@@ -444,7 +456,7 @@ def main():
                 print("-" * 70)
         
         # Run minimization or optimization
-        if args.minimize or args.minimize_torsional:
+        if args.minimize:
             # Parse smoothing parameter
             smoothing = None
             if args.minimize_smoothing:
@@ -452,24 +464,36 @@ def main():
                     smoothing = args.minimize_smoothing[0]
                 else:
                     smoothing = args.minimize_smoothing
-            
-            # Run minimization
-            result = optimizer.minimize(
-                max_iterations=args.minimize_iterations,
-                smoothing=smoothing,
-                torsional=args.minimize_torsional,
-                update_system=True,
-                verbose=verbose
-            )
-            
-            # Save minimized structure
-            coords = result['coordinates']
-            with open(args.output, 'w') as f:
-                f.write(f"{len(optimizer.system.elements)}\n")
-                f.write(f"Minimized (E={result['final_energy']:.2f} kcal/mol, "
-                       f"type={result['minimization_type']})\n")
-                for element, coord in zip(optimizer.system.elements, coords):
-                    f.write(f"{element:<4s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
+            if args.minimize_torsional:
+                # Run minimization
+                result = optimizer.minimize(
+                    max_iterations=args.minimize_iterations,
+                    smoothing=smoothing,
+                    torsional_space=True,
+                    update_system=True,
+                    verbose=verbose
+                )
+            elif args.minimize_zmatrix:
+                # Run minimization
+                result = optimizer.minimize(
+                    max_iterations=args.minimize_iterations,
+                    smoothing=smoothing,
+                    zmat_space=True,
+                    update_system=True,
+                    verbose=verbose
+                )
+            elif args.minimize_cartesian:
+                # Run minimization
+                result = optimizer.minimize(
+                    max_iterations=args.minimize_iterations,
+                    cartesian_space=True,
+                    update_system=True,
+                    verbose=verbose
+                )
+
+            # Save optimized structure
+            IOTools.save_structure_to_file(args.output, result['zmatrix'], result['final_energy'])
+    
         else:
             # Run optimization (GA)
             result = optimizer.optimize(
@@ -484,10 +508,12 @@ def main():
                 ring_closure_decay_rate=args.ring_closure_decay_rate,
                 convergence_interval=args.convergence_interval,
                 enable_smoothing_refinement=not args.no_smoothing_refinement,
+                enable_zmatrix_refinement=not args.no_zmatrix_refinement,
                 enable_cartesian_refinement=not args.no_cartesian_refinement,
                 refinement_top_n=args.refinement_top_n,
                 smoothing_sequence=None,  # Use default
                 torsional_iterations=args.torsional_iterations,
+                zmatrix_iterations=args.zmatrix_iterations,
                 cartesian_iterations=args.cartesian_iterations,
                 refinement_convergence=args.refinement_convergence,
                 systematic_sampling_divisions=args.systematic_sampling_divisions,
@@ -533,8 +559,8 @@ def main():
                         print(f"\nFinal energy: {best_individual.energy:.4f} kcal/mol")
             
             # Save optimized structure
-            optimizer.save_optimized_structure(args.output)
-        
+            IOTools.save_structure_to_file(args.output, optimizer.top_candidates[0].zmatrix, optimizer.top_candidates[0].energy)
+    
         if verbose:
             structure_type = "Minimized" if (args.minimize or args.minimize_torsional) else "Optimized"
             print(f"\n{structure_type} structure saved to: {args.output}")

@@ -33,6 +33,8 @@ from typing import List, Tuple, Dict, Optional, Any, Union
 from pathlib import Path
 import copy
 
+from src import IOTools
+
 try:
     # Relative imports for package use
     from .CoordinateConverter import (
@@ -40,7 +42,7 @@ try:
         CoordinateConverter
     )
     from .MolecularSystem import MolecularSystem
-    from .IOTools import write_xyz_file
+    from .IOTools import save_structure_to_file
 except ImportError:
     # Absolute imports for direct script use
     from CoordinateConverter import (
@@ -48,7 +50,7 @@ except ImportError:
         CoordinateConverter
     )
     from MolecularSystem import MolecularSystem
-    from IOTools import write_xyz_file
+    from IOTools import save_structure_to_file
 
 # =============================================================================
 # Individual Representation
@@ -189,6 +191,7 @@ class GeneticAlgorithm:
         self.num_torsions = num_torsions
         self.base_zmatrix = base_zmatrix
         self.rotatable_indices = rotatable_indices
+        self.rc_critical_rotatable_indeces = None
         self.population_size = population_size
         self.mutation_rate = mutation_rate
         self.mutation_strength = mutation_strength
@@ -299,7 +302,7 @@ class GeneticAlgorithm:
         
         return None
     
-    def _identify_critical_torsions(self) -> List[int]:
+    def _identify_rc_critical_rotatable_indeces(self) -> List[int]:
         """
         Identify rotatable torsions on paths between RCP atoms.
         
@@ -335,7 +338,8 @@ class GeneticAlgorithm:
         # Identify which rotatable torsions involve critical atoms
         # A torsion is critical if ANY of its 4 defining atoms are on a critical path
         critical_torsion_indices = []
-        for i, rot_idx in enumerate(self.rotatable_indices):
+        for i in range(len(self.rotatable_indices)):
+            rot_idx = self.rotatable_indices[i]
             atom = self.base_zmatrix[rot_idx]
             atoms_in_rotatable_bond = [] 
             if atom.get('bond_ref'):
@@ -345,27 +349,23 @@ class GeneticAlgorithm:
             
             # Check if both atoms are on a critical path
             if all(atom_idx in critical_atoms for atom_idx in atoms_in_rotatable_bond):
-                critical_torsion_indices.append(i)
+                critical_torsion_indices.append(self.rotatable_indices[i])
         
         return critical_torsion_indices
     
-    def _generate_systematic_samples(self, critical_indices: List[int], max_samples: int) -> List[np.ndarray]:
+    def _generate_systematic_samples(self) -> List[np.ndarray]:
         """
         Generate systematic samples for critical torsions.
-        
-        Parameters
-        ----------
-        critical_indices : List[int]
-            Indices of critical torsions to sample systematically
-        max_samples : int
-            Maximum number of samples to generate
         
         Returns
         -------
         List[np.ndarray]
             List of torsion arrays
         """
-        if not critical_indices:
+
+        critical_indices = [ i for i,idx in enumerate(self.rotatable_indices) if idx in self.rc_critical_rotatable_indeces]
+
+        if not self.rc_critical_rotatable_indeces:
             return []
         
         # Generate discrete values for systematic sampling
@@ -378,14 +378,15 @@ class GeneticAlgorithm:
         )
         
         # Calculate total combinations
-        num_critical = len(critical_indices)
+        num_critical = len(self.rc_critical_rotatable_indeces)
         total_combinations = divisions ** num_critical
         
         # Limit combinations if too many
-        if total_combinations > max_samples:
+        if total_combinations > self.population_size:
             # Use random sampling of combinations instead
             samples = []
-            for _ in range(max_samples):
+            for _ in range(self.population_size):
+                # Start with random torsions
                 torsions = np.random.uniform(
                     self.torsion_range[0],
                     self.torsion_range[1],
@@ -402,7 +403,7 @@ class GeneticAlgorithm:
         from itertools import product
         
         for combo in product(discrete_values, repeat=num_critical):
-            if len(samples) >= max_samples:
+            if len(samples) >= self.population_size:
                 break
             
             # Start with random torsions
@@ -431,16 +432,13 @@ class GeneticAlgorithm:
         population = []
         
         # Identify critical torsions and generate systematic samples
-        critical_torsion_indices = self._identify_critical_torsions()
+        self.rc_critical_rotatable_indeces = self._identify_rc_critical_rotatable_indeces()
         
-        if critical_torsion_indices:
+        if self.rc_critical_rotatable_indeces:
             # Generate systematic samples (up to population_size)
-            systematic_samples = self._generate_systematic_samples(
-                critical_torsion_indices,
-                self.population_size
-            )
+            systematic_samples = self._generate_systematic_samples()
             
-            print(f"  Systematic initialization: {len(critical_torsion_indices)} critical torsions "
+            print(f"  Systematic initialization: {len(self.rc_critical_rotatable_indeces)} critical torsions "
                   f"(on RCP paths), generating {len(systematic_samples)} systematic samples")
             
             # Create individuals from systematic samples
@@ -660,7 +658,8 @@ class LocalRefinementOptimizer:
     
     def refine_individual_in_torsional_space_with_smoothing(self, individual: Individual,
                                          smoothing_sequence: List[float] = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0],
-                                         torsional_iterations: int = 50) -> Individual:
+                                         torsional_iterations: int = 50,
+                                         rotatable_indices: List[int] = None) -> Individual:
         """
         Refine an individual using smoothing algorithm with torsional optimization only.
         
@@ -674,7 +673,8 @@ class LocalRefinementOptimizer:
             Sequence of smoothing values (default: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0])
         torsional_iterations : int
             Maximum iterations for each torsional optimization step
-
+        rotatable_indices : List[int]
+            Indices of rotatable atoms
         Returns
         -------
         Individual
@@ -689,7 +689,7 @@ class LocalRefinementOptimizer:
                 
                 refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_torsional_space(
                     current_zmatrix,
-                    self.rotatable_indices,
+                    rotatable_indices,
                     max_iterations=torsional_iterations,
                     method='Powell',
                     verbose=False
@@ -708,7 +708,57 @@ class LocalRefinementOptimizer:
             # Return original individual on failure
             print(f"Warning: Smoothing refinement failed!")
             return individual.copy()
-    
+
+    def refine_individual_in_zmatrix_space(self, individual: Individual,
+                                          max_iterations: int = 500,
+                                          dof_indices: List[int] = None,
+                                          dof_bounds: Optional[List[Tuple[float, float]]] = [[0.02, 15.0, 10.0]]) -> Individual:
+        """
+        Refine an individual using Z-matrix space minimization.
+        
+        Parameters
+        ----------
+        individual : Individual
+            Individual to refine    
+        max_iterations : int
+            Maximum minimization iterations
+        dof_bounds : Optional[List[Tuple[float, float]]]
+            Bounds for the degrees of freedom. Example: [(0.0, 1.0), (0.0, 1.0)] means 
+            the first atom's first degree of freedom (distance) is between 0.0 and 1.0, 
+            and the second atom's third degree of freedom (torsion) is between 0.0 and 1.0.
+            None means no bounds.
+        Returns
+        -------
+        Individual
+            Refined individual
+        """
+        try:
+            current_zmatrix = individual.zmatrix
+            
+            minimized_zmatrix, minimized_energy, info = self.system.minimize_energy_in_zmatrix_space(
+                current_zmatrix,
+                dof_indices = dof_indices,
+                dof_bounds = dof_bounds,
+                max_iterations=max_iterations,
+                #TODO
+                verbose=True
+            )
+
+            if info['success']:
+                current_zmatrix = minimized_zmatrix
+
+            # Extract refined torsions
+            refined_torsions = np.array([current_zmatrix[idx]['dihedral']
+                                        for idx in self.rotatable_indices])
+
+            return Individual(refined_torsions, current_zmatrix, energy=minimized_energy)
+        
+        except Exception as e:
+            # Return original individual on failure
+            print(e)
+            print(f"Warning: Z-matrix refinement failed!")
+            return individual.copy()
+            
 
     def refine_individual_in_Cartesian_space(self, individual: Individual,
                                               max_iterations: int = 500) -> Individual:
@@ -800,6 +850,7 @@ class RingClosureOptimizer:
         """
         self.system = molecular_system
         self.rotatable_indices = rotatable_indices
+        self.dof_indices = self._get_dofs_from_rotatable_indeces(rotatable_indices, self.system.zmatrix)
         self.converter = CoordinateConverter()
         self.ga = None
         self.local_refinement = None
@@ -857,6 +908,68 @@ class RingClosureOptimizer:
         
         return cls(system, rotatable_indices, write_candidate_files)
     
+    @staticmethod
+    def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], zmatrix: List[Dict]) -> List[int]:
+        """
+        Get DOF indices from rotatable indices.
+        
+        Parameters
+        ----------
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix
+        zmatrix : List[Dict]
+            Z-matrix representation
+        
+        Returns
+        -------
+        List[Tuple[int, int]]
+            Indices of DOFs in Z-matrix. The first index is the atom index, 
+            the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
+            the first atom's first degree of freedom (distance) and the second atom's third 
+            degree of freedom (torsion).
+        """
+        dof_indices = []
+        dof_names = ['id', 'bond_ref', 'angle_ref', 'dihedral_ref']
+        for idx in rotatable_indices:
+            zatom = zmatrix[idx]
+            # these two indexes identify the roatable bond
+            rb_bond_ref = zatom.get(dof_names[1])
+            rb_angle_ref = zatom.get(dof_names[2])
+            if rb_bond_ref is None or rb_angle_ref is None:
+                continue  # Skip if references don't exist
+            
+            # Identify bond angles that act on the rotatable bond
+            for idx2, zatom2 in enumerate(zmatrix):
+                zatom2_id = zatom2.get(dof_names[0])
+                zatom2_bond_ref = zatom2.get(dof_names[1])
+                zatom2_angle_ref = zatom2.get(dof_names[2])
+                zatom2_dihedral_ref = zatom2.get(dof_names[3])
+
+                # if either of the atoms defining the rotatable bond is the first atom and the other is the center of the angle
+                if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                    if (zatom2_id == rb_bond_ref and zatom2_bond_ref == rb_angle_ref) or \
+                       (zatom2_id == rb_angle_ref and zatom2_bond_ref == rb_bond_ref):
+                        dof_indices.append((idx2, 1))
+                        if zatom2.get('chirality', 0) != 0:
+                            dof_indices.append((idx2, 2))
+                
+                # if the center of the first angle is either of the atoms defining the rotatable bond
+                if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                    if (zatom2_bond_ref == rb_bond_ref and zatom2_angle_ref == rb_angle_ref) or \
+                       (zatom2_angle_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
+                        dof_indices.append((idx2, 1))
+                
+                # if the center of the second angle is either of the atoms defining the rotatable bond
+                if zatom2.get('chirality', 0) != 0 and zatom2_bond_ref is not None and zatom2_dihedral_ref is not None:
+                    if (zatom2_bond_ref == rb_bond_ref and zatom2_dihedral_ref == rb_angle_ref) or \
+                       (zatom2_dihedral_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
+                        dof_indices.append((idx2, 2))
+
+        # Add the torsions
+        for idx in rotatable_indices:
+            dof_indices.append((idx, 2))
+
+        return dof_indices  
 
     @staticmethod
     def _get_all_rotatable_indices(zmatrix: List[Dict]) -> List[int]:
@@ -967,11 +1080,14 @@ class RingClosureOptimizer:
                 ring_closure_tolerance: float = 1.54,
                 ring_closure_decay_rate: float = 1.0, 
                 convergence_interval: int = 5,
+                protect_rc_critical_rotatable_bonds: bool = True,
                 enable_smoothing_refinement: bool = True,
+                enable_zmatrix_refinement: bool = True,
                 enable_cartesian_refinement: bool = True,
                 refinement_top_n: int = 1,
                 smoothing_sequence: List[float] = None,
                 torsional_iterations: int = 50,
+                zmatrix_iterations: int = 50,
                 cartesian_iterations: int = 500,
                 refinement_convergence: float = 0.01,
                 systematic_sampling_divisions: int = 6,
@@ -980,10 +1096,11 @@ class RingClosureOptimizer:
         """
         Run torsional optimization using exponential ring closure score.
         
-        The algorithm runs in 3 sequential phases:
+        The algorithm runs in 4 sequential phases:
         1. GA runs until convergence (based on ring closure score)
         2. Optional: Smoothing refinement on top N candidates (torsional optimization)
-        3. Optional: Cartesian refinement on top N candidates (full geometry optimization)
+        3. Optional: Z-matrix refinement on top N candidates (optimizes all DOFs in Z-matrix space)
+        4. Optional: Cartesian refinement on top N candidates (full geometry optimization)
         
         The GA fitness is based purely on the exponential ring closure score (not energy).
         
@@ -1011,14 +1128,18 @@ class RingClosureOptimizer:
             Number of consecutive generations with small improvement to declare convergence (default: 5)
         enable_smoothing_refinement : bool
             Enable smoothing-based torsional refinement after GA (default: True)
+        enable_zmatrix_refinement : bool
+            Enable Z-matrix space refinement after smoothing (default: True)
         enable_cartesian_refinement : bool
-            Enable Cartesian space refinement after smoothing (default: True)
+            Enable Cartesian space refinement after Z-matrix refinement (default: True)
         refinement_top_n : int
             Number of top candidates to refine (default: 1)
         smoothing_sequence : List[float], optional
             Sequence of smoothing values for torsional refinement (default: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0])
         torsional_iterations : int
             Iterations per torsional optimization step (default: 50)
+        zmatrix_iterations : int
+            Iterations for Z-matrix space minimization (default: 50)
         cartesian_iterations : int
             Iterations for Cartesian minimization (default: 500)
         refinement_convergence : float
@@ -1065,7 +1186,7 @@ class RingClosureOptimizer:
         )
         
         # Initialize local refinement optimizer if needed
-        if enable_smoothing_refinement or enable_cartesian_refinement:
+        if enable_smoothing_refinement or enable_zmatrix_refinement or enable_cartesian_refinement:
             self.local_refinement = LocalRefinementOptimizer(
                 self.system,
                 self.rotatable_indices
@@ -1073,11 +1194,7 @@ class RingClosureOptimizer:
         
         # Evaluate initial ring closure score
         coords = zmatrix_to_cartesian(self.system.zmatrix)
-        initial_closure_score = self.system.ring_closure_score_exponential(
-            coords,
-            tolerance=ring_closure_tolerance,
-            decay_rate=ring_closure_decay_rate
-        )
+        initial_closure_score = self.system.ring_closure_score_exponential(coords)
         initial_energy = self.system.evaluate_energy(coords)
         
         if verbose:
@@ -1140,30 +1257,64 @@ class RingClosureOptimizer:
         if verbose:
             print("\nRCP analysis of best individual after GA convergence:")
             best_coords = zmatrix_to_cartesian(self.ga.best_individual.zmatrix)
-            self.system.ring_closure_score_exponential(best_coords, tolerance=ring_closure_tolerance, decay_rate=ring_closure_decay_rate, verbose=True)
+            self.system.ring_closure_score_exponential(best_coords, verbose=True)
         
         # Take top N candidates from GA population
         sorted_indices = sorted(range(len(self.ga.population)),
                                key=lambda i: self.ga.population[i].fitness)
         top_indices = sorted_indices[:refinement_top_n]
         top_candidates = [self.ga.population[i] for i in top_indices]
-        
+
+        # Select which torsions to refone: do we protect the critical torsions?
+        selected_rotatable_indices = self.rotatable_indices
+        if protect_rc_critical_rotatable_bonds:
+            selected_rotatable_indices = [idx for idx in self.rotatable_indices if idx not in self.ga.rc_critical_rotatable_indeces]
+
         # Refinement in torsional space with optional smoothing of the potential energy
         if enable_smoothing_refinement:
             if verbose:
                 print("\nApplying torsional refinement with potential energy smoothing to top candidates...")
 
-            for i, individual in enumerate(top_candidates):
-                initial_energy = individual.energy
-                if initial_energy is None:
-                    initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
-                    individual.energy = initial_energy
-                refined_individual = self.local_refinement.refine_individual_in_torsional_space_with_smoothing(
-                    individual, smoothing_sequence=smoothing_sequence, torsional_iterations=torsional_iterations)
-                top_candidates[i] = refined_individual
-                refined_energy = refined_individual.energy
-                energy_improvement = refined_energy - initial_energy
-                print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+            if len(selected_rotatable_indices) == 0:
+                print("Warning: No torsions to refine. Skipping torsional refinement.")
+            else:
+                for i, individual in enumerate(top_candidates):
+                    initial_energy = individual.energy
+                    if initial_energy is None:
+                        initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
+                        individual.energy = initial_energy
+                    refined_individual = self.local_refinement.refine_individual_in_torsional_space_with_smoothing(
+                        individual, 
+                        rotatable_indices=selected_rotatable_indices, 
+                        smoothing_sequence=smoothing_sequence, 
+                        torsional_iterations=torsional_iterations)
+                    top_candidates[i] = refined_individual
+                    refined_energy = refined_individual.energy
+                    energy_improvement = refined_energy - initial_energy
+                    print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+
+        if enable_zmatrix_refinement:
+            if verbose:
+                print("\nApplying Z-matrix refinement to top candidates...")
+
+            if len(selected_rotatable_indices) == 0:
+                print("Warning: No torsions to refine. Skipping Z-matrix refinement.")
+            else:
+                for i, individual in enumerate(top_candidates):
+                    initial_energy = individual.energy
+                    if initial_energy is None:
+                        initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
+                        individual.energy = initial_energy
+                    refined_individual = self.local_refinement.refine_individual_in_zmatrix_space(individual,
+                        dof_indices = self.dof_indices,
+                        max_iterations=zmatrix_iterations)
+                    top_candidates[i] = refined_individual
+                    refined_energy = refined_individual.energy
+                    energy_improvement = refined_energy - initial_energy
+                    print(f"  Z-matrix refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+
+        #TODO-change default
+        enable_cartesian_refinement=False
 
         # Refinement in Cartesian space
         if enable_cartesian_refinement:
@@ -1183,9 +1334,7 @@ class RingClosureOptimizer:
 
         # Compile results
         final_closure_scores = np.array([self.system.ring_closure_score_exponential(
-            zmatrix_to_cartesian(individual.zmatrix),
-            tolerance=ring_closure_tolerance,
-            decay_rate=ring_closure_decay_rate
+            zmatrix_to_cartesian(individual.zmatrix)
         ) for individual in top_candidates])
 
         results = {
@@ -1199,12 +1348,12 @@ class RingClosureOptimizer:
         
         return results
     
+
     def save_optimized_structure(self, filepath: str) -> None:
         """
         Save optimized structure to file.
         
-        Saves the best individual's zmatrix converted to Cartesian coordinates.
-        This includes all refinements made during optimization.
+        Saves the best individual's zmatrix, possibly refined, converted to Cartesian coordinates according the the givne file extension.
         
         Parameters
         ----------
@@ -1214,17 +1363,13 @@ class RingClosureOptimizer:
         if self.top_candidates is None:
             raise ValueError("No optimization has been performed yet")
         
-        # Use the best candidate's zmatrix (includes all refinements)
-        best_individual = self.top_candidates[0]
-        optimized_coords = zmatrix_to_cartesian(best_individual.zmatrix)  # Returns Angstroms
-        elements = [best_individual.zmatrix[idx]['element'] for idx in range(len(best_individual.zmatrix))]
-        comment = f"E={best_individual.energy:.2f} kcal/mol" if best_individual.energy is not None else "Optimized"
-        write_xyz_file(optimized_coords, elements, filepath, comment=comment)
+        IOTools.save_structure_to_file(filepath, self.top_candidates[0].zmatrix, self.top_candidates[0].energy)
         
-    
+        
     def minimize(self, max_iterations: int = 500,
                  smoothing: Optional[Union[float, List[float]]] = None,
-                 torsional: bool = False,
+                 torsional_space: bool = False,
+                 zmat_space: bool = False,
                  update_system: bool = True,
                  verbose: bool = True) -> Dict[str, Any]:
         """
@@ -1248,8 +1393,11 @@ class RingClosureOptimizer:
             - float: single smoothing value
             - List[float]: sequence of smoothing values to apply in decreasing order
               Example: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
-        torsional : bool
+        torsional_space : bool
             If True, perform minimization in torsional space only (optimize dihedrals).
+            If False, perform minimization in Cartesian space (default: False)
+        zmat_space : bool
+            If True, perform minimization in Z-matrix space only (optimize bond lengths, angles, and dihedrals).
             If False, perform minimization in Cartesian space (default: False)
         update_system : bool
             If True, update self.system.zmatrix with minimized structure (default: True)
@@ -1301,13 +1449,15 @@ class RingClosureOptimizer:
         # Evaluate initial energy at first smoothing value
         self.system.setSmoothingParameter(smoothing_values[0])
         initial_energy = self.system.evaluate_energy(initial_coords)
+
+        #write_xyz_file(initial_coords, self.system.elements, "initial_coords.xyz")
         
         # Extract initial torsions
         initial_torsions = np.array([initial_zmatrix[idx]['dihedral']
                                     for idx in self.rotatable_indices])
         
         if verbose:
-            space_type = "torsional" if torsional else "Cartesian"
+            space_type = "torsional" if torsional_space else "zmatrix" if zmat_space else "Cartesian"
             if len(smoothing_values) > 1:
                 print(f"Initial energy: {initial_energy:.4f} kcal/mol")
                 print(f"Minimizing in {space_type} space with smoothing sequence: {smoothing_values}")
@@ -1326,7 +1476,7 @@ class RingClosureOptimizer:
                 if verbose and len(smoothing_values) > 1:
                     print(f"Step {step+1}/{len(smoothing_values)}: smoothing={smoothing_val:.2f}")
                 
-                if torsional:
+                if torsional_space:
                     # Perform torsional minimization
                     refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_torsional_space(
                         current_zmatrix,
@@ -1343,8 +1493,25 @@ class RingClosureOptimizer:
                         if verbose:
                             print(f"  Warning: Minimization step failed, continuing with previous structure")
                         
+                elif zmat_space:
+                    # Perform Z-matrix minimization
+                    refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_zmatrix_space(
+                        current_zmatrix,
+                        self.dof_indices,
+                        max_iterations=max_iterations,
+                        method='Powell',
+                        verbose=verbose and len(smoothing_values) == 1  # Only verbose for single step
+                    )
+
+                    if opt_info.get('success'):
+                        current_zmatrix = refined_zmatrix
+                        all_opt_info.append(opt_info)
+                    else:
+                        if verbose:
+                            print(f"  Warning: Minimization step failed, continuing with previous structure")
+                        
                 else:
-                    # Perform Cartesian minimization
+                    # Work in Cartesian space, even though results are in Z-matrix space
                     minimized_coords, step_energy = self.system.minimize_energy(
                         current_zmatrix,
                         max_iterations=max_iterations
@@ -1371,7 +1538,14 @@ class RingClosureOptimizer:
                                         for idx in self.rotatable_indices])
             
             # Combine optimization info (for torsional minimization)
-            if torsional and all_opt_info:
+            if torsional_space and all_opt_info:
+                combined_opt_info = {
+                    'nfev': sum(info.get('nfev', 0) for info in all_opt_info),
+                    'nit': sum(info.get('nit', 0) for info in all_opt_info),
+                    'steps': len(all_opt_info),
+                    'step_info': all_opt_info
+                }
+            elif zmat_space and all_opt_info:
                 combined_opt_info = {
                     'nfev': sum(info.get('nfev', 0) for info in all_opt_info),
                     'nit': sum(info.get('nit', 0) for info in all_opt_info),
@@ -1394,17 +1568,14 @@ class RingClosureOptimizer:
             improvement = initial_energy - minimized_energy
             
             if verbose:
-                if len(smoothing_values) > 1:
-                    print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
-                    print(f"Improvement:    {improvement:.4f} kcal/mol")
-                    print(f"Ring closure:   {ring_closure_score:.4f}")
-                else:
-                    print(f"Final energy:   {minimized_energy:.4f} kcal/mol")
-                    print(f"Improvement:    {improvement:.4f} kcal/mol")
-                    print(f"Ring closure:   {ring_closure_score:.4f}")
-                    if torsional and combined_opt_info.get('nfev'):
-                        print(f"Function evals: {combined_opt_info.get('nfev')}, Iterations: {combined_opt_info.get('nit', 'N/A')}")
-            
+                print(f"Final energy:   {minimized_energy:.4f} kcal/mol")
+                print(f"Improvement:    {improvement:.4f} kcal/mol")
+                print(f"Ring closure:   {ring_closure_score:.4f}")
+                rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = self.system.calculate_rmsd(initial_zmatrix, minimized_zmatrix)
+                print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
+                print(f"RMSD angles: {rmsd_angles:.4f} deg")
+                print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
+
             return {
                 'initial_energy': initial_energy,
                 'final_energy': minimized_energy,
@@ -1412,8 +1583,11 @@ class RingClosureOptimizer:
                 'zmatrix': minimized_zmatrix,
                 'torsions': refined_torsions,
                 'ring_closure_score': ring_closure_score,
+                'rmsd_bond_lengths': rmsd_bond_lengths,
+                'rmsd_angles': rmsd_angles,
+                'rmsd_dihedrals': rmsd_dihedrals,
                 'improvement': improvement,
-                'minimization_type': 'torsional' if torsional else 'cartesian',
+                'minimization_type': 'torsional' if torsional_space else 'zmatrix' if zmat_space else 'Cartesian',
                 'optimization_info': combined_opt_info,
                 'smoothing_sequence': smoothing_values,
                 'success': True
@@ -1430,8 +1604,11 @@ class RingClosureOptimizer:
                 'torsions': initial_torsions,
                 'ring_closure_score': self.system.ring_closure_score_exponential(
                     initial_coords, verbose=False),
+                'rmsd_bond_lengths': 0.0,
+                'rmsd_angles': 0.0,
+                'rmsd_dihedrals': 0.0,
                 'improvement': 0.0,
-                'minimization_type': 'torsional' if torsional else 'cartesian',
+                'minimization_type': 'torsional' if torsional_space else 'zmatrix' if zmat_space else 'Cartesian',
                 'optimization_info': {},
                 'smoothing_sequence': smoothing_values,
                 'success': False,

@@ -282,7 +282,6 @@ class HeadTailNonbondedGenerator():
                     if atm_d2 not in atoms_b2:
                         atoms_d2.add(atm_d2)
 
-            verbose=True
             for atm_a1 in atoms_a1:
                 for atm_b2 in atoms_b2:
                     if addForceOnce(atm_a1, atm_b2, 2.0):
@@ -342,7 +341,6 @@ class HeadTailNonbondedGenerator():
                             print(f'    Also H-T nonbonded term: {atm_b2} - {atm_c1} (1-4 relation)')
             
         print(f'Added {counter} H-T nonbonded terms')
-        print(f'Force has {force.getNumBonds()} bonds')
 
         sys.addForce(force)
 

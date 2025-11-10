@@ -442,7 +442,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         result = optimizer.minimize(
             max_iterations=request.get('max_iterations', 500),
             smoothing=smoothing_sequence,
-            torsional=request.get('torsional', False),
+            torsional_space=request.get('torsional', False),
             update_system=True,
             verbose=request.get('verbose', False)
         )

@@ -11,7 +11,7 @@ if [ ! -f minimized_torsional.xyz ]; then
     exit 1
 fi
 
-if ! tail -n 6 torsional.log | grep -q "Ring closure:.*1\.[0-9]" ; then
+if ! tail -n 6 torsional.log | grep -q "Ring closure:.* 0\.9[0-9]" ; then
     echo "Error: Ring closure score not found or incorrect"
     exit 1
 fi

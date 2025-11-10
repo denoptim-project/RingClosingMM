@@ -31,9 +31,9 @@ class TestMolecularSystemFileIO(unittest.TestCase):
         
         # Simple Z-matrix for testing
         self.simple_zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
              'angle_ref': 2, 'angle': 109.47}
         ]
         self.simple_elements = ['H', 'H', 'H']
@@ -466,9 +466,9 @@ class TestMolecularSystemFromData(unittest.TestCase):
         
         # Simple Z-matrix
         self.zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
         self.bonds_data = [(0, 1, 1), (0, 2, 1)]  # 0-based indexing
@@ -623,9 +623,9 @@ class TestMolecularSystemErrorHandling(unittest.TestCase):
             self.skipTest("Force field file not found")
         
         zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
         bonds_data = [(0, 1, 1), (0, 2, 1)]
@@ -650,6 +650,371 @@ class TestMolecularSystemErrorHandling(unittest.TestCase):
         self.assertGreaterEqual(penalty, 0.0)
 
 
+class TestMolecularSystemRMSD(unittest.TestCase):
+    """Test RMSD calculation functionality."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(__file__).parent / 'fixtures'
+        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
+    
+    def test_rmsd_identical_zmatrices(self):
+        """Test RMSD with identical Z-matrices (should be zero)."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix, zmatrix)
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_dihedrals, 0.0, places=10)
+    
+    def test_rmsd_different_bond_lengths(self):
+        """Test RMSD with different bond lengths."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.50},  # Changed
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.58,  # Changed
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Expected: sqrt(((1.54-1.50)^2 + (1.54-1.58)^2) / 2) = sqrt(0.0032 / 2) ≈ 0.04
+        expected_rmsd_bonds = np.sqrt(((1.54-1.50)**2 + (1.54-1.58)**2) / 2)
+        self.assertAlmostEqual(rmsd_bonds, expected_rmsd_bonds, places=6)
+        self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_dihedrals, 0.0, places=10)
+    
+    def test_rmsd_different_angles(self):
+        """Test RMSD with different angles."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 120.0},  # Changed
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 100.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}  # Changed
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Expected: sqrt(((109.47-120.0)^2 + (109.47-100.0)^2) / 2)
+        angle_diffs = [(109.47-120.0), (109.47-100.0)]
+        expected_rmsd_angles = np.sqrt(np.mean(np.array(angle_diffs)**2))
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, expected_rmsd_angles, places=6)
+        self.assertAlmostEqual(rmsd_dihedrals, 0.0, places=10)
+    
+    def test_rmsd_different_dihedrals(self):
+        """Test RMSD with different dihedrals."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}  # Changed
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Expected: sqrt((60.0 - 180.0)^2) = 120.0
+        expected_rmsd_dihedrals = 120.0
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
+    
+    def test_rmsd_dihedral_periodicity(self):
+        """Test RMSD handles dihedral periodicity (-180°/+180° boundary)."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -179.0, 'chirality': 0}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 179.0, 'chirality': 0}  # Near +180°
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # -179° and +179° are only 2° apart (crossing the boundary)
+        # Difference: -179 - 179 = -358, wrapped to +2
+        expected_rmsd_dihedrals = 2.0
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
+    
+    def test_rmsd_mixed_changes(self):
+        """Test RMSD with changes in all coordinate types."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.50},  # Changed
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.58,  # Changed
+             'angle_ref': 0, 'angle': 120.0},  # Changed
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.60,  # Changed
+             'angle_ref': 1, 'angle': 100.0, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}  # Changed
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Calculate expected values
+        bond_diffs = [1.54-1.50, 1.54-1.58, 1.54-1.60]
+        expected_rmsd_bonds = np.sqrt(np.mean(np.array(bond_diffs)**2))
+        
+        angle_diffs = [109.47-120.0, 109.47-100.0]
+        expected_rmsd_angles = np.sqrt(np.mean(np.array(angle_diffs)**2))
+        
+        dihedral_diffs = [60.0-180.0]  # -120.0
+        expected_rmsd_dihedrals = abs(dihedral_diffs[0])
+        
+        self.assertAlmostEqual(rmsd_bonds, expected_rmsd_bonds, places=6)
+        self.assertAlmostEqual(rmsd_angles, expected_rmsd_angles, places=6)
+        self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
+    
+    def test_rmsd_minimal_zmatrix(self):
+        """Test RMSD with minimal Z-matrix (no dihedrals)."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.95},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.05,
+             'angle_ref': 0, 'angle': 120.0}
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Should have bond and angle RMSD, but dihedral RMSD should be 0.0 (no dihedrals)
+        self.assertGreater(rmsd_bonds, 0.0)
+        self.assertGreater(rmsd_angles, 0.0)
+        self.assertAlmostEqual(rmsd_dihedrals, 0.0, places=10)
+    
+    def test_rmsd_mismatched_length(self):
+        """Test RMSD raises ValueError for mismatched Z-matrix lengths."""
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54}
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        bonds = [(0, 1, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        with self.assertRaises(ValueError) as cm:
+            system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        self.assertIn("same length", str(cm.exception))
+    
+    def test_rmsd_large_conformational_change(self):
+        """Test RMSD with large conformational change (e.g., cis/trans)."""
+        # Build a 5-atom chain
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},  # cis
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}  # cis
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0},  # trans
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}  # trans
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Large dihedral change: sqrt((180^2 + 180^2)/2) ≈ 180
+        expected_rmsd_dihedrals = 180.0
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
+    
+    def test_rmsd_chirality_as_second_angle(self):
+        """Test RMSD with chirality != 0 (dihedral is actually a second angle)."""
+        # When chirality != 0, the 'dihedral' field contains a second angle, not a proper dihedral
+        zmatrix1 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},  # proper dihedral
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 110.0, 'chirality': 1}  # second angle!
+        ]
+        
+        zmatrix2 = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0},  # proper dihedral
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 120.0, 'chirality': 1}  # second angle!
+        ]
+        
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)]
+        
+        system = MolecularSystem.from_data(
+            zmatrix1, bonds, str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        
+        # Atom 4: proper dihedral changed from 60.0 to 180.0 (diff = -120.0)
+        # expected_rmsd_dihedrals = 120.0 (only one proper dihedral)
+        
+        # Atom 5: second angle (chirality=1) changed from 110.0 to 120.0 (diff = -10.0)
+        # Atom 3: regular angle unchanged (109.47)
+        # Atom 4: regular angle unchanged (109.47)
+        # Atom 5: regular angle unchanged (109.47)
+        # expected_rmsd_angles = sqrt((0^2 + 0^2 + 0^2 + 10^2) / 4) = sqrt(100/4) = 5.0
+        
+        expected_rmsd_dihedrals = 120.0
+        angle_diffs = [0.0, 0.0, 0.0, -10.0]  # Three regular angles (unchanged) + one second angle (changed)
+        expected_rmsd_angles = np.sqrt(np.mean(np.array(angle_diffs)**2))
+        
+        self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
+        self.assertAlmostEqual(rmsd_angles, expected_rmsd_angles, places=6)
+        self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
+
+
 def run_tests(verbosity=2):
     """Run all tests with specified verbosity."""
     loader = unittest.TestLoader()
@@ -664,6 +1029,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemFromData))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemSimulationCache))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemErrorHandling))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRMSD))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)

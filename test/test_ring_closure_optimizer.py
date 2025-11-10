@@ -11,6 +11,8 @@ import sys
 import copy
 from pathlib import Path
 
+from src.IOTools import write_xyz_file
+
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
@@ -33,9 +35,9 @@ class TestIndividual(unittest.TestCase):
         """Set up test fixtures."""
         # Simple Z-matrix
         self.zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
              'angle_ref': 2, 'angle': 109.47}
         ]
         self.torsions = np.array([120.0])
@@ -214,7 +216,7 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         result = optimizer.minimize(
             max_iterations=10,  # Small number for test
             smoothing=None,
-            torsional=False,
+            torsional_space=False,
             update_system=True,
             verbose=False
         )
@@ -224,7 +226,7 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         self.assertIn('improvement', result)
         self.assertIn('coordinates', result)
         self.assertIn('minimization_type', result)
-        self.assertEqual(result['minimization_type'], 'cartesian')
+        self.assertEqual(result['minimization_type'], 'Cartesian')
         
         # Energy should decrease or stay same
         self.assertLessEqual(result['final_energy'], result['initial_energy'])
@@ -248,7 +250,7 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         result = optimizer.minimize(
             max_iterations=10,
             smoothing=None,
-            torsional=True,
+            torsional_space=True,
             update_system=True,
             verbose=False
         )
@@ -258,6 +260,43 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         self.assertIn('minimization_type', result)
         self.assertEqual(result['minimization_type'], 'torsional')
         self.assertIn('optimization_info', result)
+    
+    def test_minimize_zmatrix(self):
+        """Test Z-matrix space minimization."""
+        # Use butane_like.int which has rotatable dihedrals
+        test_int_file = self.test_dir / 'butane_like.int'
+        
+        if not test_int_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        optimizer = RingClosureOptimizer.from_files(
+            str(test_int_file),
+            str(self.forcefield_file),
+            rotatable_bonds=None,  # All rotatable
+            rcp_terms=None
+        )
+        
+        # Only test if we have DOF indices
+        if len(optimizer.dof_indices) == 0:
+            self.skipTest("No DOF indices for Z-matrix minimization")
+        
+        result = optimizer.minimize(
+            max_iterations=10,
+            smoothing=None,
+            torsional_space=False,
+            zmat_space=True,
+            update_system=True,
+            verbose=False
+        )
+        
+        self.assertIn('initial_energy', result)
+        self.assertIn('final_energy', result)
+        self.assertIn('minimization_type', result)
+        self.assertEqual(result['minimization_type'], 'zmatrix')
+        self.assertIn('optimization_info', result)
+        
+        # Energy should decrease or stay same
+        self.assertLessEqual(result['final_energy'], result['initial_energy'])
 
 
 class TestGeneticAlgorithm(unittest.TestCase):
@@ -267,11 +306,11 @@ class TestGeneticAlgorithm(unittest.TestCase):
         """Set up test fixtures."""
         # Create a 4-atom Z-matrix with one rotatable dihedral
         self.zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
         self.rotatable_indices = [3]  # 4th atom has rotatable dihedral
@@ -343,13 +382,13 @@ class TestGeneticAlgorithm(unittest.TestCase):
         """Test crossover operation."""
         # Create extended z-matrix with 2 rotatable dihedrals
         extended_zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}
         ]
         
@@ -456,9 +495,9 @@ class TestGeneticAlgorithmGraphMethods(unittest.TestCase):
         """Test building graph from simple linear Z-matrix."""
         # Simple 3-atom linear chain: C-C-C
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
         
@@ -474,11 +513,11 @@ class TestGeneticAlgorithmGraphMethods(unittest.TestCase):
         """Test building graph from butane-like Z-matrix."""
         # 4-atom chain: C-C-C-C
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
         
@@ -494,9 +533,9 @@ class TestGeneticAlgorithmGraphMethods(unittest.TestCase):
     def test_graph_is_bidirectional(self):
         """Test that graph edges are bidirectional."""
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
         
@@ -624,6 +663,118 @@ class TestGeneticAlgorithmGraphMethods(unittest.TestCase):
         
         path = GeneticAlgorithm._find_path_bfs(graph, 0, 0)
         self.assertEqual(path, [0])
+
+
+class TestRingClosureOptimizerDOFMethods(unittest.TestCase):
+    """Test DOF-related methods in RingClosureOptimizer."""
+    
+    def test_get_dofs_from_rotatable_indices(self):
+        """Test getting DOF indices from rotatable indices with hardcoded Z-matrix."""
+        # Create a larger branched Z-matrix with 12 atoms
+        # Includes both dihedrals (chirality=0) and second angles (chirality=+/-1)
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54, 'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}, # rotatable
+            {'id': 5, 'element': 'H', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 6, 'element': 'H', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -120.0, 'chirality': -1},
+            {'id': 7, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 8, 'element': 'H', 'atomic_num': 1, 'bond_ref': 4, 'bond_length': 1.09, 'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 9, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0}, # rotatable
+            {'id': 10, 'element': 'H', 'atomic_num': 1, 'bond_ref': 7, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 11, 'element': 'H', 'atomic_num': 1, 'bond_ref': 7, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -60.0, 'chirality': -1}
+        ]
+        
+        rotatable_indices = [9, 4]  # 0-based indices in zmatrix
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        
+        # Define expected DOF indices based on Z-matrix structure
+        # Format: (atom_index, dof_type) where dof_type is 1=angle_ref, 2=dihedral_ref
+        # For rotatable_indices [9, 4] (atoms with id 9 and 4):
+        #   - Atom 9 (id 9): bond_ref=0, angle_ref=1
+        #   - Atom 4 (id 4): bond_ref=3, angle_ref=2
+        expected_dof_indices = [
+            (2, 1),   # Atom 2 (id 2): bond_ref=1, angle_ref=0 matches atom 9's refs (reversed)
+            (3, 1),   # Atom 3 (id 3): bond_ref=2, angle_ref=1 matches atom 9's angle_ref
+            (4, 1),   # Atom 4 (id 4): bond_ref=3, angle_ref=2 - angle DOF
+            (4, 2),   # Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF 
+            (7, 1),   # Atom 7 (id 7): bond_ref=1, angle_ref=0 matches atom 9's refs (chirality=1)
+            (9, 1),   # Atom 9 (id 9): bond_ref=0, angle_ref=1 - angle DOF
+            (9, 2)    # Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+        ]
+        
+        # Verify result matches expected
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), len(expected_dof_indices))
+        self.assertEqual(sorted(dof_indices), sorted(expected_dof_indices))
+        
+        for dof in dof_indices:
+            self.assertIsInstance(dof, tuple)
+            self.assertEqual(len(dof), 2)
+            # First element should be atom index, second should be DOF type (0=bond, 1=angle, 2=dihedral)
+            self.assertIsInstance(dof[0], int)
+            self.assertIsInstance(dof[1], int)
+            self.assertIn(dof[1], [0, 1, 2])
+    
+    def test_get_dofs_empty_rotatable_indices(self):
+        """Test with empty rotatable_indices list."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47, 'chirality': 0}
+        ]
+        
+        rotatable_indices = []
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        
+        # Should return empty list
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), 0)
+    
+    def test_get_dofs_single_rotatable_index(self):
+        """Test with single rotatable index."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        rotatable_indices = [3]  # Only atom 3
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        
+        # Should find at least one DOF
+        self.assertIsInstance(dof_indices, list)
+        self.assertGreater(len(dof_indices), 0)
+        # All DOFs should reference valid atom indices
+        for atom_idx, dof_type in dof_indices:
+            self.assertLess(atom_idx, len(zmatrix))
+            self.assertIn(dof_type, [1, 2])
+    
+    def test_get_dofs_multiple_chirality_atoms(self):
+        """Test with multiple atoms having second bond angle"""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.09, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.09, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': -120.0, 'chirality': -1},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}
+        ]
+        
+        rotatable_indices = [4]  # Atom with chirality=0
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), 4)
+        self.assertEqual(sorted(dof_indices), sorted([(2, 1), (3, 1), (4, 1), (4, 2)]))
 
 
 class TestLocalRefinementOptimizer(unittest.TestCase):
@@ -827,7 +978,7 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
         result = optimizer.minimize(
             max_iterations=5,
             smoothing=[10.0, 5.0, 0.0],
-            torsional=True,
+            torsional_space=True,
             update_system=True,
             verbose=False
         )
@@ -851,7 +1002,7 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
         result = optimizer.minimize(
             max_iterations=5,
             smoothing=5.0,
-            torsional=False,
+            torsional_space=False,
             update_system=False,
             verbose=False
         )
@@ -871,6 +1022,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerMinimize))
     suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithm))
     suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithmGraphMethods))
+    suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerDOFMethods))
     suite.addTests(loader.loadTestsFromTestCase(TestLocalRefinementOptimizer))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerOptimize))
     

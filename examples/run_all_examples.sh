@@ -24,6 +24,7 @@ EXAMPLES=(
     "cyclic_bond_formation"
     "policyclic_bond_formation"
     "simple_minimization"
+    "strained_ring_closure"
     "server_usage"
 )
 

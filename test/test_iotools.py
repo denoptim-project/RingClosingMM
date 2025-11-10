@@ -79,10 +79,10 @@ class TestIOToolsFileIO(unittest.TestCase):
     def test_write_zmatrix_file(self):
         """Test writing Z-matrix to file."""
         zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
-            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
-             'angle_ref': 2, 'angle': 109.47}
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
+             'angle_ref': 1, 'angle': 109.47}
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
@@ -415,11 +415,11 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
     def test_write_zmatrix_with_dihedrals(self):
         """Test writing Z-matrix with dihedral angles."""
         zmatrix = [
-            {'id': 1, 'element': 'C', 'atomic_num': 6},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
         
@@ -448,8 +448,8 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
     def test_write_zmatrix_formatting(self):
         """Test that Z-matrix file has correct formatting."""
         zmatrix = [
-            {'id': 1, 'element': 'H', 'atomic_num': 1},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.74},
+            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.74},
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:

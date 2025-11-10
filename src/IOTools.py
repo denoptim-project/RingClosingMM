@@ -52,7 +52,7 @@ def read_int_file(pathname):
         parts = lines[i].split()
         
         atom_data = {
-            'id': int(parts[0]),
+            'id': int(parts[0]) - 1,
             'element': parts[1],
             'atomic_num': int(parts[2])
         }
@@ -152,18 +152,19 @@ def write_zmatrix_file(zmatrix: List[Dict], filepath: str) -> None:
     with open(filepath, 'w') as f:
         f.write(f"{len(zmatrix)}\n")
         for i, atom in enumerate(zmatrix):
+            id_1based = atom['id'] + 1
             if i == 0:
-                f.write(f"{atom['id']:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}\n")
+                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}\n")
             elif i == 1:
                 # Convert 0-based to 1-based for file format
                 bond_ref_1based = atom['bond_ref'] + 1
-                f.write(f"{atom['id']:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
+                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
                        f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}\n")
             elif i == 2:
                 # Convert 0-based to 1-based for file format
                 bond_ref_1based = atom['bond_ref'] + 1
                 angle_ref_1based = atom['angle_ref'] + 1
-                f.write(f"{atom['id']:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
+                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
                        f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}"
                        f"{angle_ref_1based:6d}{atom['angle']:12.6f}\n")
             else:
@@ -171,7 +172,7 @@ def write_zmatrix_file(zmatrix: List[Dict], filepath: str) -> None:
                 bond_ref_1based = atom['bond_ref'] + 1
                 angle_ref_1based = atom['angle_ref'] + 1
                 dihedral_ref_1based = atom['dihedral_ref'] + 1
-                f.write(f"{atom['id']:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
+                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
                        f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}"
                        f"{angle_ref_1based:6d}{atom['angle']:12.6f}"
                        f"{dihedral_ref_1based:6d}{atom['dihedral']:12.6f}"
@@ -202,3 +203,27 @@ def write_xyz_file(coords: np.ndarray, elements: List[str], filepath: str, comme
         for element, coord in zip(elements, coords):
             correctedElement = element.replace('Du', 'He').replace('ATP', 'Ne').replace('ATM', 'Ar')
             f.write(f"{correctedElement:<4s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
+
+
+def save_structure_to_file(filepath: str, zmatrix: List[Dict], energy: float) -> None:
+    """
+    Save structure to file.
+    
+    Parameters
+    ----------
+    filepath : str
+        Output file path
+    zmatrix : List[Dict]
+        Z-matrix to save
+    energy : float
+        Energy of the structure (default: None)
+    """
+    if filepath.endswith('.xyz'):
+        optimized_coords = zmatrix_to_cartesian(zmatrix)
+        elements = [zmatrix[idx]['element'] for idx in range(len(zmatrix))]
+        comment = f"E={energy:.2f} kcal/mol" if energy is not None else "Optimized"
+        write_xyz_file(optimized_coords, elements, filepath, comment=comment)
+    elif filepath.endswith('.int'):
+        write_zmatrix_file(zmatrix, filepath)
+    else:
+        raise ValueError(f"Unsupported file extension: {filepath}")

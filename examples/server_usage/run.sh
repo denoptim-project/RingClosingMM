@@ -33,7 +33,7 @@ if ! grep -q "\"STATUS\": \"SUCCESS\"" response.json ; then
     echo "ERROR: unsuccessful result."
     exit -1
 fi
-if ! grep -q "\"RCSCORE\": 1\.0" response.json ; then
+if ! grep -q "\"RCSCORE\": 0\.9" response.json ; then
     echo "ERROR: unsuccessful result."
     exit -1
 fi

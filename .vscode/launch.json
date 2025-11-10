@@ -175,7 +175,61 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
-        }
+        },
+        {
+            "name": "Test: DOF Methods Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_ring_closure_optimizer.py::TestRingClosureOptimizerDOFMethods::test_get_dofs_from_rotatable_indices",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Python: c4",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "--minimize-zmatrix",
+                "-i", "c4.int",
+                "-c", "1", "11", "2", "14",
+                "--ring-closure-tolerance", "0.001",
+                "-o", "c4_minimized_zmatrix.xyz"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/strained_ring_closure",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Test: RMSD Methods Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_molecular_system.py::TestMolecularSystemRMSD",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
     ]
 }
 

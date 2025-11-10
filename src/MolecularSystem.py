@@ -383,6 +383,228 @@ class MolecularSystem:
             return coords, 1e6
 
 
+    def minimize_energy_in_zmatrix_space(self, zmatrix: List[Dict], 
+                                            dof_indices: List[Tuple[int,int]],
+                                            dof_bounds: Optional[List[Tuple[float, float]]] = None,
+                                            max_iterations: int = 100,
+                                            method: str = 'L-BFGS-B', #'Powell', 
+                                            verbose: bool = False,
+                                            trajectory_file: Optional[str] = None) -> Tuple[List[Dict], float, Dict[str, Any]]:
+        """
+        Perform energy minimization in Z-matrix space only.
+        
+        Optimizes only the degrees of freedom (dof)while keeping the other degrees of freedom fixed.
+        Uses scipy.optimize.minimize with numerical gradients.
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Starting Z-matrix
+        dof_indices : List[int]
+            Indices of degrees of freedom in Z-matrix. The first index is the atom index, 
+            the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
+            the first atom's first degree of freedom (distance) and the second atom's third 
+            degree of freedom (torsion).
+        dof_bounds : List[Tuple[float, float]]
+            Bounds for the degrees of freedom. Example: [(0.0, 1.0), (0.0, 1.0)] means 
+            the first atom's first degree of freedom (distance) is between 0.0 and 1.0, 
+            and the second atom's third degree of freedom (torsion) is between 0.0 and 1.0.
+            None means no bounds.
+            
+        Returns
+        -------
+        Tuple[List[Dict], float, Dict[str, Any]]
+            Optimized Z-matrix, optimized energy (kcal/mol), and optimization info dict
+        """
+        # Convention in Zmatrix: should come from the ZMatrix class, not here
+        # WARNING: the 'dihedral' can actially be a second angle!
+        dof_names = ['bond_length', 'angle', 'dihedral']
+
+        # Record the initial values of the dofs
+        initial_dofs = np.array([zmatrix[idx[0]][dof_names[idx[1]]] for idx in dof_indices])
+        
+        # Clear trajectory file if provided
+        if trajectory_file:
+            Path(trajectory_file).unlink(missing_ok=True)
+        
+        # Iteration counter for trajectory
+        iteration_counter = [0]
+
+        def get_updated_zmatrix(zmatrix: List[Dict], dofs: np.ndarray) -> List[Dict]:
+            """Get updated Z-matrix with given dofs."""
+            updated_zmatrix = copy.deepcopy(zmatrix)
+            for j, idx in enumerate(dof_indices):
+                zmat_idx = idx[0]
+                dof_idx = idx[1]
+                updated_zmatrix[zmat_idx][dof_names[dof_idx]] = dofs[j]
+            return updated_zmatrix
+        
+        def objective(dofs: np.ndarray) -> float:
+            """Objective function: evaluate energy for given dofs."""
+            try:
+                # Update zmatrix with new dofs
+                updated_zmatrix = get_updated_zmatrix(zmatrix, dofs)
+                
+                # Convert to Cartesian and evaluate energy
+                coords = zmatrix_to_cartesian(updated_zmatrix)
+                energy = self.evaluate_energy(coords)
+
+                return energy
+            except Exception as e:
+                # Return high penalty on failure
+                return 1e6
+        
+        def callback(dofs: np.ndarray):
+            """Callback function called after each scipy.optimize.minimize iteration."""
+            if trajectory_file:
+                try:
+                    # Update zmatrix with current dofs values
+                    current_zmatrix = get_updated_zmatrix(zmatrix, dofs)
+                    
+                    # Convert to Cartesian
+                    coords = zmatrix_to_cartesian(current_zmatrix)
+                    elements = [current_zmatrix[idx]['element'] for idx in range(len(current_zmatrix))]
+                    
+                    # Evaluate energy for comment
+                    energy = objective(dofs)
+                    
+                    # Write to trajectory (append mode)
+                    print(f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
+                    write_xyz_file(
+                        coords, 
+                        elements, 
+                        trajectory_file,
+                        comment=f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol",
+                        append=True
+                    )
+                    iteration_counter[0] += 1
+                except Exception as e:
+                    # Don't fail optimization if trajectory writing fails
+                    if verbose:
+                        print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
+        
+        try:
+            # Initial energy
+            initial_energy = objective(initial_dofs)
+            
+            if verbose:
+                print(f"  Initial dofs: {initial_dofs}")
+                print(f"  Initial energy: {initial_energy:.4f} kcal/mol")
+                if trajectory_file:
+                    print(f"  Writing trajectory to: {trajectory_file}")
+            
+            if dof_bounds is None:
+                dof_bound_coeffs_sequence = [[0.02, 20.0, 180.0], [0.02, 10.0, 10.0], [0.001, 5.0, 5.0]]
+            else:
+                # Check if dof_bounds is already a sequence of coefficient sets
+                # by checking if the first element is itself a sequence (list/tuple)
+                if len(dof_bounds) > 0 and isinstance(dof_bounds[0], (list, tuple)):
+                    # Already a sequence of coefficient sets
+                    dof_bound_coeffs_sequence = dof_bounds
+                else:
+                    # Single coefficient set, wrap it in a list
+                    dof_bound_coeffs_sequence = [dof_bounds]
+
+            current_dofs = initial_dofs.copy()
+            for i in range(len(dof_bound_coeffs_sequence)):
+                dof_bound_coeffs = dof_bound_coeffs_sequence[i]
+                dof_bounds = []
+                for j,idx in enumerate(dof_indices):
+                    zmat_idx = idx[0]
+                    dof_idx = idx[1]
+                    dof_current_value = current_dofs[j]
+                    dof_type = dof_names[dof_idx]
+                    if dof_type == 'bond_length':
+                        deviation = dof_bound_coeffs[0]
+                        dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                    elif (dof_type == 'angle') or (dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] != 0):
+                        deviation = dof_bound_coeffs[1]
+                        dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                    elif dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] == 0:
+                        deviation = dof_bound_coeffs[2]
+                        if deviation < 179.0:
+                            dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        else:
+                            dof_bounds.append((-180.0, 180.0))
+                    else:
+                        raise ValueError(f"Unknown degree of freedom type: {dof_type}")
+
+                if verbose:
+                    print(f"Bounds for iteration {i+1}:")
+                    for j, dof_index in enumerate(dof_indices):
+                        dof_zmat_line = zmatrix[dof_index[0]]
+                        txt = ""
+                        if (dof_index[1] == 0):
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                        elif (dof_index[1] == 1):
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                        elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] != 0):
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                        elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] == 0):
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                        print(txt)
+            
+                # Optimize dofs
+                result = minimize(
+                    objective,
+                    current_dofs,
+                    method=method,
+                    bounds=dof_bounds,
+                    # Only to print trajectory
+                    callback=callback if trajectory_file else None,
+                    options={
+                        'maxiter': max_iterations,
+                        'ftol': 0.05,    # Function tolerance (kcal/mol)
+                        'xtol': 0.01,    # Tolerance for changes in the variable
+                        'disp': verbose
+                    }
+                )
+                current_dofs = result.x.copy()
+            
+            if verbose:
+                print(f"  Final DOFs: {result.x}")
+                print(f"  Changed DOFs: {result.x - initial_dofs}")
+                print(f"  Optimization: nfev={result.nfev}, nit={result.nit}, "
+                      f"success={result.success}")
+                print(f"  Final energy: {result.fun:.4f} kcal/mol")
+                print(f"  Improvement: {initial_energy - result.fun:.4f} kcal/mol")
+            
+            # Create optimized zmatrix
+            optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
+            
+            # Prepare info dict
+            info = {
+                'success': result.success,
+                'message': result.message,
+                'nfev': result.nfev,
+                'nit': result.nit,
+                'initial_energy': initial_energy,
+                'final_energy': result.fun,
+                'improvement': initial_energy - result.fun,
+                'initial_dofs': initial_dofs.copy(),
+                'final_torsions': result.x.copy()
+            }
+            
+            return optimized_zmatrix, result.fun, info
+            
+        except Exception as e:
+            if verbose:
+                print(f"  ZMatrix minimization failed: {e}")
+            # Return original zmatrix with high penalty
+            info = {
+                'success': False,
+                'message': str(e),
+                'nfev': 0,
+                'nit': 0,
+                'initial_energy': initial_energy if 'initial_energy' in locals() else 1e6,
+                'final_energy': 1e6,
+                'improvement': 0.0,
+                'initial_dofs': initial_dofs.copy(),
+                'final_dofs': initial_dofs.copy()
+            }
+            return zmatrix, 1e6, info
+
+
     def minimize_energy_in_torsional_space(self, zmatrix: List[Dict], 
                                             rotatable_indices: List[int],
                                             max_iterations: int = 100,
@@ -488,12 +710,11 @@ class MolecularSystem:
             bounds = [(-180.0, 180.0) for _ in range(len(initial_torsions))]
             
             # Optimize torsions
-            # Note: L-BFGS-B uses finite differences for gradients
-            # eps should be appropriate for the scale of torsional angles (degrees)
             result = minimize(
                 objective,
                 initial_torsions,
                 method=method,
+                bounds=bounds,
                 # Only to print trajectory
                 # callback=callback if trajectory_file else None,
                 options={
@@ -531,6 +752,7 @@ class MolecularSystem:
             return optimized_zmatrix, result.fun, info
             
         except Exception as e:
+            print(e)
             if verbose:
                 print(f"  Torsional minimization failed: {e}")
             # Return original zmatrix with high penalty
@@ -614,7 +836,7 @@ class MolecularSystem:
 
 
     def ring_closure_score_exponential(self, coords: np.ndarray, 
-                                        tolerance: float = 1.54,
+                                        tolerance: float = 0.001,
                                         decay_rate: float = 1.0,
                                         verbose: bool = False) -> float:
         """
@@ -705,3 +927,86 @@ class MolecularSystem:
             print(f"  Average score: {avg_score:.4f} (range: [0.0, 1.0])")
         
         return avg_score
+
+
+    def calculate_rmsd(self, zmatrix1: List[Dict], zmatrix2: List[Dict]) -> Tuple[float, float, float]:
+        """
+        Calculate RMSD between two Z-matrices for bond lengths, angles, and dihedrals.
+        
+        RMSD (Root Mean Square Deviation) quantifies the structural difference between
+        two conformations by computing the RMS of differences in internal coordinates.
+        
+        Parameters
+        ----------
+        zmatrix1 : List[Dict]
+            First Z-matrix (e.g., initial structure)
+        zmatrix2 : List[Dict]
+            Second Z-matrix (e.g., optimized structure)
+        
+        Returns
+        -------
+        Tuple[float, float, float]
+            RMSD for bond lengths (Å), angles (degrees), and dihedrals (degrees)
+        
+        Notes
+        -----
+        - Atoms without a particular coordinate type (e.g., first atom has no bond) are skipped
+        - When chirality != 0, the 'dihedral' field contains a second angle (not a proper dihedral)
+          and is treated as an angle for RMSD calculation (no periodicity handling)
+        - Proper dihedrals (chirality == 0) use angular difference accounting for periodicity 
+          at the -180°/+180° boundary
+        - Empty lists for any coordinate type result in RMSD of 0.0
+        
+        Raises
+        ------
+        ValueError
+            If Z-matrices have different lengths
+        
+        Examples
+        --------
+        >>> rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(initial_zmat, final_zmat)
+        >>> print(f"Bond RMSD: {rmsd_bonds:.4f} Å")
+        >>> print(f"Angle RMSD: {rmsd_angles:.4f}°")
+        >>> print(f"Dihedral RMSD: {rmsd_dihedrals:.4f}°")
+        """
+        if len(zmatrix1) != len(zmatrix2):
+            raise ValueError(f"Z-matrices must have same length: {len(zmatrix1)} vs {len(zmatrix2)}")
+        
+        bond_diffs = []
+        angle_diffs = []
+        dihedral_diffs = []
+        
+        for atom1, atom2 in zip(zmatrix1, zmatrix2):
+            # Bond lengths
+            if 'bond_length' in atom1 and 'bond_length' in atom2:
+                bond_diffs.append(atom1['bond_length'] - atom2['bond_length'])
+            
+            # Angles
+            if 'angle' in atom1 and 'angle' in atom2:
+                angle_diffs.append(atom1['angle'] - atom2['angle'])
+            
+            # Dihedrals or second angles (depending on chirality)
+            if 'dihedral' in atom1 and 'dihedral' in atom2:
+                chirality1 = atom1.get('chirality', 0)
+                chirality2 = atom2.get('chirality', 0)
+                
+                # If chirality != 0, the 'dihedral' is actually a second angle
+                if chirality1 != 0 or chirality2 != 0:
+                    # Treat as angle (no periodicity handling)
+                    angle_diffs.append(atom1['dihedral'] - atom2['dihedral'])
+                else:
+                    # Treat as proper dihedral (handle periodicity: -180/+180 boundary)
+                    diff = atom1['dihedral'] - atom2['dihedral']
+                    # Wrap to [-180, 180] range
+                    while diff > 180.0:
+                        diff -= 360.0
+                    while diff < -180.0:
+                        diff += 360.0
+                    dihedral_diffs.append(diff)
+        
+        # Calculate RMSD for each coordinate type
+        rmsd_bonds = np.sqrt(np.mean(np.array(bond_diffs)**2)) if bond_diffs else 0.0
+        rmsd_angles = np.sqrt(np.mean(np.array(angle_diffs)**2)) if angle_diffs else 0.0
+        rmsd_dihedrals = np.sqrt(np.mean(np.array(dihedral_diffs)**2)) if dihedral_diffs else 0.0
+        
+        return rmsd_bonds, rmsd_angles, rmsd_dihedrals
