@@ -683,11 +683,11 @@ class LocalRefinementOptimizer:
         """
         try:
             current_zmatrix = individual.zmatrix
-            
+
             # Torsional optimization with decreasing smoothing
             for smoothing in smoothing_sequence:
                 self.system.setSmoothingParameter(smoothing)
-                
+
                 refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_torsional_space(
                     current_zmatrix,
                     rotatable_indices,
@@ -710,7 +710,8 @@ class LocalRefinementOptimizer:
             print(f"Warning: Smoothing refinement failed!")
             return individual.copy()
 
-    def refine_individual_in_zmatrix_space(self, individual: Individual,
+    def refine_individual_in_zmatrix_space_with_smoothing(self, individual: Individual,
+                                          smoothing_sequence: List[float] = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0],
                                           max_iterations: int = 500,
                                           dof_indices: List[int] = None,
                                           dof_bounds: Optional[List[Tuple[float, float]]] = [[0.02, 15.0, 10.0], [0.02, 5.0, 5.0]]) -> Individual:
@@ -721,6 +722,8 @@ class LocalRefinementOptimizer:
         ----------
         individual : Individual
             Individual to refine    
+        smoothing_sequence : List[float]
+            Sequence of smoothing values (default: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0])
         max_iterations : int
             Maximum minimization iterations
         dof_bounds : Optional[List[Tuple[float, float]]]
@@ -735,18 +738,19 @@ class LocalRefinementOptimizer:
         """
         try:
             current_zmatrix = individual.zmatrix
-            
-            minimized_zmatrix, minimized_energy, info = self.system.minimize_energy_in_zmatrix_space(
-                current_zmatrix,
-                dof_indices = dof_indices,
-                dof_bounds = dof_bounds,
-                max_iterations=max_iterations,
-                #TODO
-                verbose=True
-            )
 
-            if info['success']:
-                current_zmatrix = minimized_zmatrix
+            for smoothing in smoothing_sequence:
+                self.system.setSmoothingParameter(smoothing)
+
+                minimized_zmatrix, minimized_energy, info = self.system.minimize_energy_in_zmatrix_space(
+                    current_zmatrix,
+                    dof_indices = dof_indices,
+                    dof_bounds = dof_bounds,
+                    max_iterations=max_iterations
+                )
+
+                if info['success']:
+                    current_zmatrix = minimized_zmatrix
 
             # Extract refined torsions
             refined_torsions = np.array([current_zmatrix[idx]['dihedral']
@@ -1120,8 +1124,8 @@ class RingClosureOptimizer:
         return rotatable_indices
     
 
-    def _create_fitness_function(self, ring_closure_tolerance: float = 1.54,
-                                   ring_closure_decay_rate: float = 1.0):
+    def _create_fitness_function(self, ring_closure_tolerance: float = 0.1,
+                                   ring_closure_decay_rate: float = 0.5):
         """
         Create fitness function for GA evaluation.
         
@@ -1166,8 +1170,8 @@ class RingClosureOptimizer:
                 crossover_rate: float = 0.7, 
                 elite_size: int = 5,
                 torsion_range: Tuple[float, float] = (-180.0, 180.0),
-                ring_closure_tolerance: float = 1.54,
-                ring_closure_decay_rate: float = 1.0, 
+                ring_closure_tolerance: float = 0.1,
+                ring_closure_decay_rate: float = 0.5, 
                 convergence_interval: int = 5,
                 protect_rc_critical_rotatable_bonds: bool = True,
                 enable_smoothing_refinement: bool = True,
@@ -1210,9 +1214,9 @@ class RingClosureOptimizer:
         torsion_range : Tuple[float, float]
             Min/max torsion angles in degrees (default: (-180.0, 180.0))
         ring_closure_tolerance : float
-            Distance threshold (Å) for perfect ring closure score (default: 1.54)
+            Distance threshold (Å) for perfect ring closure score (default: 0.1)
         ring_closure_decay_rate : float
-            Exponential decay rate for ring closure score (default: 1.0)
+            Exponential decay rate for ring closure score (default: 0.5)
         convergence_interval : int
             Number of consecutive generations with small improvement to declare convergence (default: 5)
         enable_smoothing_refinement : bool
@@ -1307,6 +1311,9 @@ class RingClosureOptimizer:
         refinement_stats = {'refined': 0, 'improved': 0}
         num_conv_gen = 0
         
+        # Run GA
+        print(f"\nGA exploration of torsional space with {len(self.rotatable_indices)} torsions...")
+
         for gen in range(generations):
             # Evaluate population
             self.ga.evaluate_population(fitness_fn, gen)
@@ -1354,76 +1361,64 @@ class RingClosureOptimizer:
         top_indices = sorted_indices[:refinement_top_n]
         top_candidates = [self.ga.population[i] for i in top_indices]
 
-        # Select which torsions to refone: do we protect the critical torsions?
+        # Select which torsions to refine: do we protect the critical torsions?
         selected_rotatable_indices = self.rotatable_indices
         if protect_rc_critical_rotatable_bonds:
             selected_rotatable_indices = [idx for idx in self.rotatable_indices if idx not in self.ga.rc_critical_rotatable_indeces]
+        
+        non_rc_dof_indexes = []
+        for idx in selected_rotatable_indices:
+            if (idx, 2) not in non_rc_dof_indexes:
+                non_rc_dof_indexes.append((idx, 2))
 
         # Refinement in torsional space with optional smoothing of the potential energy
-        if enable_smoothing_refinement:
-            if verbose:
-                print("\nApplying torsional refinement with potential energy smoothing to top candidates...")
+        print(f"\nApplying torsional refinement ({len(selected_rotatable_indices)} torsions) with potential energy smoothing to top candidates...")
 
-            if len(selected_rotatable_indices) == 0:
-                print("Warning: No torsions to refine. Skipping torsional refinement.")
-            else:
-                for i, individual in enumerate(top_candidates):
-                    initial_energy = individual.energy
-                    if initial_energy is None:
-                        initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
-                        individual.energy = initial_energy
-                    refined_individual = self.local_refinement.refine_individual_in_torsional_space_with_smoothing(
-                        individual, 
-                        rotatable_indices=selected_rotatable_indices, 
-                        smoothing_sequence=smoothing_sequence, 
-                        torsional_iterations=torsional_iterations)
-                    top_candidates[i] = refined_individual
-                    refined_energy = refined_individual.energy
-                    energy_improvement = refined_energy - initial_energy
-                    print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
-
-        #TODO del
-        IOTools.write_zmatrix_file(top_candidates[0].zmatrix, 'top_candidates_0_zmatrix.int')
-        IOTools.write_xyz_file(zmatrix_to_cartesian(top_candidates[0].zmatrix), [top_candidates[0].zmatrix[idx]['element'] for idx in range(len(top_candidates[0].zmatrix))], 'top_candidates_0_coords.xyz')
-
-        if enable_zmatrix_refinement:
-            if verbose:
-                print("\nApplying Z-matrix refinement to top candidates...")
-
-            if len(selected_rotatable_indices) == 0:
-                print("Warning: No torsions to refine. Skipping Z-matrix refinement.")
-            else:
-                for i, individual in enumerate(top_candidates):
-                    initial_energy = individual.energy
-                    if initial_energy is None:
-                        initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
-                        individual.energy = initial_energy
-                    refined_individual = self.local_refinement.refine_individual_in_zmatrix_space(individual,
-                        dof_indices = self.dof_indices,
-                        max_iterations=zmatrix_iterations)
-                    top_candidates[i] = refined_individual
-                    refined_energy = refined_individual.energy
-                    energy_improvement = refined_energy - initial_energy
-                    print(f"  Z-matrix refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
-
-        #TODO-change default
-        enable_cartesian_refinement=False
-
-        # Refinement in Cartesian space
-        if enable_cartesian_refinement:
-            if verbose:
-                print("\nApplying Cartesian refinement to top candidates...")
+        if len(selected_rotatable_indices) == 0:
+            print("Warning: No torsions to refine. Skipping torsional refinement.")
+        else:
+            pss_ref_init = time.time()
             for i, individual in enumerate(top_candidates):
                 initial_energy = individual.energy
                 if initial_energy is None:
                     initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
                     individual.energy = initial_energy
-                refined_individual = self.local_refinement.refine_individual_in_Cartesian_space(
-                    individual, max_iterations=cartesian_iterations)
+
+                refined_individual = self.local_refinement.refine_individual_in_torsional_space_with_smoothing(
+                    individual, 
+                    rotatable_indices=selected_rotatable_indices, 
+                    smoothing_sequence=smoothing_sequence, 
+                    torsional_iterations=torsional_iterations)
+
                 top_candidates[i] = refined_individual
                 refined_energy = refined_individual.energy
                 energy_improvement = refined_energy - initial_energy
-                print(f"  Cartesian refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+                print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+
+            pss_ref_time = time.time() - pss_ref_init
+            print(f"  Torsional refinement time: {pss_ref_time:.2f} seconds")
+
+        print(f"\nApplying Z-matrix refinement ({len(self.dof_indices)} DOFs) to top candidates...")
+
+        if len(selected_rotatable_indices) == 0:
+            print("Warning: No torsions to refine. Skipping Z-matrix refinement.")
+        else:
+            zms_ref_init = time.time()
+            for i, individual in enumerate(top_candidates):
+                initial_energy = individual.energy
+                if initial_energy is None:
+                    initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
+                    individual.energy = initial_energy
+                refined_individual = self.local_refinement.refine_individual_in_zmatrix_space_with_smoothing(individual,
+                    smoothing_sequence = [0.0],
+                    dof_indices = self.dof_indices,
+                    max_iterations=zmatrix_iterations)
+                top_candidates[i] = refined_individual
+                refined_energy = refined_individual.energy
+                energy_improvement = refined_energy - initial_energy
+                print(f"  Z-matrix refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
+            zms_ref_time = time.time() - zms_ref_init
+            print(f"  Z-matrix refinement time: {zms_ref_time:.2f} seconds")
 
         # Compile results
         final_closure_scores = np.array([self.system.ring_closure_score_exponential(
