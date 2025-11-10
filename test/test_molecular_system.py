@@ -1015,6 +1015,283 @@ class TestMolecularSystemRMSD(unittest.TestCase):
         self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
 
 
+class TestMolecularSystemGradient(unittest.TestCase):
+    """Test analytical gradient conversion from Cartesian to Z-matrix DOF space."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(__file__).parent / 'fixtures'
+        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
+        self.butane_file = self.test_dir / 'butane_like.int'
+    
+    def _finite_difference_gradient(self, system, zmatrix, dof_indices, h=1e-5):
+        """
+        Compute numerical gradient using finite differences.
+        
+        Parameters
+        ----------
+        system : MolecularSystem
+            Molecular system instance
+        zmatrix : List[Dict]
+            Z-matrix
+        dof_indices : List[Tuple[int, int]]
+            DOF indices
+        h : float
+            Finite difference step size
+        
+        Returns
+        -------
+        np.ndarray
+            Numerical gradient
+        """
+        import copy
+        dof_names = ['bond_length', 'angle', 'dihedral']
+        gradient = np.zeros(len(dof_indices))
+        
+        for k, (atom_idx, dof_type) in enumerate(dof_indices):
+            # Forward difference
+            zmatrix_plus = copy.deepcopy(zmatrix)
+            zmatrix_plus[atom_idx][dof_names[dof_type]] += h
+            coords_plus = zmatrix_to_cartesian(zmatrix_plus)
+            energy_plus = system.evaluate_energy(coords_plus)
+            
+            # Backward difference
+            zmatrix_minus = copy.deepcopy(zmatrix)
+            zmatrix_minus[atom_idx][dof_names[dof_type]] -= h
+            coords_minus = zmatrix_to_cartesian(zmatrix_minus)
+            energy_minus = system.evaluate_energy(coords_minus)
+            
+            # Central difference
+            gradient[k] = (energy_plus - energy_minus) / (2 * h)
+        
+        return gradient
+    
+    def test_gradient_bond_length(self):
+        """Test analytical gradient for bond length DOF."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        # Test bond length gradient for atom 1 (bond_ref = 0)
+        zmatrix = system.zmatrix
+        dof_indices = [(1, 0)]  # Atom 1, bond_length DOF
+        
+        # Analytical gradient
+        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        # Numerical gradient
+        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-5)
+        
+        # Compare (allow for numerical precision)
+        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-3, atol=1e-2)
+        self.assertEqual(len(grad_analytical), 1)
+        self.assertEqual(len(grad_numerical), 1)
+    
+    def test_gradient_angle(self):
+        """Test analytical gradient for angle DOF."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        # Test angle gradient for atom 2 (has angle_ref)
+        zmatrix = system.zmatrix
+        if len(zmatrix) < 3:
+            self.skipTest("Z-matrix too small for angle test")
+        
+        # Find an atom with an angle
+        dof_indices = []
+        for i in range(2, len(zmatrix)):
+            if 'angle' in zmatrix[i]:
+                dof_indices.append((i, 1))  # angle DOF
+                break
+        
+        if not dof_indices:
+            self.skipTest("No atoms with angles found")
+        
+        # Analytical gradient
+        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        # Numerical gradient
+        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
+        
+        # Compare (angles are in degrees, so use larger tolerance)
+        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
+        self.assertEqual(len(grad_analytical), 1)
+    
+    def test_gradient_dihedral(self):
+        """Test analytical gradient for dihedral DOF."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        # Test dihedral gradient
+        zmatrix = system.zmatrix
+        if len(zmatrix) < 4:
+            self.skipTest("Z-matrix too small for dihedral test")
+        
+        # Find an atom with a dihedral (chirality == 0)
+        dof_indices = []
+        for i in range(3, len(zmatrix)):
+            if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) == 0:
+                dof_indices.append((i, 2))  # dihedral DOF
+                break
+        
+        if not dof_indices:
+            self.skipTest("No atoms with dihedrals found")
+        
+        # Analytical gradient
+        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        # Numerical gradient
+        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
+        
+        # Compare (dihedrals are in degrees, so use larger tolerance)
+        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
+        self.assertEqual(len(grad_analytical), 1)
+    
+    def test_gradient_multiple_dofs(self):
+        """Test analytical gradient for multiple DOFs simultaneously."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        zmatrix = system.zmatrix
+        if len(zmatrix) < 4:
+            self.skipTest("Z-matrix too small for multiple DOF test")
+        
+        # Collect multiple DOFs: bond length, angle, dihedral
+        dof_indices = []
+        if len(zmatrix) > 1 and 'bond_length' in zmatrix[1]:
+            dof_indices.append((1, 0))  # bond length
+        if len(zmatrix) > 2 and 'angle' in zmatrix[2]:
+            dof_indices.append((2, 1))  # angle
+        if len(zmatrix) > 3:
+            for i in range(3, len(zmatrix)):
+                if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) == 0:
+                    dof_indices.append((i, 2))  # dihedral
+                    break
+        
+        if len(dof_indices) < 2:
+            self.skipTest("Not enough DOFs found for multiple DOF test")
+        
+        # Analytical gradient
+        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        # Numerical gradient
+        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
+        
+        # Compare
+        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
+        self.assertEqual(len(grad_analytical), len(dof_indices))
+        self.assertEqual(len(grad_numerical), len(dof_indices))
+    
+    def test_gradient_chirality_second_angle(self):
+        """Test analytical gradient for second angle (chirality != 0)."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        zmatrix = system.zmatrix
+        
+        # Find an atom with chirality != 0 (second angle)
+        dof_indices = []
+        for i in range(3, len(zmatrix)):
+            if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) != 0:
+                dof_indices.append((i, 2))  # dihedral field, but it's actually a second angle
+                break
+        
+        if not dof_indices:
+            self.skipTest("No atoms with chirality found")
+        
+        # Analytical gradient
+        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        # Numerical gradient
+        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
+        
+        # Compare (treat as angle, so use angle tolerance)
+        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
+        self.assertEqual(len(grad_analytical), 1)
+    
+    def test_gradient_empty_dof_indices(self):
+        """Test gradient with empty DOF indices."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        zmatrix = system.zmatrix
+        dof_indices = []
+        
+        grad = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+        
+        self.assertEqual(len(grad), 0)
+        self.assertIsInstance(grad, np.ndarray)
+    
+    def test_gradient_shape_consistency(self):
+        """Test that gradient shape matches DOF indices length."""
+        if not self.butane_file.exists() or not self.forcefield_file.exists():
+            self.skipTest("Required test files not found")
+        
+        system = MolecularSystem.from_file(
+            str(self.butane_file),
+            str(self.forcefield_file),
+            rcp_terms=None
+        )
+        
+        zmatrix = system.zmatrix
+        
+        # Test with different numbers of DOFs
+        for n_dofs in [1, 2, 3]:
+            dof_indices = []
+            for i in range(min(n_dofs, len(zmatrix) - 1)):
+                if i == 0 and 'bond_length' in zmatrix[1]:
+                    dof_indices.append((1, 0))
+                elif i == 1 and len(zmatrix) > 2 and 'angle' in zmatrix[2]:
+                    dof_indices.append((2, 1))
+                elif i == 2 and len(zmatrix) > 3:
+                    for j in range(3, len(zmatrix)):
+                        if 'dihedral' in zmatrix[j]:
+                            dof_indices.append((j, 2))
+                            break
+                    if len(dof_indices) < 3:
+                        break
+            
+            if len(dof_indices) == n_dofs:
+                grad = system.evaluate_dofs_gradient(zmatrix, dof_indices)
+                self.assertEqual(len(grad), n_dofs, 
+                               f"Gradient length {len(grad)} != DOF count {n_dofs}")
+
+
 def run_tests(verbosity=2):
     """Run all tests with specified verbosity."""
     loader = unittest.TestLoader()
@@ -1030,6 +1307,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemSimulationCache))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemErrorHandling))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRMSD))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemGradient))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)

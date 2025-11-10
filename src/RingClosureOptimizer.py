@@ -28,6 +28,7 @@ Example:
     )
 """
 
+import time
 import numpy as np
 from typing import List, Tuple, Dict, Optional, Any, Union
 from pathlib import Path
@@ -712,7 +713,7 @@ class LocalRefinementOptimizer:
     def refine_individual_in_zmatrix_space(self, individual: Individual,
                                           max_iterations: int = 500,
                                           dof_indices: List[int] = None,
-                                          dof_bounds: Optional[List[Tuple[float, float]]] = [[0.02, 15.0, 10.0]]) -> Individual:
+                                          dof_bounds: Optional[List[Tuple[float, float]]] = [[0.02, 15.0, 10.0], [0.02, 5.0, 5.0]]) -> Individual:
         """
         Refine an individual using Z-matrix space minimization.
         
@@ -850,7 +851,8 @@ class RingClosureOptimizer:
         """
         self.system = molecular_system
         self.rotatable_indices = rotatable_indices
-        self.dof_indices = self._get_dofs_from_rotatable_indeces(rotatable_indices, self.system.zmatrix)
+        self.rc_critical_rotatable_indeces = self._identify_rc_critical_rotatable_indeces()
+        self.dof_indices = self._get_dofs_from_rotatable_indeces(self.rotatable_indices, self.rc_critical_rotatable_indeces, self.system.zmatrix)
         self.converter = CoordinateConverter()
         self.ga = None
         self.local_refinement = None
@@ -908,10 +910,65 @@ class RingClosureOptimizer:
         
         return cls(system, rotatable_indices, write_candidate_files)
     
-    @staticmethod
-    def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], zmatrix: List[Dict]) -> List[int]:
+
+    def _identify_rc_critical_rotatable_indeces(self) -> List[int]:
         """
-        Get DOF indices from rotatable indices.
+        Identify rotatable torsions on paths between RCP atoms.
+        
+        Returns
+        -------
+        List[int]
+            Indices (into rotatable_indices) of critical torsions
+        """
+        rcp_terms = self.system.rcpterms
+        topology = self.system.topology
+        if not rcp_terms:
+            return []
+        
+        graph = GeneticAlgorithm._build_bond_graph(self.system.zmatrix, topology)
+        num_atoms = len(self.system.zmatrix)
+        critical_atoms = set()
+        
+        # Find all atoms on paths between RCP pairs
+        # RCP terms are already 0-based
+        for atom1, atom2 in rcp_terms:
+            # Validate RCP atom indices (0-based, so range is [0, num_atoms-1])
+            if atom1 < 0 or atom1 >= num_atoms:
+                print(f"Warning: RCP atom1 index {atom1} is out of range [0, {num_atoms-1}], skipping")
+                continue
+            if atom2 < 0 or atom2 >= num_atoms:
+                print(f"Warning: RCP atom2 index {atom2} is out of range [0, {num_atoms-1}], skipping")
+                continue
+            
+            path = GeneticAlgorithm._find_path_bfs(graph, atom1, atom2)
+            if path:
+                critical_atoms.update(path)
+            else:
+                print(f"Warning: No path found between RCP atoms {atom1} and {atom2} (0-based)")
+        
+        # Identify which rotatable torsions involve critical atoms
+        # A torsion is critical if ANY of its 4 defining atoms are on a critical path
+        critical_torsion_indices = []
+        for i in range(len(self.rotatable_indices)):
+            rot_idx = self.rotatable_indices[i]
+            atom = self.system.zmatrix[rot_idx]
+            atoms_in_rotatable_bond = [] 
+            if atom.get('bond_ref'):
+                atoms_in_rotatable_bond.append(atom['bond_ref'])
+            if atom.get('angle_ref'):
+                atoms_in_rotatable_bond.append(atom['angle_ref'])
+            
+            # Check if both atoms are on a critical path
+            if all(atom_idx in critical_atoms for atom_idx in atoms_in_rotatable_bond):
+                critical_torsion_indices.append(self.rotatable_indices[i])
+        
+        return critical_torsion_indices
+
+
+    @staticmethod
+    def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], rc_critical_rotatable_indeces: List[int], zmatrix: List[Dict]) -> List[int]:
+        """
+        Get indexes of degrees of freedon on Z-matrix from rotatable indices.
         
         Parameters
         ----------
@@ -930,6 +987,17 @@ class RingClosureOptimizer:
         """
         dof_indices = []
         dof_names = ['id', 'bond_ref', 'angle_ref', 'dihedral_ref']
+
+        all_atoms_in_rot_bonds = []
+        for idx in rc_critical_rotatable_indeces:
+            zatom = zmatrix[idx]
+            rb_bond_ref = zatom.get(dof_names[1])
+            rb_angle_ref = zatom.get(dof_names[2])
+            if not rb_bond_ref in all_atoms_in_rot_bonds:
+                all_atoms_in_rot_bonds.append(rb_bond_ref)
+            if not rb_angle_ref in all_atoms_in_rot_bonds:
+                all_atoms_in_rot_bonds.append(rb_angle_ref)
+
         for idx in rotatable_indices:
             zatom = zmatrix[idx]
             # these two indexes identify the roatable bond
@@ -937,37 +1005,58 @@ class RingClosureOptimizer:
             rb_angle_ref = zatom.get(dof_names[2])
             if rb_bond_ref is None or rb_angle_ref is None:
                 continue  # Skip if references don't exist
-            
-            # Identify bond angles that act on the rotatable bond
-            for idx2, zatom2 in enumerate(zmatrix):
-                zatom2_id = zatom2.get(dof_names[0])
-                zatom2_bond_ref = zatom2.get(dof_names[1])
-                zatom2_angle_ref = zatom2.get(dof_names[2])
-                zatom2_dihedral_ref = zatom2.get(dof_names[3])
 
-                # if either of the atoms defining the rotatable bond is the first atom and the other is the center of the angle
-                if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-                    if (zatom2_id == rb_bond_ref and zatom2_bond_ref == rb_angle_ref) or \
-                       (zatom2_id == rb_angle_ref and zatom2_bond_ref == rb_bond_ref):
-                        dof_indices.append((idx2, 1))
-                        if zatom2.get('chirality', 0) != 0:
-                            dof_indices.append((idx2, 2))
-                
-                # if the center of the first angle is either of the atoms defining the rotatable bond
-                if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-                    if (zatom2_bond_ref == rb_bond_ref and zatom2_angle_ref == rb_angle_ref) or \
-                       (zatom2_angle_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
-                        dof_indices.append((idx2, 1))
-                
-                # if the center of the second angle is either of the atoms defining the rotatable bond
-                if zatom2.get('chirality', 0) != 0 and zatom2_bond_ref is not None and zatom2_dihedral_ref is not None:
-                    if (zatom2_bond_ref == rb_bond_ref and zatom2_dihedral_ref == rb_angle_ref) or \
-                       (zatom2_dihedral_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
-                        dof_indices.append((idx2, 2))
+            if True:
+                # Identify bond angles that act on the rotatable bond
+                for idx2, zatom2 in enumerate(zmatrix):
+                    zatom2_id = zatom2.get(dof_names[0])
+                    zatom2_bond_ref = zatom2.get(dof_names[1])
+                    zatom2_angle_ref = zatom2.get(dof_names[2])
+                    zatom2_dihedral_ref = zatom2.get(dof_names[3])
+
+                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                        if zatom2_id in all_atoms_in_rot_bonds and zatom2_bond_ref in all_atoms_in_rot_bonds and zatom2_angle_ref in all_atoms_in_rot_bonds:  
+                            if (idx2, 1) not in dof_indices:
+                                dof_indices.append((idx2, 1))
+                        if zatom2_id in all_atoms_in_rot_bonds and zatom2_bond_ref in all_atoms_in_rot_bonds and zatom2_dihedral_ref in all_atoms_in_rot_bonds and zatom2.get('chirality', 0) != 0:  
+                            if (idx2, 2) not in dof_indices:
+                                dof_indices.append((idx2, 2))
+            else:
+                # Identify bond angles that act on the rotatable bond
+                for idx2, zatom2 in enumerate(zmatrix):
+                    zatom2_id = zatom2.get(dof_names[0])
+                    zatom2_bond_ref = zatom2.get(dof_names[1])
+                    zatom2_angle_ref = zatom2.get(dof_names[2])
+                    zatom2_dihedral_ref = zatom2.get(dof_names[3])
+
+                    # if either of the atoms defining the rotatable bond is the first atom and the other is the center of the angle
+                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                        if (zatom2_id == rb_bond_ref and zatom2_bond_ref == rb_angle_ref) or \
+                        (zatom2_id == rb_angle_ref and zatom2_bond_ref == rb_bond_ref):
+                            if (idx2, 1) not in dof_indices:
+                                dof_indices.append((idx2, 1))
+                            if zatom2.get('chirality', 0) != 0:
+                                if (idx2, 2) not in dof_indices:
+                                    dof_indices.append((idx2, 2))
+                    
+                    # if the center of the first angle is either of the atoms defining the rotatable bond
+                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                        if (zatom2_bond_ref == rb_bond_ref and zatom2_angle_ref == rb_angle_ref) or \
+                        (zatom2_angle_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
+                            if (idx2, 1) not in dof_indices:
+                                dof_indices.append((idx2, 1))
+                    
+                    # if the center of the second angle is either of the atoms defining the rotatable bond
+                    if zatom2.get('chirality', 0) != 0 and zatom2_bond_ref is not None and zatom2_dihedral_ref is not None:
+                        if (zatom2_bond_ref == rb_bond_ref and zatom2_dihedral_ref == rb_angle_ref) or \
+                        (zatom2_dihedral_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
+                            if (idx2, 2) not in dof_indices:
+                                dof_indices.append((idx2, 2))
 
         # Add the torsions
         for idx in rotatable_indices:
-            dof_indices.append((idx, 2))
+            if (idx, 2) not in dof_indices:
+                dof_indices.append((idx, 2))
 
         return dof_indices  
 
@@ -1293,6 +1382,10 @@ class RingClosureOptimizer:
                     energy_improvement = refined_energy - initial_energy
                     print(f"  Torsional refinement {i+1}/{len(top_candidates)}: Energy improvement = {energy_improvement:.2f} kcal/mol (from {initial_energy:.2f} to {refined_energy:.2f} kcal/mol)")
 
+        #TODO del
+        IOTools.write_zmatrix_file(top_candidates[0].zmatrix, 'top_candidates_0_zmatrix.int')
+        IOTools.write_xyz_file(zmatrix_to_cartesian(top_candidates[0].zmatrix), [top_candidates[0].zmatrix[idx]['element'] for idx in range(len(top_candidates[0].zmatrix))], 'top_candidates_0_coords.xyz')
+
         if enable_zmatrix_refinement:
             if verbose:
                 print("\nApplying Z-matrix refinement to top candidates...")
@@ -1495,13 +1588,17 @@ class RingClosureOptimizer:
                         
                 elif zmat_space:
                     # Perform Z-matrix minimization
+                    init_time = time.time()
                     refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_zmatrix_space(
                         current_zmatrix,
                         self.dof_indices,
+                        dof_bounds = [[0.02, 10.0, 10.0],[0.02, 5.0, 5.0]],
                         max_iterations=max_iterations,
-                        method='Powell',
+                        method='L-BFGS-B',
                         verbose=verbose and len(smoothing_values) == 1  # Only verbose for single step
                     )
+                    time_taken = time.time() - init_time
+                    print(f"  Time taken: {time_taken:.2f} seconds")
 
                     if opt_info.get('success'):
                         current_zmatrix = refined_zmatrix

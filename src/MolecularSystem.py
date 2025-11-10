@@ -339,7 +339,185 @@ class MolecularSystem:
             print(f"Error evaluating energy: {e}")
             # Return high penalty for invalid geometries
             return 1e6
-    
+
+
+    def evaluate_cartesian_gradient(self, coords: np.ndarray) -> np.ndarray:
+        """
+        Evaluate gradient for given Cartesian coordinates.
+        
+        Parameters
+        ----------
+        coords : np.ndarray
+            Cartesian coordinates to evaluate (Angstroms)
+        """
+        try:
+            # Convert to OpenMM units (nm)
+            positions = coords * 0.1 * unit.nanometer
+            
+            # Get or create cached simulation and update positions
+            simulation = self._get_or_create_simulation(positions)
+            
+            # Evaluate gradient
+            state = simulation.context.getState(getForces=True)
+            gradient = state.getForces(asNumpy=True).value_in_unit(unit.kilocalories_per_mole / unit.angstrom)
+            return gradient
+        except Exception as e:
+            print(f"Error evaluating gradient: {e}")
+            return np.zeros(len(coords))
+
+
+    def evaluate_dofs_gradient(self, zmatrix: List[Dict], dof_indices: List[Tuple[int, int]]) -> np.ndarray:
+        """
+        Evaluate analytical gradient for given degrees of freedom.
+        
+        Converts Cartesian gradients (forces) to Z-matrix internal coordinate gradients
+        using the chain rule: ∂E/∂q = (∂E/∂x) · (∂x/∂q)
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Z-matrix representation
+        dof_indices : List[Tuple[int, int]]
+            List of (atom_idx, dof_type) tuples where:
+            - dof_type = 0: bond_length
+            - dof_type = 1: angle
+            - dof_type = 2: dihedral (or second angle if chirality != 0)
+        
+        Returns
+        -------
+        np.ndarray
+            Gradient with respect to each DOF (shape: [len(dof_indices)])
+        """
+        try:
+            # Convert to Cartesian
+            coords = zmatrix_to_cartesian(zmatrix)
+
+            # Compute forces in Cartesian space (negative gradient)
+            gradient_cartesian = self.evaluate_cartesian_gradient(coords)  # Shape: [N_atoms, 3]
+
+            # Initialize DOF gradient
+            gradient_dofs = np.zeros(len(dof_indices))
+            dof_names = ['bond_length', 'angle', 'dihedral']
+            epsilon = 1e-8  # Numerical stability threshold
+            
+            for k, (atom_idx, dof_type) in enumerate(dof_indices):
+                atom = zmatrix[atom_idx]
+                
+                if dof_type == 0:  # Bond length
+                    bond_ref = atom['bond_ref']
+                    bond_vec = coords[atom_idx] - coords[bond_ref]
+                    bond_length = np.linalg.norm(bond_vec)
+                    
+                    if bond_length > epsilon:
+                        bond_unit = bond_vec / bond_length
+                        # Gradient is projection of force onto bond direction
+                        gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], bond_unit)
+                    else:
+                        gradient_dofs[k] = 0.0
+                        
+                elif dof_type == 1:  # Angle
+                    bond_ref = atom['bond_ref']
+                    angle_ref = atom['angle_ref']
+                    
+                    # Bond vector (from angle_ref to bond_ref)
+                    bond_vec = coords[bond_ref] - coords[angle_ref]
+                    bond_length = np.linalg.norm(bond_vec)
+                    
+                    if bond_length > epsilon:
+                        bond_unit = bond_vec / bond_length
+                        
+                        # Vector from bond_ref to atom
+                        vec_to_atom = coords[atom_idx] - coords[bond_ref]
+                        
+                        # Component parallel to bond
+                        parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
+                        # Component perpendicular to bond (in rotation plane)
+                        perpendicular = vec_to_atom - parallel
+                        perp_length = np.linalg.norm(perpendicular)
+                        
+                        if perp_length > epsilon:
+                            perp_unit = perpendicular / perp_length
+                            # Gradient is force component in perpendicular direction
+                            # scaled by distance from bond_ref (for angle in radians)
+                            # Convert to degrees: multiply by 180/π
+                            gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], perp_unit) * perp_length * (np.pi / 180.0)
+                        else:
+                            gradient_dofs[k] = 0.0
+                    else:
+                        gradient_dofs[k] = 0.0
+                        
+                elif dof_type == 2:  # Dihedral or second angle
+                    chirality = atom.get('chirality', 0)
+                    
+                    if chirality != 0:
+                        # Treat as second angle (similar to angle case)
+                        bond_ref = atom['bond_ref']
+                        dihedral_ref = atom['dihedral_ref']
+                        
+                        # Bond vector (from dihedral_ref to bond_ref)
+                        bond_vec = coords[bond_ref] - coords[dihedral_ref]
+                        bond_length = np.linalg.norm(bond_vec)
+                        
+                        if bond_length > epsilon:
+                            bond_unit = bond_vec / bond_length
+                            
+                            # Vector from bond_ref to atom
+                            vec_to_atom = coords[atom_idx] - coords[bond_ref]
+                            
+                            # Component perpendicular to bond
+                            parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
+                            perpendicular = vec_to_atom - parallel
+                            perp_length = np.linalg.norm(perpendicular)
+                            
+                            if perp_length > epsilon:
+                                perp_unit = perpendicular / perp_length
+                                gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], perp_unit) * perp_length * (np.pi / 180.0)
+                            else:
+                                gradient_dofs[k] = 0.0
+                        else:
+                            gradient_dofs[k] = 0.0
+                    else:
+                        # True dihedral
+                        bond_ref = atom['bond_ref']
+                        angle_ref = atom['angle_ref']
+                        dihedral_ref = atom['dihedral_ref']
+                        
+                        # Bond axis (from bond_ref to angle_ref)
+                        bond_vec = coords[angle_ref] - coords[bond_ref]
+                        bond_length = np.linalg.norm(bond_vec)
+                        
+                        if bond_length > epsilon:
+                            bond_unit = bond_vec / bond_length
+                            
+                            # Vector from bond_ref to atom
+                            vec_to_atom = coords[atom_idx] - coords[bond_ref]
+                            
+                            # Rotation axis is perpendicular to both bond and vec_to_atom
+                            rotation_axis = np.cross(bond_unit, vec_to_atom)
+                            rot_length = np.linalg.norm(rotation_axis)
+                            
+                            if rot_length > epsilon:
+                                rotation_axis = rotation_axis / rot_length
+                                
+                                # Distance from rotation axis
+                                parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
+                                perpendicular = vec_to_atom - parallel
+                                distance_from_axis = np.linalg.norm(perpendicular)
+                                
+                                # Gradient is force component in rotation direction
+                                # scaled by distance from axis (for dihedral in radians)
+                                # Convert to degrees: multiply by 180/π
+                                gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], rotation_axis) * distance_from_axis * (np.pi / 180.0)
+                            else:
+                                gradient_dofs[k] = 0.0
+                        else:
+                            gradient_dofs[k] = 0.0
+
+            return gradient_dofs
+        except Exception as e:
+            print(f"Error evaluating degrees of freedom gradient: {e}")
+            return np.zeros(len(dof_indices))
+
 
     def minimize_energy(self, zmatrix: List[Dict], max_iterations: int = 100) -> Tuple[np.ndarray, float]:
         """
@@ -387,7 +565,7 @@ class MolecularSystem:
                                             dof_indices: List[Tuple[int,int]],
                                             dof_bounds: Optional[List[Tuple[float, float]]] = None,
                                             max_iterations: int = 100,
-                                            method: str = 'L-BFGS-B', #'Powell', 
+                                            method: str = 'L-BFGS-B', 
                                             verbose: bool = False,
                                             trajectory_file: Optional[str] = None) -> Tuple[List[Dict], float, Dict[str, Any]]:
         """
@@ -448,11 +626,12 @@ class MolecularSystem:
                 # Convert to Cartesian and evaluate energy
                 coords = zmatrix_to_cartesian(updated_zmatrix)
                 energy = self.evaluate_energy(coords)
+                gradient = self.evaluate_dofs_gradient(updated_zmatrix, dof_indices)
 
-                return energy
+                return energy, gradient
             except Exception as e:
-                # Return high penalty on failure
-                return 1e6
+                print(f"  Warning: Failed to evaluate energy at iteration {iteration_counter[0]}: {e}")
+                return 1e6, np.zeros(len(dof_indices))
         
         def callback(dofs: np.ndarray):
             """Callback function called after each scipy.optimize.minimize iteration."""
@@ -466,7 +645,7 @@ class MolecularSystem:
                     elements = [current_zmatrix[idx]['element'] for idx in range(len(current_zmatrix))]
                     
                     # Evaluate energy for comment
-                    energy = objective(dofs)
+                    energy, gradient = objective(dofs)
                     
                     # Write to trajectory (append mode)
                     print(f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
@@ -485,10 +664,9 @@ class MolecularSystem:
         
         try:
             # Initial energy
-            initial_energy = objective(initial_dofs)
+            initial_energy, intial_grad = objective(initial_dofs)
             
             if verbose:
-                print(f"  Initial dofs: {initial_dofs}")
                 print(f"  Initial energy: {initial_energy:.4f} kcal/mol")
                 if trajectory_file:
                     print(f"  Writing trajectory to: {trajectory_file}")
@@ -530,32 +708,34 @@ class MolecularSystem:
                         raise ValueError(f"Unknown degree of freedom type: {dof_type}")
 
                 if verbose:
-                    print(f"Bounds for iteration {i+1}:")
+                    print(f"Bounds for iteration {i+1} (number of dofs: {len(dof_indices)}):")
                     for j, dof_index in enumerate(dof_indices):
                         dof_zmat_line = zmatrix[dof_index[0]]
                         txt = ""
                         if (dof_index[1] == 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
                         elif (dof_index[1] == 1):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
                         elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] != 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
                         elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] == 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f}"
+                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
                         print(txt)
             
                 # Optimize dofs
                 result = minimize(
                     objective,
                     current_dofs,
+                    jac=True,
                     method=method,
                     bounds=dof_bounds,
                     # Only to print trajectory
-                    callback=callback if trajectory_file else None,
+                    #callback=callback if trajectory_file else None,
                     options={
                         'maxiter': max_iterations,
-                        'ftol': 0.05,    # Function tolerance (kcal/mol)
-                        'xtol': 0.01,    # Tolerance for changes in the variable
+                        'ftol': 0.0000000000005,    # Function tolerance (kcal/mol)
+                        #ForPowell: 'xtol': 0.01,    # Tolerance for changes in the variable
+                        'gtol': 0.01,    # Gradient tolerance (kcal/mol/Å)
                         'disp': verbose
                     }
                 )
@@ -565,12 +745,35 @@ class MolecularSystem:
                 print(f"  Final DOFs: {result.x}")
                 print(f"  Changed DOFs: {result.x - initial_dofs}")
                 print(f"  Optimization: nfev={result.nfev}, nit={result.nit}, "
-                      f"success={result.success}")
-                print(f"  Final energy: {result.fun:.4f} kcal/mol")
-                print(f"  Improvement: {initial_energy - result.fun:.4f} kcal/mol")
+                      f"success={result.success}, message={result.message}")
+                # Handle case where result.fun might be a tuple, array, or scalar
+                try:
+                    if isinstance(result.fun, (tuple, list)):
+                        final_energy = float(result.fun[0]) if len(result.fun) > 0 else 0.0
+                    elif hasattr(result.fun, '__float__'):
+                        final_energy = float(result.fun)
+                    else:
+                        final_energy = result.fun
+                    print(f"  Final energy: {final_energy:.4f} kcal/mol")
+                    improvement = initial_energy - final_energy
+                    print(f"  Improvement: {improvement:.4f} kcal/mol")
+                except (TypeError, ValueError, IndexError) as e:
+                    print(f"  Final energy: {result.fun} (could not format)")
+                    print(f"  Improvement: N/A")
             
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
+            
+            # Safely extract final energy (handle tuple, array, or scalar)
+            try:
+                if isinstance(result.fun, (tuple, list)):
+                    final_energy_value = float(result.fun[0]) if len(result.fun) > 0 else 0.0
+                elif hasattr(result.fun, '__float__'):
+                    final_energy_value = float(result.fun)
+                else:
+                    final_energy_value = result.fun
+            except (TypeError, ValueError, IndexError):
+                final_energy_value = result.fun  # Fallback to original value
             
             # Prepare info dict
             info = {
