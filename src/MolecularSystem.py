@@ -683,6 +683,7 @@ class MolecularSystem:
                     # Single coefficient set, wrap it in a list
                     dof_bound_coeffs_sequence = [dof_bounds]
 
+            gtol = 0.01
             current_dofs = initial_dofs.copy()
             for i in range(len(dof_bound_coeffs_sequence)):
                 dof_bound_coeffs = dof_bound_coeffs_sequence[i]
@@ -723,29 +724,89 @@ class MolecularSystem:
                         print(txt)
             
                 # Optimize dofs
-                result = minimize(
-                    objective,
-                    current_dofs,
-                    jac=True,
-                    method=method,
-                    bounds=dof_bounds,
-                    # Only to print trajectory
-                    #callback=callback if trajectory_file else None,
-                    options={
-                        'maxiter': max_iterations,
-                        'ftol': 0.0000000000005,    # Function tolerance (kcal/mol)
-                        #ForPowell: 'xtol': 0.01,    # Tolerance for changes in the variable
-                        'gtol': 0.01,    # Gradient tolerance (kcal/mol/Å)
-                        'disp': verbose
-                    }
-                )
+                # Use iterative optimization to prevent premature convergence
+                # Continue optimizing until gradient is small enough, regardless of function tolerance
+                total_iterations_used = 0
+                result = None
+                converged_by_gradient = False
+                
+                while total_iterations_used < max_iterations and not converged_by_gradient:
+                    iterations_remaining = max_iterations - total_iterations_used
+                    
+                    # Set ftol to a very small value to minimize function tolerance checks
+                    # Use iterative restarts to ensure gradient-based convergence
+                    result = minimize(
+                        objective,
+                        current_dofs,
+                        jac=True,
+                        method=method,
+                        bounds=dof_bounds,
+                        # Only to print trajectory
+                        #callback=callback if trajectory_file else None,
+                        options={
+                            'maxiter': iterations_remaining,
+                            'ftol': 0,  # Very small value to minimize function tolerance impact
+                                            # (prevents "RELATIVE REDUCTION OF F <= FACTR*EPSMCH" when gradient is still large)
+                            #ForPowell: 'xtol': 0.01,    # Tolerance for changes in the variable
+                            'gtol': gtol,    # Gradient tolerance (kcal/mol/Å) - primary convergence criterion
+                            'disp': verbose and total_iterations_used == 0  # Only verbose on first iteration
+                        }
+                    )
+                    
+                    total_iterations_used += result.nit
+                    current_dofs = result.x.copy()
+                    
+                    # Check gradient to see if we've actually converged
+                    energy_check, gradient_check = objective(result.x)
+                    gradient_norm_check = np.linalg.norm(gradient_check)
+                    max_gradient_check = np.max(np.abs(gradient_check))
+                    
+                    # Check if we've converged by gradient
+                    if gradient_norm_check <= gtol and max_gradient_check <= gtol:
+                        converged_by_gradient = True
+                        if verbose and total_iterations_used > result.nit:
+                            print(f"  Converged by gradient after {total_iterations_used} total iterations")
+                    # If stopped due to function tolerance but gradient is still large, continue
+                    elif ("RELATIVE REDUCTION" in str(result.message) and 
+                          (gradient_norm_check > gtol or max_gradient_check > gtol) and
+                          total_iterations_used < max_iterations):
+                        if verbose:
+                            print(f"  Optimization stopped by function tolerance (iter {total_iterations_used}/{max_iterations}), "
+                                  f"but gradient still large (norm: {gradient_norm_check:.4f}, max: {max_gradient_check:.4f}). Continuing...")
+                    else:
+                        # Stopped for other reason (max iterations, gradient convergence, etc.)
+                        break
+                
                 current_dofs = result.x.copy()
             
             if verbose:
+                energy, gradient = objective(result.x)
                 print(f"  Final DOFs: {result.x}")
+                for j, dof_index in enumerate(dof_indices):
+                    dof_zmat_line = zmatrix[dof_index[0]]
+                    txt = ""
+                    if (dof_index[1] == 0):
+                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} (gradient: {gradient[j]:.4f})"
+                    elif (dof_index[1] == 1):
+                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} (gradient: {gradient[j]:.4f})"
+                    elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] != 0):
+                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) (gradient: {gradient[j]:.4f})"
+                    elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] == 0):
+                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) (gradient: {gradient[j]:.4f})"
+                    print(txt)
                 print(f"  Changed DOFs: {result.x - initial_dofs}")
                 print(f"  Optimization: nfev={result.nfev}, nit={result.nit}, "
                       f"success={result.success}, message={result.message}")
+                
+                # Check gradient norm to verify actual convergence
+                gradient_norm = np.linalg.norm(gradient)
+                max_gradient = np.max(np.abs(gradient))
+                if gradient_norm > gtol or max_gradient > gtol:
+                    print(f"  Warning: Gradient norm ({gradient_norm:.4f}) or max gradient ({max_gradient:.4f}) "
+                          f"exceeds tolerance {gtol}. Optimization may not have converged properly.")
+                    if "RELATIVE REDUCTION" in str(result.message):
+                        print(f"  Note: Convergence was triggered by function tolerance, not gradient tolerance.")
+                
                 # Handle case where result.fun might be a tuple, array, or scalar
                 try:
                     if isinstance(result.fun, (tuple, list)):
@@ -923,7 +984,7 @@ class MolecularSystem:
                 options={
                     'maxiter': max_iterations,
                     'ftol': 0.05,    # Function tolerance (kcal/mol)
-                    'xtol': 0.01,    # Tolerance for changes in the variables (degrees)
+                    'xtol': 0.1,    # Tolerance for changes in the variables (degrees)
                     'disp': False
                 }
             )

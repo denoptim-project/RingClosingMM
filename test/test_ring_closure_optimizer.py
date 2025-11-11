@@ -688,21 +688,17 @@ class TestRingClosureOptimizerDOFMethods(unittest.TestCase):
         ]
         
         rotatable_indices = [9, 4]  # 0-based indices in zmatrix
-        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, zmatrix)
         
-        # Define expected DOF indices based on Z-matrix structure
-        # Format: (atom_index, dof_type) where dof_type is 1=angle_ref, 2=dihedral_ref
+        # When rc_critical_rotatable_indeces is empty, only torsions (dihedrals) are returned
+        # Format: (atom_index, dof_type) where dof_type is 2=dihedral_ref
         # For rotatable_indices [9, 4] (atoms with id 9 and 4):
-        #   - Atom 9 (id 9): bond_ref=0, angle_ref=1
-        #   - Atom 4 (id 4): bond_ref=3, angle_ref=2
+        #   - Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+        #   - Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF
         expected_dof_indices = [
-            (2, 1),   # Atom 2 (id 2): bond_ref=1, angle_ref=0 matches atom 9's refs (reversed)
-            (3, 1),   # Atom 3 (id 3): bond_ref=2, angle_ref=1 matches atom 9's angle_ref
-            (4, 1),   # Atom 4 (id 4): bond_ref=3, angle_ref=2 - angle DOF
-            (4, 2),   # Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF 
-            (7, 1),   # Atom 7 (id 7): bond_ref=1, angle_ref=0 matches atom 9's refs (chirality=1)
-            (9, 1),   # Atom 9 (id 9): bond_ref=0, angle_ref=1 - angle DOF
-            (9, 2)    # Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+            (9, 2),   # Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+            (4, 2)    # Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF
         ]
         
         # Verify result matches expected
@@ -728,7 +724,8 @@ class TestRingClosureOptimizerDOFMethods(unittest.TestCase):
         ]
         
         rotatable_indices = []
-        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, zmatrix)
         
         # Should return empty list
         self.assertIsInstance(dof_indices, list)
@@ -746,7 +743,8 @@ class TestRingClosureOptimizerDOFMethods(unittest.TestCase):
         ]
         
         rotatable_indices = [3]  # Only atom 3
-        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, zmatrix)
         
         # Should find at least one DOF
         self.assertIsInstance(dof_indices, list)
@@ -770,11 +768,13 @@ class TestRingClosureOptimizerDOFMethods(unittest.TestCase):
         ]
         
         rotatable_indices = [4]  # Atom with chirality=0
-        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, zmatrix)
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        dof_indices = RingClosureOptimizer._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, zmatrix)
         
+        # When rc_critical_rotatable_indeces is empty, only torsions (dihedrals) are returned
         self.assertIsInstance(dof_indices, list)
-        self.assertEqual(len(dof_indices), 4)
-        self.assertEqual(sorted(dof_indices), sorted([(2, 1), (3, 1), (4, 1), (4, 2)]))
+        self.assertEqual(len(dof_indices), 1)
+        self.assertEqual(sorted(dof_indices), sorted([(4, 2)]))
 
 
 class TestLocalRefinementOptimizer(unittest.TestCase):
@@ -861,7 +861,6 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             population_size=5,
             generations=3,
             enable_smoothing_refinement=False,
-            enable_cartesian_refinement=False,
             verbose=False
         )
         
@@ -889,11 +888,9 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             population_size=5,
             generations=2,
             enable_smoothing_refinement=True,
-            enable_cartesian_refinement=True,
             refinement_top_n=1,
             smoothing_sequence=[10.0, 0.0],
             torsional_iterations=5,
-            cartesian_iterations=5,
             verbose=False
         )
         
@@ -922,7 +919,6 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             population_size=5,
             generations=2,
             enable_smoothing_refinement=False,
-            enable_cartesian_refinement=False,
             verbose=False
         )
         

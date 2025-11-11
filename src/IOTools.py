@@ -6,6 +6,7 @@ This module provides functions for reading and writing molecular structure files
 including INT (Z-matrix) and XYZ formats.
 """
 
+from os.path import basename
 import numpy as np
 from typing import List, Dict
 
@@ -201,7 +202,7 @@ def write_xyz_file(coords: np.ndarray, elements: List[str], filepath: str, comme
         f.write(f"{len(elements)}\n")
         f.write(f"{comment}\n")
         for element, coord in zip(elements, coords):
-            correctedElement = element.replace('Du', 'He').replace('ATP', 'Ne').replace('ATM', 'Ar')
+            correctedElement = element.replace('Du', '*').replace('ATP', '*').replace('ATM', '*')
             f.write(f"{correctedElement:<4s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
 
 
@@ -218,12 +219,24 @@ def save_structure_to_file(filepath: str, zmatrix: List[Dict], energy: float) ->
     energy : float
         Energy of the structure (default: None)
     """
+    filename_xyz = None;
+    filename_int = None;
     if filepath.endswith('.xyz'):
+        filename_xyz = filepath;
+    elif filepath.endswith('.int'):
+        filename_int = filepath;
+    else:
+        if '.' in basename(filepath):
+            raise ValueError(f"Unsupported file extension: {filepath}")
+        else:
+            filename_xyz = filepath + '.xyz';
+            filename_int = filepath + '.int';
+
+    if filename_xyz is not None:
         optimized_coords = zmatrix_to_cartesian(zmatrix)
         elements = [zmatrix[idx]['element'] for idx in range(len(zmatrix))]
-        comment = f"E={energy:.2f} kcal/mol" if energy is not None else "Optimized"
-        write_xyz_file(optimized_coords, elements, filepath, comment=comment)
-    elif filepath.endswith('.int'):
-        write_zmatrix_file(zmatrix, filepath)
-    else:
-        raise ValueError(f"Unsupported file extension: {filepath}")
+        comment = f"E={energy:.2f} kcal/mol" if energy is not None else ""
+        write_xyz_file(optimized_coords, elements, filename_xyz, comment=comment)
+
+    if filename_int is not None:
+        write_zmatrix_file(zmatrix, filename_int)

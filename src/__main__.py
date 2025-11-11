@@ -64,7 +64,6 @@ DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  # Exponential decay rate
 DEFAULT_REFINEMENT_TOP_N = 1
 DEFAULT_TORSIONAL_ITERATIONS = 50
 DEFAULT_ZMATRIX_ITERATIONS = 50
-DEFAULT_CARTESIAN_ITERATIONS = 500
 DEFAULT_REFINEMENT_CONVERGENCE = 0.01
 DEFAULT_SMOOTHING_SEQUENCE = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
 
@@ -156,8 +155,6 @@ def parse_arguments():
                           help='Disable smoothing-based torsional refinement')
     mem_group.add_argument('--no-zmatrix-refinement', action='store_true',
                           help='Disable Z-matrix space refinement')
-    mem_group.add_argument('--no-cartesian-refinement', action='store_true',
-                          help='Disable Cartesian space refinement')
     mem_group.add_argument('--refinement-top-n', type=int,
                           default=DEFAULT_REFINEMENT_TOP_N,
                           help='Number of top candidates to refine')
@@ -167,9 +164,6 @@ def parse_arguments():
     mem_group.add_argument('--zmatrix-iterations', type=int,
                           default=DEFAULT_ZMATRIX_ITERATIONS,
                           help='Iterations for Z-matrix space minimization')
-    mem_group.add_argument('--cartesian-iterations', type=int,
-                          default=DEFAULT_CARTESIAN_ITERATIONS,
-                          help='Iterations for Cartesian minimization')
     mem_group.add_argument('--refinement-convergence', type=float,
                           default=DEFAULT_REFINEMENT_CONVERGENCE,
                           help='Fitness improvement threshold for GA convergence')
@@ -189,7 +183,7 @@ def parse_arguments():
                                'Single value or sequence (e.g., 10.0 or 50.0 25.0 10.0 0.0). '
                                'No smoothing by default')
     min_group.add_argument('--minimize-iterations', type=int,
-                          default=DEFAULT_CARTESIAN_ITERATIONS,
+                          default=500,
                           help='Maximum iterations for minimization')
     
     # Server management options
@@ -418,13 +412,13 @@ def main():
             else:
                 # GA optimization mode - show GA parameters
                 enable_smoothing = not args.no_smoothing_refinement
-                enable_cartesian = not args.no_cartesian_refinement
+                enable_zmatrix = not args.no_zmatrix_refinement
                 
                 refinements = []
                 if enable_smoothing:
                     refinements.append("Smoothing")
-                if enable_cartesian:
-                    refinements.append("Cartesian")
+                if enable_zmatrix:
+                    refinements.append("Z-matrix")
                 algo_type = f"GA + {' + '.join(refinements)}" if refinements else "Pure GA"
                 
                 print(f"\nAlgorithm: {algo_type}")
@@ -439,14 +433,14 @@ def main():
                 if args.rcp_terms:
                     print(f"  Systematic sampling: {args.systematic_sampling_divisions} divisions for critical torsions")
                 
-                if enable_smoothing or enable_cartesian:
+                if enable_smoothing or enable_zmatrix:
                     print(f"\n  Refinement (after GA convergence):")
                     print(f"    Top N candidates: {args.refinement_top_n}")
                     if enable_smoothing:
                         print(f"    Smoothing: enabled ({args.torsional_iterations} iterations per step)")
                         print(f"      Sequence: {DEFAULT_SMOOTHING_SEQUENCE}")
-                    if enable_cartesian:
-                        print(f"    Cartesian: enabled ({args.cartesian_iterations} iterations)")
+                    if enable_zmatrix:
+                        print(f"    Z-matrix: enabled ({args.zmatrix_iterations} iterations)")
             
             if args.minimize or args.minimize_torsional:
                 print("\nMinimizing...")
@@ -509,12 +503,10 @@ def main():
                 convergence_interval=args.convergence_interval,
                 enable_smoothing_refinement=not args.no_smoothing_refinement,
                 enable_zmatrix_refinement=not args.no_zmatrix_refinement,
-                enable_cartesian_refinement=not args.no_cartesian_refinement,
                 refinement_top_n=args.refinement_top_n,
                 smoothing_sequence=None,  # Use default
                 torsional_iterations=args.torsional_iterations,
                 zmatrix_iterations=args.zmatrix_iterations,
-                cartesian_iterations=args.cartesian_iterations,
                 refinement_convergence=args.refinement_convergence,
                 systematic_sampling_divisions=args.systematic_sampling_divisions,
                 print_interval=args.print_interval,

@@ -39,6 +39,25 @@
             }
         },
         {
+            "name": "Python: MIN cyclic test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/__main__.py",
+            "args": [
+                "-i", "tomin.int",
+                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
+                "-c", "7", "39", "77", "35",
+                "-o", "min.xyz",
+                "--minimize-zmatrix"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
             "name": "Python: startserver",
             "type": "debugpy",
             "request": "launch",
@@ -226,6 +245,42 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Test: Gradient Methods Only",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_molecular_system.py::TestMolecularSystemGradient",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Compute Energy and Gradient",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/compute_energy_gradient.py",
+            "args": [
+                "examples/strained_ring_closure/complex_result.int",
+                "-v",
+                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
+                "-c", "7", "39", "77", "35",
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
