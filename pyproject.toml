@@ -52,6 +52,7 @@ dev = [
     "pytest>=6.0",
     "pytest-cov>=2.10",
     "flake8>=3.8",
+    "matplotlib>=3.3.0",
 ]
 
 # Documentation dependencies (if you add docs later)
