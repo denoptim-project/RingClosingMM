@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from RingClosureOptimizer import (
     Individual,
     GeneticAlgorithm,
-    LocalRefinementOptimizer,
     RingClosureOptimizer
 )
 from MolecularSystem import MolecularSystem
@@ -464,61 +463,6 @@ class TestGeneticAlgorithm(unittest.TestCase):
         self.assertAlmostEqual(stats['average'], 3.0)
 
 
-class TestLocalRefinementOptimizer(unittest.TestCase):
-    """Test LocalRefinementOptimizer class."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        self.test_dir = Path(__file__).parent / 'fixtures'
-        self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
-        self.test_int_file = self.test_dir / 'butane_like.int'
-    
-    def test_local_refinement_initialization(self):
-        """Test LocalRefinementOptimizer initialization."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        system = MolecularSystem.from_file(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rcp_terms=None
-        )
-        rotatable_indices = [3]
-        
-        local_opt = LocalRefinementOptimizer(system, rotatable_indices)
-        
-        self.assertEqual(local_opt.system, system)
-        self.assertEqual(local_opt.rotatable_indices, rotatable_indices)
-        self.assertIsNotNone(local_opt.converter)
-    
-    def test_refine_individual_cartesian(self):
-        """Test Cartesian refinement of individual."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        system = MolecularSystem.from_file(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rcp_terms=None
-        )
-        rotatable_indices = [3]
-        
-        local_opt = LocalRefinementOptimizer(system, rotatable_indices)
-        
-        # Create an individual
-        torsions = np.array([60.0])
-        individual = Individual(torsions, system.zmatrix)
-        
-        # Refine
-        refined = local_opt.refine_individual_in_Cartesian_space(
-            individual,
-            max_iterations=10
-        )
-        
-        self.assertIsInstance(refined, Individual)
-        self.assertIsNotNone(refined.energy)
-
-
 class TestRingClosureOptimizerOptimize(unittest.TestCase):
     """Test full optimization functionality."""
     
@@ -702,7 +646,6 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerUtilities))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerMinimize))
     suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithm))
-    suite.addTests(loader.loadTestsFromTestCase(TestLocalRefinementOptimizer))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerOptimize))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)

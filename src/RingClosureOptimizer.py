@@ -10,7 +10,6 @@ Classes:
     CoordinateConverter: Handles Z-matrix/Cartesian coordinate transformations
     Individual: Represents a single candidate solution with torsions and Z-matrix
     GeneticAlgorithm: Implements genetic algorithm operations (global search of the torsional space)
-    LocalRefinementOptimizer: Coordinates post-processing local refinement
     RingClosureOptimizer: Main optimizer coordinating all components
     
 Example:
@@ -506,184 +505,6 @@ class GeneticAlgorithm:
 
 
 # =============================================================================
-# Local Refinement Optimizer (Post-Processing)
-# =============================================================================
-
-class LocalRefinementOptimizer:
-    """
-    Handles post-processing local refinement.
-    """
-    
-    def __init__(self, molecular_system: MolecularSystem, rotatable_indices: List[int]):
-        """
-        Initialize local refinement optimizer.
-        
-        Parameters
-        ----------
-        molecular_system : MolecularSystem
-            Molecular system for energy evaluation
-        rotatable_indices : List[int]
-            Indices of rotatable atoms
-        """
-        self.system = molecular_system
-        self.rotatable_indices = rotatable_indices
-        self.converter = CoordinateConverter()
-    
-    def refine_individual_in_torsional_space_with_smoothing(self, individual: Individual,
-                                         smoothing_sequence: List[float] = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0],
-                                         torsional_iterations: int = 50,
-                                         rotatable_indices: List[int] = None) -> Individual:
-        """
-        Refine an individual using smoothing algorithm with torsional optimization only.
-        
-        Performs a sequence of torsional optimizations with decreasing smoothing values.
-        
-        Parameters
-        ----------
-        individual : Individual
-            Individual to refine
-        smoothing_sequence : List[float]
-            Sequence of smoothing values (default: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0])
-        torsional_iterations : int
-            Maximum iterations for each torsional optimization step
-        rotatable_indices : List[int]
-            Indices of rotatable atoms
-        Returns
-        -------
-        Individual
-            Refined individual with updated zmatrix and fitness
-        """
-        try:
-            current_zmatrix = individual.zmatrix
-
-            # Torsional optimization with decreasing smoothing
-            for smoothing in smoothing_sequence:
-                self.system.setSmoothingParameter(smoothing)
-
-                refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_torsional_space(
-                    current_zmatrix,
-                    rotatable_indices,
-                    max_iterations=torsional_iterations,
-                    verbose=False
-                )
-                
-                if info['success']:
-                    current_zmatrix = refined_zmatrix
-            
-            # Extract refined torsions
-            refined_torsions = np.array([current_zmatrix[idx]['dihedral']
-                                        for idx in self.rotatable_indices])
-            
-            return Individual(refined_torsions, current_zmatrix, energy=refined_energy)
-        
-        except Exception as e:
-            # Return original individual on failure
-            print(f"Warning: Smoothing refinement failed!")
-            return individual.copy()
-
-    def refine_individual_in_zmatrix_space_with_smoothing(self, individual: Individual,
-                                          smoothing_sequence: List[float] = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0],
-                                          max_iterations: int = 500,
-                                          dof_indices: List[int] = None,
-                                          dof_bounds: Optional[List[Tuple[float, float]]] = [[0.02, 15.0, 10.0], [0.02, 5.0, 5.0]]) -> Individual:
-        """
-        Refine an individual using Z-matrix space minimization.
-        
-        Parameters
-        ----------
-        individual : Individual
-            Individual to refine    
-        smoothing_sequence : List[float]
-            Sequence of smoothing values (default: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0])
-        max_iterations : int
-            Maximum minimization iterations
-        dof_bounds : Optional[List[Tuple[float, float]]]
-            Bounds for the degrees of freedom. Example: [(0.0, 1.0), (0.0, 1.0)] means 
-            the first atom's first degree of freedom (distance) is between 0.0 and 1.0, 
-            and the second atom's third degree of freedom (torsion) is between 0.0 and 1.0.
-            None means no bounds.
-        Returns
-        -------
-        Individual
-            Refined individual
-        """
-        try:
-            current_zmatrix = individual.zmatrix
-
-            for smoothing in smoothing_sequence:
-                self.system.setSmoothingParameter(smoothing)
-
-                minimized_zmatrix, minimized_energy, info = self.system.minimize_energy_in_zmatrix_space(
-                    current_zmatrix,
-                    dof_indices = dof_indices,
-                    dof_bounds_per_type = dof_bounds_per_type,
-                    max_iterations=max_iterations,
-                    verbose = True  
-                )
-
-                if info['success']:
-                    current_zmatrix = minimized_zmatrix
-
-            # Extract refined torsions
-            refined_torsions = np.array([current_zmatrix[idx]['dihedral']
-                                        for idx in self.rotatable_indices])
-
-            return Individual(refined_torsions, current_zmatrix, energy=minimized_energy)
-        
-        except Exception as e:
-            # Return original individual on failure
-            print(e)
-            print(f"Warning: Z-matrix refinement failed!")
-            return individual.copy()
-            
-
-    def refine_individual_in_Cartesian_space(self, individual: Individual,
-                                              max_iterations: int = 500) -> Individual:
-        """
-        Refine an individual using Cartesian space minimization.
-        
-        Parameters
-        ----------
-        individual : Individual
-            Individual to refine
-        max_iterations : int
-            Maximum minimization iterations
-        
-        Returns
-        -------
-        Individual
-            Refined individual
-        """
-        try:
-            current_zmatrix = individual.zmatrix
-            
-            minimized_coords, minimized_energy = self.system.minimize_energy(
-                current_zmatrix,
-                max_iterations=max_iterations
-            )
-            
-            # Extract refined zmatrix and torsions from minimized coordinates
-            refined_zmatrix = self.converter.extract_zmatrix(
-                minimized_coords,
-                current_zmatrix
-            )
-            refined_torsions = self.converter.extract_torsions(
-                minimized_coords,
-                current_zmatrix,
-                self.rotatable_indices
-            )
-            
-            # Create refined individual
-            return Individual(refined_torsions, refined_zmatrix, energy=minimized_energy)
-        
-        except Exception as e:
-            # Return original individual on failure
-            print(e)
-            print(f"Warning: Cartesian refinement failed!")
-            return individual.copy()
-   
-
-# =============================================================================
 # Main Ring Closure Optimizer
 # =============================================================================
 
@@ -730,7 +551,6 @@ class RingClosureOptimizer:
         self.system.set_rotatable_indices(rotatable_indices)
         self.converter = CoordinateConverter()
         self.ga = None
-        self.local_refinement = None
         self.write_candidate_files = write_candidate_files
         self.top_candidates = None
     
@@ -965,13 +785,6 @@ class RingClosureOptimizer:
             topology=topology
         )
         
-        # Initialize local refinement optimizer if needed
-        if enable_smoothing_refinement or enable_zmatrix_refinement:
-            self.local_refinement = LocalRefinementOptimizer(
-                self.system,
-                self.system.rotatable_indices
-            )
-        
         # Evaluate initial ring closure score
         coords = zmatrix_to_cartesian(self.system.zmatrix)
         initial_zmatrix = self.system.zmatrix
@@ -1070,12 +883,23 @@ class RingClosureOptimizer:
                         initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
                         individual.energy = initial_energy
 
-                    refined_individual = self.local_refinement.refine_individual_in_torsional_space_with_smoothing(
-                        individual, 
-                        rotatable_indices=selected_rotatable_indices, 
-                        smoothing_sequence=smoothing_sequence, 
-                        torsional_iterations=torsional_iterations)
-
+                    # Refine individual in torsional space with smoothing
+                    current_zmatrix = individual.zmatrix
+                    for smoothing in smoothing_sequence:
+                        self.system.setSmoothingParameter(smoothing)
+                        refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_torsional_space(
+                            current_zmatrix,
+                            selected_rotatable_indices,
+                            max_iterations=torsional_iterations,
+                            verbose=False
+                        )
+                        if info['success']:
+                            current_zmatrix = refined_zmatrix
+                    
+                    # Extract refined torsions
+                    refined_torsions = np.array([current_zmatrix[idx]['dihedral']
+                                                for idx in self.system.rotatable_indices])
+                    refined_individual = Individual(refined_torsions, current_zmatrix, energy=refined_energy)
                     top_candidates[i] = refined_individual
                     refined_energy = refined_individual.energy
                     energy_improvement = refined_energy - initial_energy
@@ -1096,10 +920,23 @@ class RingClosureOptimizer:
                     if initial_energy is None:
                         initial_energy = self.system.evaluate_energy(zmatrix_to_cartesian(individual.zmatrix))
                         individual.energy = initial_energy
-                    refined_individual = self.local_refinement.refine_individual_in_zmatrix_space_with_smoothing(individual,
-                        smoothing_sequence = [0.0],
-                        dof_indices = self.system.dof_indices,
-                        max_iterations=zmatrix_iterations)
+                    # Refine individual in Z-matrix space with smoothing
+                    current_zmatrix = individual.zmatrix
+                    for smoothing in [0.0]:
+                        self.system.setSmoothingParameter(smoothing)
+                        refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_zmatrix_space(
+                            current_zmatrix,
+                            dof_indices=self.system.dof_indices,
+                            max_iterations=zmatrix_iterations,
+                            verbose=False
+                        )
+                        if info['success']:
+                            current_zmatrix = refined_zmatrix
+                    
+                    # Extract refined torsions
+                    refined_torsions = np.array([current_zmatrix[idx]['dihedral']
+                                                for idx in self.system.rotatable_indices])
+                    refined_individual = Individual(refined_torsions, current_zmatrix, energy=refined_energy)
                     top_candidates[i] = refined_individual
                     refined_energy = refined_individual.energy
                     energy_improvement = refined_energy - initial_energy
@@ -1114,7 +951,7 @@ class RingClosureOptimizer:
 
 
         print("\nBest individual:")
-        rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = self.system.calculate_rmsd(initial_zmatrix, top_candidates[0].zmatrix)
+        rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, top_candidates[0].zmatrix)
         print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
         print(f"RMSD angles: {rmsd_angles:.4f} deg")
         print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
@@ -1329,7 +1166,7 @@ class RingClosureOptimizer:
                 print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
                 print(f"Improvement:    {initial_energy - minimized_energy:.4f} kcal/mol")
                 print(f"Ring closure:   {ring_closure_score:.4f}")
-                rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = self.system.calculate_rmsd(initial_zmatrix, minimized_zmatrix)
+                rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
                 print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
                 print(f"RMSD angles: {rmsd_angles:.4f} deg")
                 print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")

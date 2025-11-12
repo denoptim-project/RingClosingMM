@@ -676,7 +676,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix, zmatrix)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix, zmatrix)
         
         self.assertAlmostEqual(rmsd_bonds, 0.0, places=10)
         self.assertAlmostEqual(rmsd_angles, 0.0, places=10)
@@ -705,7 +705,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Expected: sqrt(((1.54-1.50)^2 + (1.54-1.58)^2) / 2) = sqrt(0.0032 / 2) ≈ 0.04
         expected_rmsd_bonds = np.sqrt(((1.54-1.50)**2 + (1.54-1.58)**2) / 2)
@@ -740,7 +740,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Expected: sqrt(((109.47-120.0)^2 + (109.47-100.0)^2) / 2)
         angle_diffs = [(109.47-120.0), (109.47-100.0)]
@@ -777,7 +777,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Expected: sqrt((60.0 - 180.0)^2) = 120.0
         expected_rmsd_dihedrals = 120.0
@@ -813,7 +813,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # -179° and +179° are only 2° apart (crossing the boundary)
         # Difference: -179 - 179 = -358, wrapped to +2
@@ -850,7 +850,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Calculate expected values
         bond_diffs = [1.54-1.50, 1.54-1.58, 1.54-1.60]
@@ -889,7 +889,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Should have bond and angle RMSD, but dihedral RMSD should be 0.0 (no dihedrals)
         self.assertGreater(rmsd_bonds, 0.0)
@@ -918,7 +918,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
         )
         
         with self.assertRaises(ValueError) as cm:
-            system.calculate_rmsd(zmatrix1, zmatrix2)
+            MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         self.assertIn("same length", str(cm.exception))
     
@@ -954,7 +954,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Large dihedral change: sqrt((180^2 + 180^2)/2) ≈ 180
         expected_rmsd_dihedrals = 180.0
@@ -995,7 +995,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             rcp_terms=None
         )
         
-        rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(zmatrix1, zmatrix2)
+        rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(zmatrix1, zmatrix2)
         
         # Atom 4: proper dihedral changed from 60.0 to 180.0 (diff = -120.0)
         # expected_rmsd_dihedrals = 120.0 (only one proper dihedral)

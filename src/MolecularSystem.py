@@ -847,6 +847,7 @@ class MolecularSystem:
             return zmatrix, 1e6, info
     
 
+#TODO: delete this and related tests
     def ring_closure_penalty_quadratic(self, coords: np.ndarray, 
                                         target_distance: float = 1.54,
                                         verbose: bool = False) -> float:
@@ -911,8 +912,16 @@ class MolecularSystem:
         
         return total_penalty
 
-
     def ring_closure_score_exponential(self, coords: np.ndarray, 
+                                        tolerance: float = 0.001,
+                                        decay_rate: float = 1.0,
+                                        verbose: bool = False) -> float:
+        return self._ring_closure_score_exponential(coords, self.rcpterms, tolerance, decay_rate, verbose)
+    
+
+    @staticmethod
+    def _ring_closure_score_exponential(coords: np.ndarray, 
+                                        rcp_terms: List[Tuple[int, int]],
                                         tolerance: float = 0.001,
                                         decay_rate: float = 1.0,
                                         verbose: bool = False) -> float:
@@ -965,7 +974,7 @@ class MolecularSystem:
         - RCP 3: exp(-1.0 * (5.0-1.54)) = exp(-3.46) ≈ 0.031
         Average score = (1.000 + 0.631 + 0.031) / 3 ≈ 0.554
         """
-        if not self.rcpterms:
+        if not rcp_terms:
             return 1.0  # No constraints means "perfectly satisfied"
         
         total_score = 0.0
@@ -973,7 +982,7 @@ class MolecularSystem:
         if verbose:
             print(f"  RCP Exponential Score Analysis (tolerance: {tolerance:.2f} Å, decay_rate: {decay_rate:.2f}):")
         
-        for rcp_term in self.rcpterms:
+        for rcp_term in rcp_terms:
             distance = _calc_distance(coords[rcp_term[0]], coords[rcp_term[1]])
             
             if distance <= tolerance:
@@ -998,7 +1007,7 @@ class MolecularSystem:
                       f"dist={distance:6.3f} Å, score={score:6.4f}  {status}")
         
         # Return average score across all RCP terms
-        avg_score = total_score / len(self.rcpterms)
+        avg_score = total_score / len(rcp_terms)
         
         if verbose:
             print(f"  Average score: {avg_score:.4f} (range: [0.0, 1.0])")
@@ -1006,7 +1015,8 @@ class MolecularSystem:
         return avg_score
 
 
-    def calculate_rmsd(self, zmatrix1: List[Dict], zmatrix2: List[Dict]) -> Tuple[float, float, float]:
+    @staticmethod
+    def _calculate_rmsd(zmatrix1: List[Dict], zmatrix2: List[Dict]) -> Tuple[float, float, float]:
         """
         Calculate RMSD between two Z-matrices for bond lengths, angles, and dihedrals.
         
@@ -1041,7 +1051,7 @@ class MolecularSystem:
         
         Examples
         --------
-        >>> rmsd_bonds, rmsd_angles, rmsd_dihedrals = system.calculate_rmsd(initial_zmat, final_zmat)
+        >>> rmsd_bonds, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmat, final_zmat)
         >>> print(f"Bond RMSD: {rmsd_bonds:.4f} Å")
         >>> print(f"Angle RMSD: {rmsd_angles:.4f}°")
         >>> print(f"Dihedral RMSD: {rmsd_dihedrals:.4f}°")

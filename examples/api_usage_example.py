@@ -38,7 +38,7 @@ def example_1_simple_usage():
         population_size=20,
         generations=10,
         enable_smoothing_refinement=True,
-        enable_cartesian_refinement=True,
+        enable_zmatrix_refinement=True,
         verbose=True
     )
     
@@ -84,7 +84,7 @@ def example_2_custom_parameters():
         crossover_rate=0.8,
         elite_size=10,
         enable_smoothing_refinement=True,
-        enable_cartesian_refinement=True,
+        enable_zmatrix_refinement=True,
         refinement_top_n=5,
         verbose=False  # Quiet mode
     )
@@ -118,7 +118,7 @@ def example_3_pure_ga():
         population_size=30,
         generations=20,
         enable_smoothing_refinement=False,  # Disable refinement
-        enable_cartesian_refinement=False,
+        enable_zmatrix_refinement=False,
         verbose=False
     )
     

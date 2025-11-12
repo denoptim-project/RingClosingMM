@@ -70,8 +70,8 @@ optimizer = RingClosureOptimizer.from_files(...)
 result = optimizer.optimize(
     generations=30,
     population_size=20,
-    enable_smoothing_refinement=True,  # Split into smoothing and Cartesian
-    enable_cartesian_refinement=True
+    enable_smoothing_refinement=True,
+    enable_zmatrix_refinement=True
 )
 ```
 
@@ -84,10 +84,10 @@ result = optimizer.optimize(
     population_size=50,
     generations=100,
     enable_smoothing_refinement=True,
-    enable_cartesian_refinement=True,
+    enable_zmatrix_refinement=True,
     refinement_top_n=5,
-    torsional_iterations=1000,  # Renamed from refinement_iterations
-    cartesian_iterations=1000,
+    torsional_iterations=1000,
+    zmatrix_iterations=1000,
     refinement_convergence=0.001  # GA convergence threshold
 )
 ```
@@ -208,10 +208,10 @@ result = optimizer.optimize(
     population_size=100,
     generations=200,
     enable_smoothing_refinement=True,
-    enable_cartesian_refinement=True,
+    enable_zmatrix_refinement=True,
     refinement_top_n=10,
     torsional_iterations=2000,
-    cartesian_iterations=2000,
+    zmatrix_iterations=2000,
     refinement_convergence=0.0001
 )
 ```
@@ -224,7 +224,35 @@ result = optimizer.optimize(
     population_size=10,
     generations=5,
     enable_smoothing_refinement=False,
-    enable_cartesian_refinement=False
+    enable_zmatrix_refinement=False
+)
+```
+
+### Standalone Minimization
+
+For single-structure energy minimization (without GA):
+
+```python
+# Minimize in Z-matrix space (default)
+result = optimizer.minimize(
+    space_type='zmatrix',
+    smoothing=[50.0, 25.0, 10.0, 0.0],
+    max_iterations=500,
+    gradient_tolerance=0.01,
+    verbose=True
+)
+
+# Minimize in torsional space only
+result = optimizer.minimize(
+    space_type='torsional',
+    smoothing=10.0,
+    max_iterations=100
+)
+
+# Minimize in Cartesian space
+result = optimizer.minimize(
+    space_type='Cartesian',
+    max_iterations=1000
 )
 ```
 

@@ -4,7 +4,7 @@ set -e  # Exit on error
 
 rm -f minimized_torsional.xyz torsional.log
 
-python ../../src/__main__.py -i test.int -c 7 39 77 35 -r 1 2 5 31 31 32 32 35 35 40 35 41 32 36 32 37 --minimize-torsional --minimize-smoothing 5.0 2.5 1.0 0.0 --minimize-iterations 100 -o minimized_torsional.xyz > torsional.log 2>&1
+python ../../src/__main__.py -i test.int -c 7 39 77 35 -r 1 2 5 31 31 32 32 35 35 40 35 41 32 36 32 37 --minimize --space-type torsional --smoothing 5.0 2.5 1.0 0.0 --max-iterations 100 -o minimized_torsional.xyz > torsional.log 2>&1
 
 if [ ! -f minimized_torsional.xyz ]; then
     echo "Error: minimized_torsional.xyz not created"
@@ -26,7 +26,7 @@ echo "Torsional minimization completed successfully"
 
 rm -f minimized_cartesian.xyz cartesian.log
 
-python ../../src/__main__.py -i test.int -c 7 39 77 35 --minimize --minimize-smoothing 5.0 2.5 1.0 0.0 --minimize-iterations 500 -o minimized_cartesian.xyz > cartesian.log 2>&1
+python ../../src/__main__.py -i test.int -c 7 39 77 35 --minimize --space-type Cartesian --smoothing 5.0 2.5 1.0 0.0 --max-iterations 500 -o minimized_cartesian.xyz > cartesian.log 2>&1
 
 if [ ! -f minimized_cartesian.xyz ]; then
     echo "Error: minimized_cartesian.xyz not created"
