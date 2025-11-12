@@ -223,105 +223,6 @@ class TestIOToolsFileIO(unittest.TestCase):
                 os.unlink(temp_path)
 
 
-class TestIOToolsElementReplacement(unittest.TestCase):
-    """Test element replacement in XYZ file writing."""
-    
-    def test_write_xyz_with_dummy_atoms(self):
-        """Test that Du elements are replaced with He in XYZ files."""
-        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-        elements = ['Du', 'C']
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
-            temp_path = f.name
-        
-        try:
-            write_xyz_file(coords, elements, temp_path)
-            
-            with open(temp_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Check that Du was replaced with He
-            self.assertIn('He', lines[2])
-            self.assertNotIn('Du', lines[2])
-            
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-    
-    def test_write_xyz_with_atp_atoms(self):
-        """Test that ATP elements are replaced with Ne in XYZ files."""
-        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-        elements = ['ATP', 'H']
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
-            temp_path = f.name
-        
-        try:
-            write_xyz_file(coords, elements, temp_path)
-            
-            with open(temp_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Check that ATP was replaced with Ne
-            self.assertIn('Ne', lines[2])
-            self.assertNotIn('ATP', lines[2])
-            
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-    
-    def test_write_xyz_with_atm_atoms(self):
-        """Test that ATM elements are replaced with Ar in XYZ files."""
-        coords = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-        elements = ['ATM', 'H']
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
-            temp_path = f.name
-        
-        try:
-            write_xyz_file(coords, elements, temp_path)
-            
-            with open(temp_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Check that ATM was replaced with Ar
-            self.assertIn('Ar', lines[2])
-            self.assertNotIn('ATM', lines[2])
-            
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-    
-    def test_write_xyz_with_all_special_elements(self):
-        """Test replacement of all special element types."""
-        coords = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ])
-        elements = ['Du', 'ATP', 'ATM', 'C']
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
-            temp_path = f.name
-        
-        try:
-            write_xyz_file(coords, elements, temp_path)
-            
-            with open(temp_path, 'r') as f:
-                lines = f.readlines()
-            
-            # Check replacements
-            self.assertIn('He', lines[2])   # Du -> He
-            self.assertIn('Ne', lines[3])   # ATP -> Ne
-            self.assertIn('Ar', lines[4])   # ATM -> Ar
-            self.assertIn('C', lines[5])    # C stays C
-            
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
-
-
 class TestIOToolsBondModifications(unittest.TestCase):
     """Test bond addition and removal in INT files."""
     
@@ -548,7 +449,6 @@ def run_tests(verbosity=2):
     
     # Add all test classes
     suite.addTests(loader.loadTestsFromTestCase(TestIOToolsFileIO))
-    suite.addTests(loader.loadTestsFromTestCase(TestIOToolsElementReplacement))
     suite.addTests(loader.loadTestsFromTestCase(TestIOToolsBondModifications))
     suite.addTests(loader.loadTestsFromTestCase(TestIOToolsComplexZMatrices))
     suite.addTests(loader.loadTestsFromTestCase(TestIOToolsEdgeCases))

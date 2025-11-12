@@ -172,21 +172,23 @@ def parse_arguments():
     min_group = parser.add_argument_group('Standalone EnergyMinimization')
     min_group.add_argument('--minimize', action='store_true',
                           help='Perform single-structure minimization instead of GA optimization')
-    min_group.add_argument('--minimize-torsional', action='store_true',
-                          help='Perform torsional space minimization (automatically enables minimization)')
-    min_group.add_argument('--minimize-zmatrix', action='store_true',
-                          help='Perform Z-matrix space minimization (automatically enables minimization)')  
-    min_group.add_argument('--minimize-cartesian', action='store_true',
-                          help='Perform Cartesian space minimization (automatically enables minimization)')  
-    min_group.add_argument('--minimize-smoothing', type=float, nargs='+',
+    min_group.add_argument('--space-type', type=str, default='zmatrix',
+                          choices=['torsional', 'zmatrix', 'Cartesian'],
+                          help='Define the space type for minimization (default: zmatrix)')
+    min_group.add_argument('--smoothing', type=float, nargs='+',
                           help='Smoothing parameter(s) for minimization. '
                                'Single value or sequence (e.g., 10.0 or 50.0 25.0 10.0 0.0). '
                                'No smoothing by default')
-    min_group.add_argument('--minimize-iterations', type=int,
+    min_group.add_argument('--max-iterations', type=int,
                           default=500,
                           help='Maximum iterations for minimization')
-    
-    # Server management options
+    min_group.add_argument('--gradient-tolerance', type=float,
+                          default=0.01,
+                          help='Gradient tolerance convergecy critrion for minimization')
+    min_group.add_argument('--zmatrix-dof-bounds', nargs='+', type=float,
+                          help='Bounds for the three types of degrees of freedom in Z-matrix space. Example: 0.02 5.0 10.0 means that bond lengths are bound to change by up to 0.02 Å from the current value, angles and 5.0 degrees, and torsions by 10.0 degrees from the current value. Multiple triplets can be provided to request any stepwise application of bounds. Example: 0.02 5.0 10.0 0.01 3.0 8.0 means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is 0.02 20.0 180.0.')
+   
+   # Server management options
     server_group = parser.add_argument_group('Server Management')
     server_group.add_argument('--server-start', action='store_true',
                              help='Start the socket server (--host and --port optional, '
@@ -236,9 +238,7 @@ def parse_arguments():
         parser.error("RCP terms must be specified as pairs. "
                      f"Got {len(args.rcp_terms)} values, need even number.")
     
-    # If --minimize-torsional is set, automatically enable minimization
-    if (args.minimize_torsional or args.minimize_zmatrix or args.minimize_cartesian) and not args.minimize:
-        args.minimize = True
+    # Note: --space-type can be used with --minimize to specify the minimization space
     
     # Validate server operations
     server_ops = [args.server_start, args.server_stop, args.server_status]
@@ -345,6 +345,11 @@ def main():
                 traceback.print_exc()
             return 1
     
+    # Parse Z-matrix DOF bounds from list of floats to list of tuples
+    zmatrix_dof_bounds_per_type = None
+    if args.zmatrix_dof_bounds:
+        zmatrix_dof_bounds_per_type = [(args.zmatrix_dof_bounds[i], args.zmatrix_dof_bounds[i+1], args.zmatrix_dof_bounds[i+2]) for i in range(0, len(args.zmatrix_dof_bounds), 3)]
+
     # Parse rotatable bonds from list of integers to list of tuples (0-based)
     # Convert from 1-based (user input) to 0-based (internal representation)
     # If not provided, set to None (will be interpreted as "all bonds rotatable")
@@ -375,10 +380,6 @@ def main():
         print(f"Output: {args.output}")
         
     try:
-        # Create optimizer from files
-        if verbose:
-            print("\nInitializing molecular system...")
-        
         optimizer = RingClosureOptimizer.from_files(
             structure_file=args.input,
             forcefield_file=args.forcefield,
@@ -391,24 +392,26 @@ def main():
         if verbose:
             print(f"  Atoms: {len(optimizer.system.elements)}")
             print(f"  Z-matrix size: {len(optimizer.system.zmatrix)}")
-            print(f"  Rotatable dihedrals: {len(optimizer.rotatable_indices)}")
+            print(f"  Rotatable dihedrals: {len(optimizer.system.rotatable_indices)}")
             if args.rcp_terms:
                 print(f"  Ring closure tolerance: {args.ring_closure_tolerance} Å")
                 print(f"  Ring closure decay rate: {args.ring_closure_decay_rate}")
             
-            if args.minimize or args.minimize_torsional or args.minimize_zmatrix or args.minimize_cartesian:
+            if args.minimize:
                 # Minimization mode - show minimization parameters
                 print(f"\nMinimization Mode")
-                space_type = "torsional" if args.minimize_torsional else "zmatrix" if args.minimize_zmatrix else "Cartesian" if args.minimize_cartesian else "Unknown"
-                print(f"  Space: {space_type}")
-                if args.minimize_smoothing:
-                    if len(args.minimize_smoothing) > 1:
-                        print(f"  Smoothing sequence: {args.minimize_smoothing}")
+                print(f"  Space: {args.space_type}")
+                if args.smoothing:
+                    if len(args.smoothing) > 1:
+                        print(f"  Smoothing sequence: {args.smoothing}")
                     else:
-                        print(f"  Smoothing: {args.minimize_smoothing[0]:.2f}")
+                        print(f"  Smoothing: {args.smoothing[0]:.2f}")
                 else:
                     print(f"  Smoothing: 0.0 (none)")
-                print(f"  Max iterations: {args.minimize_iterations}")
+                print(f"  Max iterations: {args.max_iterations}")
+                print(f"  Gradient tolerance: {args.gradient_tolerance}")
+                if zmatrix_dof_bounds_per_type:
+                    print(f"  Z-matrix DOF bounds per type: {zmatrix_dof_bounds_per_type}")
             else:
                 # GA optimization mode - show GA parameters
                 enable_smoothing = not args.no_smoothing_refinement
@@ -442,46 +445,24 @@ def main():
                     if enable_zmatrix:
                         print(f"    Z-matrix: enabled ({args.zmatrix_iterations} iterations)")
             
-            if args.minimize or args.minimize_torsional:
-                print("\nMinimizing...")
-                print("-" * 70)
-            else:
-                print("\nOptimizing...")
-                print("-" * 70)
+            print("-" * 70)
         
         # Run minimization or optimization
         if args.minimize:
             # Parse smoothing parameter
             smoothing = None
-            if args.minimize_smoothing:
-                if len(args.minimize_smoothing) == 1:
-                    smoothing = args.minimize_smoothing[0]
+            if args.smoothing:
+                if len(args.smoothing) == 1:
+                    smoothing = args.smoothing[0]
                 else:
-                    smoothing = args.minimize_smoothing
-            if args.minimize_torsional:
-                # Run minimization
-                result = optimizer.minimize(
-                    max_iterations=args.minimize_iterations,
+                    smoothing = args.smoothing
+            
+            result = optimizer.minimize(
+                    max_iterations=args.max_iterations,
                     smoothing=smoothing,
-                    torsional_space=True,
-                    update_system=True,
-                    verbose=verbose
-                )
-            elif args.minimize_zmatrix:
-                # Run minimization
-                result = optimizer.minimize(
-                    max_iterations=args.minimize_iterations,
-                    smoothing=smoothing,
-                    zmat_space=True,
-                    update_system=True,
-                    verbose=verbose
-                )
-            elif args.minimize_cartesian:
-                # Run minimization
-                result = optimizer.minimize(
-                    max_iterations=args.minimize_iterations,
-                    cartesian_space=True,
-                    update_system=True,
+                    space_type=args.space_type,
+                    zmatrix_dof_bounds_per_type=zmatrix_dof_bounds_per_type,
+                    gradient_tolerance=args.gradient_tolerance,
                     verbose=verbose
                 )
 
@@ -541,7 +522,7 @@ def main():
                 if optimizer.top_candidates and len(optimizer.top_candidates) > 0:
                     best_individual = optimizer.top_candidates[0]
                     print(f"\nOptimal dihedrals:")
-                    for i, (idx, torsion) in enumerate(zip(optimizer.rotatable_indices, 
+                    for i, (idx, torsion) in enumerate(zip(optimizer.system.rotatable_indices, 
                                                            best_individual.torsions)):
                         atom = optimizer.system.zmatrix[idx]
                         element = optimizer.system.elements[idx]
@@ -554,7 +535,7 @@ def main():
             IOTools.save_structure_to_file(args.output, optimizer.top_candidates[0].zmatrix, optimizer.top_candidates[0].energy)
     
         if verbose:
-            structure_type = "Minimized" if (args.minimize or args.minimize_torsional) else "Optimized"
+            structure_type = "Minimized" if args.minimize else "Optimized"
             print(f"\n{structure_type} structure saved to: {args.output}")
             print("=" * 70)
         

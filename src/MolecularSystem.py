@@ -2,8 +2,8 @@
 """
 Molecular System Management
 
-This module provides the MolecularSystem class for managing OpenMM systems and
-molecular structures, including energy evaluation and minimization.
+This module provides the MolecularSystem class for creating and managing OpenMM systems and
+molecular manipulation (e.g., identification of rotatable bonds and related internal coordinates) and molecualr modeling, including energy evaluation and minimization.
 
 Classes:
     MolecularSystem: Manages OpenMM system, topology, and provides energy evaluation methods
@@ -14,6 +14,7 @@ from typing import List, Tuple, Dict, Optional, Any
 from pathlib import Path
 import copy
 
+from numpy._typing import _128Bit
 import openmm.unit as unit
 from openmm.app import Element, Simulation, Topology
 
@@ -150,6 +151,12 @@ class MolecularSystem:
         self.candidate_files_prefix = "candidate"
         self.ring_closure_threshold = ring_closure_threshold
         
+        # Rotatable indices and related fields (computed when rotatable_indices is set)
+        self.rotatable_indices: Optional[List[int]] = None
+        self.rc_critical_atoms: Optional[List[int]] = None
+        self.rc_critical_rotatable_indeces: Optional[List[int]] = None
+        self.dof_indices: Optional[List[Tuple[int, int]]] = None
+        
         # Cache simulations by smoothing parameter to avoid recreating them
         self._simulation_cache = {}
         self._current_smoothing = 0.0
@@ -158,6 +165,40 @@ class MolecularSystem:
     def elements(self) -> List[str]:
         """Get element symbols from Z-matrix."""
         return [atom['element'] for atom in self.zmatrix]
+    
+    def set_rotatable_indices(self, rotatable_indices: List[int]):
+        """
+        Set rotatable indices and compute dependent fields.
+        
+        This method sets the rotatable_indices and automatically computes:
+        - rc_critical_rotatable_indeces: Critical rotatable indices on RCP paths
+        - dof_indices: Degrees of freedom indices derived from rotatable indices
+        
+        Parameters
+        ----------
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix (0-based)
+        """
+        self.rotatable_indices = rotatable_indices
+        
+        # Compute critical rotatable indices
+        if self.rotatable_indices:
+            self.rc_critical_rotatable_indeces, self.rc_critical_atoms = self._identify_rc_critical_rotatable_indeces(
+                self.zmatrix, self.rcpterms, self.rotatable_indices, self.topology)
+        else:
+            self.rc_critical_rotatable_indeces = []
+            self.rc_critical_atoms = []
+        
+        # Compute DOF indices
+        if self.rotatable_indices:
+            self.dof_indices = self._get_dofs_from_rotatable_indeces(
+                self.rotatable_indices,
+                self.rc_critical_rotatable_indeces,
+                self.rc_critical_atoms,
+                self.zmatrix
+            )
+        else:
+            self.dof_indices = []
 
     @classmethod
     def from_file(cls, structure_file: str, forcefield_file: str,
@@ -208,7 +249,8 @@ class MolecularSystem:
         return cls.from_data(zmatrix, bonds_data, forcefield_file, rcp_terms, write_candidate_files, ring_closure_threshold, step_length)
     
     @classmethod
-    def from_data(cls, zmatrix: List[Dict], bonds_data: List[Tuple[int, int, int]], 
+    def from_data(cls, zmatrix: List[Dict], 
+                     bonds_data: List[Tuple[int, int, int]], 
                      forcefield_file: str,
                      rcp_terms: Optional[List[Tuple[int, int]]] = None,
                      write_candidate_files: bool = False,
@@ -341,184 +383,6 @@ class MolecularSystem:
             return 1e6
 
 
-    def evaluate_cartesian_gradient(self, coords: np.ndarray) -> np.ndarray:
-        """
-        Evaluate gradient for given Cartesian coordinates.
-        
-        Parameters
-        ----------
-        coords : np.ndarray
-            Cartesian coordinates to evaluate (Angstroms)
-        """
-        try:
-            # Convert to OpenMM units (nm)
-            positions = coords * 0.1 * unit.nanometer
-            
-            # Get or create cached simulation and update positions
-            simulation = self._get_or_create_simulation(positions)
-            
-            # Evaluate gradient
-            state = simulation.context.getState(getForces=True)
-            gradient = state.getForces(asNumpy=True).value_in_unit(unit.kilocalories_per_mole / unit.angstrom)
-            return gradient
-        except Exception as e:
-            print(f"Error evaluating gradient: {e}")
-            return np.zeros(len(coords))
-
-
-    def evaluate_dofs_gradient(self, zmatrix: List[Dict], dof_indices: List[Tuple[int, int]]) -> np.ndarray:
-        """
-        Evaluate analytical gradient for given degrees of freedom.
-        
-        Converts Cartesian gradients (forces) to Z-matrix internal coordinate gradients
-        using the chain rule: ∂E/∂q = (∂E/∂x) · (∂x/∂q)
-        
-        Parameters
-        ----------
-        zmatrix : List[Dict]
-            Z-matrix representation
-        dof_indices : List[Tuple[int, int]]
-            List of (atom_idx, dof_type) tuples where:
-            - dof_type = 0: bond_length
-            - dof_type = 1: angle
-            - dof_type = 2: dihedral (or second angle if chirality != 0)
-        
-        Returns
-        -------
-        np.ndarray
-            Gradient with respect to each DOF (shape: [len(dof_indices)])
-        """
-        try:
-            # Convert to Cartesian
-            coords = zmatrix_to_cartesian(zmatrix)
-
-            # Compute forces in Cartesian space (negative gradient)
-            gradient_cartesian = self.evaluate_cartesian_gradient(coords)  # Shape: [N_atoms, 3]
-
-            # Initialize DOF gradient
-            gradient_dofs = np.zeros(len(dof_indices))
-            dof_names = ['bond_length', 'angle', 'dihedral']
-            epsilon = 1e-8  # Numerical stability threshold
-            
-            for k, (atom_idx, dof_type) in enumerate(dof_indices):
-                atom = zmatrix[atom_idx]
-                
-                if dof_type == 0:  # Bond length
-                    bond_ref = atom['bond_ref']
-                    bond_vec = coords[atom_idx] - coords[bond_ref]
-                    bond_length = np.linalg.norm(bond_vec)
-                    
-                    if bond_length > epsilon:
-                        bond_unit = bond_vec / bond_length
-                        # Gradient is projection of force onto bond direction
-                        gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], bond_unit)
-                    else:
-                        gradient_dofs[k] = 0.0
-                        
-                elif dof_type == 1:  # Angle
-                    bond_ref = atom['bond_ref']
-                    angle_ref = atom['angle_ref']
-                    
-                    # Bond vector (from angle_ref to bond_ref)
-                    bond_vec = coords[bond_ref] - coords[angle_ref]
-                    bond_length = np.linalg.norm(bond_vec)
-                    
-                    if bond_length > epsilon:
-                        bond_unit = bond_vec / bond_length
-                        
-                        # Vector from bond_ref to atom
-                        vec_to_atom = coords[atom_idx] - coords[bond_ref]
-                        
-                        # Component parallel to bond
-                        parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
-                        # Component perpendicular to bond (in rotation plane)
-                        perpendicular = vec_to_atom - parallel
-                        perp_length = np.linalg.norm(perpendicular)
-                        
-                        if perp_length > epsilon:
-                            perp_unit = perpendicular / perp_length
-                            # Gradient is force component in perpendicular direction
-                            # scaled by distance from bond_ref (for angle in radians)
-                            # Convert to degrees: multiply by 180/π
-                            gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], perp_unit) * perp_length * (np.pi / 180.0)
-                        else:
-                            gradient_dofs[k] = 0.0
-                    else:
-                        gradient_dofs[k] = 0.0
-                        
-                elif dof_type == 2:  # Dihedral or second angle
-                    chirality = atom.get('chirality', 0)
-                    
-                    if chirality != 0:
-                        # Treat as second angle (similar to angle case)
-                        bond_ref = atom['bond_ref']
-                        dihedral_ref = atom['dihedral_ref']
-                        
-                        # Bond vector (from dihedral_ref to bond_ref)
-                        bond_vec = coords[bond_ref] - coords[dihedral_ref]
-                        bond_length = np.linalg.norm(bond_vec)
-                        
-                        if bond_length > epsilon:
-                            bond_unit = bond_vec / bond_length
-                            
-                            # Vector from bond_ref to atom
-                            vec_to_atom = coords[atom_idx] - coords[bond_ref]
-                            
-                            # Component perpendicular to bond
-                            parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
-                            perpendicular = vec_to_atom - parallel
-                            perp_length = np.linalg.norm(perpendicular)
-                            
-                            if perp_length > epsilon:
-                                perp_unit = perpendicular / perp_length
-                                gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], perp_unit) * perp_length * (np.pi / 180.0)
-                            else:
-                                gradient_dofs[k] = 0.0
-                        else:
-                            gradient_dofs[k] = 0.0
-                    else:
-                        # True dihedral
-                        bond_ref = atom['bond_ref']
-                        angle_ref = atom['angle_ref']
-                        dihedral_ref = atom['dihedral_ref']
-                        
-                        # Bond axis (from bond_ref to angle_ref)
-                        bond_vec = coords[angle_ref] - coords[bond_ref]
-                        bond_length = np.linalg.norm(bond_vec)
-                        
-                        if bond_length > epsilon:
-                            bond_unit = bond_vec / bond_length
-                            
-                            # Vector from bond_ref to atom
-                            vec_to_atom = coords[atom_idx] - coords[bond_ref]
-                            
-                            # Rotation axis is perpendicular to both bond and vec_to_atom
-                            rotation_axis = np.cross(bond_unit, vec_to_atom)
-                            rot_length = np.linalg.norm(rotation_axis)
-                            
-                            if rot_length > epsilon:
-                                rotation_axis = rotation_axis / rot_length
-                                
-                                # Distance from rotation axis
-                                parallel = np.dot(vec_to_atom, bond_unit) * bond_unit
-                                perpendicular = vec_to_atom - parallel
-                                distance_from_axis = np.linalg.norm(perpendicular)
-                                
-                                # Gradient is force component in rotation direction
-                                # scaled by distance from axis (for dihedral in radians)
-                                # Convert to degrees: multiply by 180/π
-                                gradient_dofs[k] = np.dot(gradient_cartesian[atom_idx], rotation_axis) * distance_from_axis * (np.pi / 180.0)
-                            else:
-                                gradient_dofs[k] = 0.0
-                        else:
-                            gradient_dofs[k] = 0.0
-
-            return gradient_dofs
-        except Exception as e:
-            print(f"Error evaluating degrees of freedom gradient: {e}")
-            return np.zeros(len(dof_indices))
-
-
     def minimize_energy(self, zmatrix: List[Dict], max_iterations: int = 100) -> Tuple[np.ndarray, float]:
         """
         Perform energy minimization and return optimized coordinates.
@@ -563,9 +427,9 @@ class MolecularSystem:
 
     def minimize_energy_in_zmatrix_space(self, zmatrix: List[Dict], 
                                             dof_indices: List[Tuple[int,int]],
-                                            dof_bounds: Optional[List[Tuple[float, float]]] = None,
+                                            dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[10.0, 180.0, 180.0]],
                                             max_iterations: int = 100,
-                                            method: str = 'L-BFGS-B', 
+                                            gradient_tolerance: float = 0.01,
                                             verbose: bool = False,
                                             trajectory_file: Optional[str] = None) -> Tuple[List[Dict], float, Dict[str, Any]]:
         """
@@ -583,11 +447,19 @@ class MolecularSystem:
             the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
             the first atom's first degree of freedom (distance) and the second atom's third 
             degree of freedom (torsion).
-        dof_bounds : List[Tuple[float, float]]
-            Bounds for the degrees of freedom. Example: [(0.0, 1.0), (0.0, 1.0)] means 
-            the first atom's first degree of freedom (distance) is between 0.0 and 1.0, 
-            and the second atom's third degree of freedom (torsion) is between 0.0 and 1.0.
-            None means no bounds.
+        dof_bounds_per_type : List[Tuple[float, float, float]]
+            Bounds for types of degrees of freedom. Example: [(0.1, 10.0, 20.0)] means 
+            the distances can be changed by up to 0.1, angles can be changed by up to 10.0, and torsions can be changed by up to 20.0. Multiple tuples can be provided to request any stepwise application of bounds. Example: [(0.1, 10.0, 20.0), (0.01, 1.0, 2.0)] means will make the minimization run with [0.1, 10.0, 20.0] for the first step and [0.01, 1.0, 2.0] for the second step.
+            Default is [(10.0, 180.0, 180.0)].
+        max_iterations : int
+            Maximum minimization iterations
+        gradient_tolerance : float
+            Gradient tolerance for minimization
+        verbose : bool
+            Print minimization progress
+        trajectory_file : Optional[str]
+            If provided, write optimization trajectory to this XYZ file (append mode).
+            Writes coordinates after each optimizer iteration (not every function evaluation).
             
         Returns
         -------
@@ -626,12 +498,11 @@ class MolecularSystem:
                 # Convert to Cartesian and evaluate energy
                 coords = zmatrix_to_cartesian(updated_zmatrix)
                 energy = self.evaluate_energy(coords)
-                gradient = self.evaluate_dofs_gradient(updated_zmatrix, dof_indices)
 
-                return energy, gradient
+                return energy
             except Exception as e:
                 print(f"  Warning: Failed to evaluate energy at iteration {iteration_counter[0]}: {e}")
-                return 1e6, np.zeros(len(dof_indices))
+                return 1e6
         
         def callback(dofs: np.ndarray):
             """Callback function called after each scipy.optimize.minimize iteration."""
@@ -645,7 +516,7 @@ class MolecularSystem:
                     elements = [current_zmatrix[idx]['element'] for idx in range(len(current_zmatrix))]
                     
                     # Evaluate energy for comment
-                    energy, gradient = objective(dofs)
+                    energy = objective(dofs)
                     
                     # Write to trajectory (append mode)
                     print(f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
@@ -658,36 +529,34 @@ class MolecularSystem:
                     )
                     iteration_counter[0] += 1
                 except Exception as e:
-                    # Don't fail optimization if trajectory writing fails
+                    # Don't fail minimization if trajectory writing fails
                     if verbose:
                         print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
         
-        try:
-            # Initial energy
-            initial_energy, intial_grad = objective(initial_dofs)
-            
-            if verbose:
-                print(f"  Initial energy: {initial_energy:.4f} kcal/mol")
-                if trajectory_file:
-                    print(f"  Writing trajectory to: {trajectory_file}")
-            
-            if dof_bounds is None:
-                dof_bound_coeffs_sequence = [[0.02, 20.0, 180.0], [0.02, 10.0, 10.0], [0.001, 5.0, 5.0]]
+        try:           
+            if dof_bounds_per_type is None:
+                dof_bound_coeffs_sequence = [[10.0, 180.0, 180.0]]
             else:
                 # Check if dof_bounds is already a sequence of coefficient sets
                 # by checking if the first element is itself a sequence (list/tuple)
-                if len(dof_bounds) > 0 and isinstance(dof_bounds[0], (list, tuple)):
+                if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
                     # Already a sequence of coefficient sets
-                    dof_bound_coeffs_sequence = dof_bounds
+                    dof_bound_coeffs_sequence = dof_bounds_per_type
                 else:
                     # Single coefficient set, wrap it in a list
-                    dof_bound_coeffs_sequence = [dof_bounds]
+                    dof_bound_coeffs_sequence = [dof_bounds_per_type]
 
-            gtol = 0.01
+            initial_energy = objective(initial_dofs)
+
             current_dofs = initial_dofs.copy()
+            current_energy = initial_energy
+            current_gradient = None
+            current_gradient_norm_check = None
+            current_max_gradient_check = None
+
             for i in range(len(dof_bound_coeffs_sequence)):
                 dof_bound_coeffs = dof_bound_coeffs_sequence[i]
-                dof_bounds = []
+                current_dof_bounds = []
                 for j,idx in enumerate(dof_indices):
                     zmat_idx = idx[0]
                     dof_idx = idx[1]
@@ -695,146 +564,55 @@ class MolecularSystem:
                     dof_type = dof_names[dof_idx]
                     if dof_type == 'bond_length':
                         deviation = dof_bound_coeffs[0]
-                        dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
                     elif (dof_type == 'angle') or (dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] != 0):
                         deviation = dof_bound_coeffs[1]
-                        dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
                     elif dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] == 0:
                         deviation = dof_bound_coeffs[2]
                         if deviation < 179.0:
-                            dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                            current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
                         else:
-                            dof_bounds.append((-180.0, 180.0))
+                            current_dof_bounds.append((-180.0, 180.0))
                     else:
                         raise ValueError(f"Unknown degree of freedom type: {dof_type}")
 
-                if verbose:
-                    print(f"Bounds for iteration {i+1} (number of dofs: {len(dof_indices)}):")
-                    for j, dof_index in enumerate(dof_indices):
-                        dof_zmat_line = zmatrix[dof_index[0]]
-                        txt = ""
-                        if (dof_index[1] == 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
-                        elif (dof_index[1] == 1):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
-                        elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] != 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
-                        elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] == 0):
-                            txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) bounds: {dof_bounds[j][0]:.4f}, {dof_bounds[j][1]:.4f} (gradient: {intial_grad[j]:.4f})"
-                        print(txt)
-            
-                # Optimize dofs
-                # Use iterative optimization to prevent premature convergence
-                # Continue optimizing until gradient is small enough, regardless of function tolerance
-                total_iterations_used = 0
-                result = None
-                converged_by_gradient = False
+                if verbose and i == 0:
+                    print(f"\n  Initial DOFs:")
+                    self.report_dof_info(zmatrix, dof_indices, current_dofs, current_dof_bounds, current_gradient) 
+
+                # Provide jac (gradient function) so scipy uses our numerical gradient
+                # with appropriate step size (h=0.1) instead of machine epsilon
+                result = minimize(
+                    objective,
+                    current_dofs,
+                    method='L-BFGS-B',
+                    # This triggers calcualtion of numerica lgradient, which is controlled by the 'eps' option below
+                    jac=None,  
+                    bounds=current_dof_bounds,
+                    callback=callback if trajectory_file else None,
+                    options={
+                        'maxiter': max_iterations,
+                        'ftol': 0,  # 0 disables the function tolerance
+                        'gtol': gradient_tolerance, 
+                        'disp': True,
+                        'eps': 0.1  # step size for numerical gradient calculation
+                    }
+                )
                 
-                while total_iterations_used < max_iterations and not converged_by_gradient:
-                    iterations_remaining = max_iterations - total_iterations_used
-                    
-                    # Set ftol to a very small value to minimize function tolerance checks
-                    # Use iterative restarts to ensure gradient-based convergence
-                    result = minimize(
-                        objective,
-                        current_dofs,
-                        jac=True,
-                        method=method,
-                        bounds=dof_bounds,
-                        # Only to print trajectory
-                        #callback=callback if trajectory_file else None,
-                        options={
-                            'maxiter': iterations_remaining,
-                            'ftol': 0,  # Very small value to minimize function tolerance impact
-                                            # (prevents "RELATIVE REDUCTION OF F <= FACTR*EPSMCH" when gradient is still large)
-                            #ForPowell: 'xtol': 0.01,    # Tolerance for changes in the variable
-                            'gtol': gtol,    # Gradient tolerance (kcal/mol/Å) - primary convergence criterion
-                            'disp': verbose and total_iterations_used == 0  # Only verbose on first iteration
-                        }
-                    )
-                    
-                    total_iterations_used += result.nit
-                    current_dofs = result.x.copy()
-                    
-                    # Check gradient to see if we've actually converged
-                    energy_check, gradient_check = objective(result.x)
-                    gradient_norm_check = np.linalg.norm(gradient_check)
-                    max_gradient_check = np.max(np.abs(gradient_check))
-                    
-                    # Check if we've converged by gradient
-                    if gradient_norm_check <= gtol and max_gradient_check <= gtol:
-                        converged_by_gradient = True
-                        if verbose and total_iterations_used > result.nit:
-                            print(f"  Converged by gradient after {total_iterations_used} total iterations")
-                    # If stopped due to function tolerance but gradient is still large, continue
-                    elif ("RELATIVE REDUCTION" in str(result.message) and 
-                          (gradient_norm_check > gtol or max_gradient_check > gtol) and
-                          total_iterations_used < max_iterations):
-                        if verbose:
-                            print(f"  Optimization stopped by function tolerance (iter {total_iterations_used}/{max_iterations}), "
-                                  f"but gradient still large (norm: {gradient_norm_check:.4f}, max: {max_gradient_check:.4f}). Continuing...")
-                    else:
-                        # Stopped for other reason (max iterations, gradient convergence, etc.)
-                        break
-                
+                # Update step info
                 current_dofs = result.x.copy()
-            
-            if verbose:
-                energy, gradient = objective(result.x)
-                print(f"  Final DOFs: {result.x}")
-                for j, dof_index in enumerate(dof_indices):
-                    dof_zmat_line = zmatrix[dof_index[0]]
-                    txt = ""
-                    if (dof_index[1] == 0):
-                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} (gradient: {gradient[j]:.4f})"
-                    elif (dof_index[1] == 1):
-                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} (gradient: {gradient[j]:.4f})"
-                    elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] != 0):
-                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) (gradient: {gradient[j]:.4f})"
-                    elif (dof_index[1] == 2 and zmatrix[dof_index[0]]['chirality'] == 0):
-                        txt = f"  DOF {dof_index}: {dof_zmat_line['id']+1} {dof_zmat_line['bond_ref']+1} {dof_zmat_line['angle_ref']+1} {dof_zmat_line['dihedral_ref']+1} ({dof_zmat_line['chirality']}) (gradient: {gradient[j]:.4f})"
-                    print(txt)
-                print(f"  Changed DOFs: {result.x - initial_dofs}")
-                print(f"  Optimization: nfev={result.nfev}, nit={result.nit}, "
-                      f"success={result.success}, message={result.message}")
+                current_energy = objective(result.x)
+                current_gradient = result.jac
+                current_gradient_norm_check = np.linalg.norm(current_gradient)
+                current_max_gradient_check = np.max(np.abs(current_gradient))
                 
-                # Check gradient norm to verify actual convergence
-                gradient_norm = np.linalg.norm(gradient)
-                max_gradient = np.max(np.abs(gradient))
-                if gradient_norm > gtol or max_gradient > gtol:
-                    print(f"  Warning: Gradient norm ({gradient_norm:.4f}) or max gradient ({max_gradient:.4f}) "
-                          f"exceeds tolerance {gtol}. Optimization may not have converged properly.")
-                    if "RELATIVE REDUCTION" in str(result.message):
-                        print(f"  Note: Convergence was triggered by function tolerance, not gradient tolerance.")
-                
-                # Handle case where result.fun might be a tuple, array, or scalar
-                try:
-                    if isinstance(result.fun, (tuple, list)):
-                        final_energy = float(result.fun[0]) if len(result.fun) > 0 else 0.0
-                    elif hasattr(result.fun, '__float__'):
-                        final_energy = float(result.fun)
-                    else:
-                        final_energy = result.fun
-                    print(f"  Final energy: {final_energy:.4f} kcal/mol")
-                    improvement = initial_energy - final_energy
-                    print(f"  Improvement: {improvement:.4f} kcal/mol")
-                except (TypeError, ValueError, IndexError) as e:
-                    print(f"  Final energy: {result.fun} (could not format)")
-                    print(f"  Improvement: N/A")
+                if verbose:
+                    print(f"\n  Iteration {i+1}: nfev={result.nfev} nit={result.nit} E={current_energy:.4f} kcal/mol Gnorm={current_gradient_norm_check:.4f} Gmax={current_max_gradient_check:.4f} message={result.message}")
+                    self.report_dof_info(zmatrix, dof_indices, current_dofs, current_dof_bounds, current_gradient)
             
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
-            
-            # Safely extract final energy (handle tuple, array, or scalar)
-            try:
-                if isinstance(result.fun, (tuple, list)):
-                    final_energy_value = float(result.fun[0]) if len(result.fun) > 0 else 0.0
-                elif hasattr(result.fun, '__float__'):
-                    final_energy_value = float(result.fun)
-                else:
-                    final_energy_value = result.fun
-            except (TypeError, ValueError, IndexError):
-                final_energy_value = result.fun  # Fallback to original value
             
             # Prepare info dict
             info = {
@@ -843,13 +621,13 @@ class MolecularSystem:
                 'nfev': result.nfev,
                 'nit': result.nit,
                 'initial_energy': initial_energy,
-                'final_energy': result.fun,
-                'improvement': initial_energy - result.fun,
+                'final_energy': current_energy,
+                'improvement': initial_energy - current_energy,
                 'initial_dofs': initial_dofs.copy(),
-                'final_torsions': result.x.copy()
+                'final_dofs': current_dofs.copy()
             }
             
-            return optimized_zmatrix, result.fun, info
+            return optimized_zmatrix, current_energy, info
             
         except Exception as e:
             if verbose:
@@ -868,6 +646,42 @@ class MolecularSystem:
             }
             return zmatrix, 1e6, info
 
+
+    def report_dof_info(self, zmatrix: List[Dict], dof_indices: List[Tuple[int,int]], dofs: np.ndarray, dof_bounds: List[Tuple[float, float]], gradient: Optional[np.ndarray]):
+        """Report information about the degrees of freedom on screen."""
+        # Format gradient norm and max gradient with NA handling    
+        
+        dof_names = ['bond_length', 'angle', 'dihedral']
+        
+        for j, dof_index in enumerate(dof_indices):
+            zmat_idx, dof_type = dof_index
+            atom = zmatrix[zmat_idx]
+            atom_id = atom['id'] + 1
+            
+            # Build atom reference list based on DOF type
+            ref_atoms = [atom.get('bond_ref', -1) + 1]
+            if dof_type >= 1:
+                ref_atoms.append(atom.get('angle_ref', -1) + 1)
+            if dof_type == 2:
+                ref_atoms.append(atom.get('dihedral_ref', -1) + 1)
+            
+            # Format atom references
+            ref_str = ' '.join(f"{ref:3d}" for ref in ref_atoms)
+            
+            # Format with fixed column widths
+            dof_name = dof_names[dof_type]
+            dof_value = dofs[j]
+            bound_low, bound_high = dof_bounds[j]
+            
+            # Format gradient value with NA handling (reserve space for sign)
+            if gradient is not None and j < len(gradient):
+                grad_value_str = f"{gradient[j]: 11.6f}"
+            else:
+                grad_value_str = "         NA"
+            
+            print(f"  DOF[{j:2d}] {dof_name:12s} [{atom_id:3d} {ref_str:>12s}]"
+                      f"={dof_value: 9.4f}  bounds=[{bound_low: 9.4f}, {bound_high: 9.4f}]  grad={grad_value_str}")
+            
 
     def minimize_energy_in_torsional_space(self, zmatrix: List[Dict], 
                                             rotatable_indices: List[int],
@@ -979,8 +793,7 @@ class MolecularSystem:
                 initial_torsions,
                 method=method,
                 bounds=bounds,
-                # Only to print trajectory
-                # callback=callback if trajectory_file else None,
+                callback=callback if trajectory_file else None,
                 options={
                     'maxiter': max_iterations,
                     'ftol': 0.05,    # Function tolerance (kcal/mol)
@@ -1274,3 +1087,280 @@ class MolecularSystem:
         rmsd_dihedrals = np.sqrt(np.mean(np.array(dihedral_diffs)**2)) if dihedral_diffs else 0.0
         
         return rmsd_bonds, rmsd_angles, rmsd_dihedrals
+
+    @staticmethod
+    def _build_bond_graph(zmatrix: List[Dict], topology=None) -> Dict[int, List[int]]:
+        """
+        Build bond connectivity graph from molecular topology or Z-matrix.
+        
+        Uses the complete molecular topology (including all bonds) if available,
+        otherwise falls back to Z-matrix bond_ref (which only includes tree structure).
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Z-matrix representation of the molecule
+        topology : openmm.app.Topology, optional
+            OpenMM topology object containing bond information
+        
+        Returns
+        -------
+        Dict[int, List[int]]
+            Adjacency list representation (0-based indices)
+        """
+        num_atoms = len(zmatrix)
+        graph = {i: [] for i in range(num_atoms)}
+        
+        if topology is not None:
+            # Use complete topology (includes all bonds, including RCP bonds)
+            for bond in topology.bonds():
+                graph[bond.atom1.index].append(bond.atom2.index)
+                graph[bond.atom2.index].append(bond.atom1.index)
+        else:
+            # Fall back to Z-matrix (only tree structure bonds)
+            for i, atom in enumerate(zmatrix):
+                if i == 0:
+                    continue
+                bond_ref = atom.get('bond_ref')
+                if bond_ref is not None:
+                    graph[i].append(bond_ref)
+                    graph[bond_ref].append(i)
+        
+        return graph
+    
+    @staticmethod
+    def _find_path_bfs(graph: Dict[int, List[int]], start: int, end: int) -> Optional[List[int]]:
+        """
+        Find shortest path between two atoms using BFS.
+        
+        Parameters
+        ----------
+        graph : Dict[int, List[int]]
+            Bond connectivity graph (adjacency list)
+        start : int
+            Start atom index (0-based)
+        end : int
+            End atom index (0-based)
+        
+        Returns
+        -------
+        Optional[List[int]]
+            Path as list of atom indices, or None if no path exists
+        """
+        from collections import deque
+        
+        # Validate indices
+        if start not in graph:
+            return None
+        if end not in graph:
+            return None
+        
+        if start == end:
+            return [start]
+        
+        # BFS using deque for O(1) popleft (more efficient than list.pop(0))
+        visited = {start}
+        queue = deque([(start, [start])])
+        
+        while queue:
+            node, path = queue.popleft()
+            
+            # Safety check (should not happen if graph is well-formed)
+            if node not in graph:
+                continue
+            
+            for neighbor in graph[node]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    new_path = path + [neighbor]
+                    
+                    if neighbor == end:
+                        return new_path
+                    
+                    queue.append((neighbor, new_path))
+        
+        return None
+    
+    @staticmethod
+    def _identify_rc_critical_rotatable_indeces(zmatrix: List[Dict], 
+                                                 rcp_terms: List[Tuple[int, int]], 
+                                                 rotatable_indices: List[int],
+                                                 topology=None) -> Tuple[List[int], List[int]]:
+        """
+        Identify rotatable torsions on paths between RCP atoms and all atoms on the RCP paths.
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Z-matrix representation
+        rcp_terms : List[Tuple[int, int]]
+            Ring closure pairs (0-based atom indices)
+        rotatable_indices : List[int]
+            List of rotatable atom indices in Z-matrix
+        topology : openmm.app.Topology, optional
+            OpenMM topology object
+        
+        Returns
+        -------
+        Tuple[List[int], List[int]]
+            A tuple containing:
+            - List of critical rotatable indices (indices into rotatable_indices)
+            - List of all atoms on paths between RCP terms (including RCP atoms themselves)
+        """
+        if not rcp_terms:
+            return [], []
+        
+        graph = MolecularSystem._build_bond_graph(zmatrix, topology)
+        num_atoms = len(zmatrix)
+        rc_critical_atoms = set()
+        
+        # Find all atoms on paths between RCP pairs
+        # RCP terms are already 0-based
+        for atom1, atom2 in rcp_terms:
+            # Validate RCP atom indices (0-based, so range is [0, num_atoms-1])
+            if atom1 < 0 or atom1 >= num_atoms:
+                print(f"Warning: RCP atom1 index {atom1} is out of range [0, {num_atoms-1}], skipping")
+                continue
+            if atom2 < 0 or atom2 >= num_atoms:
+                print(f"Warning: RCP atom2 index {atom2} is out of range [0, {num_atoms-1}], skipping")
+                continue
+            
+            path = MolecularSystem._find_path_bfs(graph, atom1, atom2)
+            if path:
+                rc_critical_atoms.update(path)
+            else:
+                print(f"Warning: No path found between RCP atoms {atom1} and {atom2} (0-based)")
+        
+        # Identify which rotatable torsions involve critical atoms
+        # A torsion is critical if ANY of its 4 defining atoms are on a critical path
+        rc_critical_rotatable_indeces = []
+        for rot_idx in rotatable_indices:
+            atom = zmatrix[rot_idx]
+            atoms_in_rotatable_bond = [] 
+            if atom.get('bond_ref') is not None:
+                atoms_in_rotatable_bond.append(atom['bond_ref'])
+            if atom.get('angle_ref') is not None:
+                atoms_in_rotatable_bond.append(atom['angle_ref'])
+            
+            # Check if both atoms are on a critical path
+            if all(atom_idx in rc_critical_atoms for atom_idx in atoms_in_rotatable_bond):
+                rc_critical_rotatable_indeces.append(rot_idx)
+        
+        return rc_critical_rotatable_indeces, sorted(list(rc_critical_atoms))
+    
+
+    @staticmethod
+    def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], 
+                                         rc_critical_rotatable_indeces: List[int], 
+                                         rc_critical_atoms: List[int],
+                                         zmatrix: List[Dict]) -> List[Tuple[int, int]]:
+        """
+        Get indexes of degrees of freedom on Z-matrix from rotatable bonds and atoms that are on paths between RCP terms.
+        
+        Parameters
+        ----------
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix
+        rc_critical_rotatable_indeces : List[int]
+            Indices of critical rotatable atoms (from RCP paths)
+        rc_critical_atoms : List[int]
+            Indices of all atoms on paths between RCP terms (including RCP atoms themselves)
+        zmatrix : List[Dict]
+            Z-matrix representation
+        
+        Returns
+        -------
+        List[Tuple[int, int]]
+            Indices of DOFs in Z-matrix. The first index is the atom index, 
+            the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
+            the first atom's first degree of freedom (distance) and the second atom's third 
+            degree of freedom (torsion).
+        """
+        dof_indices = []
+        dof_names = ['id', 'bond_ref', 'angle_ref', 'dihedral_ref']
+
+        all_atoms_in_rc_critical_rot_bonds = []
+        for idx in rc_critical_rotatable_indeces:
+            zatom = zmatrix[idx]
+            rb_bond_ref = zatom.get(dof_names[1])
+            rb_angle_ref = zatom.get(dof_names[2])
+            if rb_bond_ref is not None and rb_bond_ref not in all_atoms_in_rc_critical_rot_bonds:
+                all_atoms_in_rc_critical_rot_bonds.append(rb_bond_ref)
+            if rb_angle_ref is not None and rb_angle_ref not in all_atoms_in_rc_critical_rot_bonds:
+                all_atoms_in_rc_critical_rot_bonds.append(rb_angle_ref)
+
+        # Check assumption
+        if [idx for idx in all_atoms_in_rc_critical_rot_bonds if idx not in rc_critical_atoms]:
+            raise ValueError("Assumption violated: All atoms in rc_critical_rot_bonds must be in rc_critical_atoms")
+
+        # Add any angle involving only rc-critical atoms
+        for idx2, zatom2 in enumerate(zmatrix):
+            zatom2_id = zatom2.get(dof_names[0])
+            zatom2_bond_ref = zatom2.get(dof_names[1])
+            zatom2_angle_ref = zatom2.get(dof_names[2])
+            zatom2_dihedral_ref = zatom2.get(dof_names[3])
+
+            if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+                if zatom2_id in rc_critical_atoms and zatom2_bond_ref in rc_critical_atoms and zatom2_angle_ref in rc_critical_atoms:  
+                    if (idx2, 1) not in dof_indices:
+                        dof_indices.append((idx2, 1))
+                if zatom2_id in rc_critical_atoms and zatom2_bond_ref in rc_critical_atoms and zatom2_dihedral_ref in rc_critical_atoms and zatom2.get('chirality', 0) != 0:  
+                    if (idx2, 2) not in dof_indices:
+                        dof_indices.append((idx2, 2))
+
+        # TODO when we are sure the assumption taken above is sound.
+        # Add all bond angles involving only atoms that are connected by rotatable bonds
+        # for idx in all_atoms_in_rc_critical_rot_bonds:
+        #     zatom = zmatrix[idx]
+        #     # these two indexes identify the rotatable bond
+        #     rb_bond_ref = zatom.get(dof_names[1])
+        #     rb_angle_ref = zatom.get(dof_names[2])
+        #     if rb_bond_ref is None or rb_angle_ref is None:
+        #         continue  # Skip if references don't exist
+
+        #     for idx2, zatom2 in enumerate(zmatrix):
+        #         zatom2_id = zatom2.get(dof_names[0])
+        #         zatom2_bond_ref = zatom2.get(dof_names[1])
+        #         zatom2_angle_ref = zatom2.get(dof_names[2])
+        #         zatom2_dihedral_ref = zatom2.get(dof_names[3])
+
+        #         if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
+        #             if zatom2_id in all_atoms_in_rc_critical_rot_bonds and zatom2_bond_ref in all_atoms_in_rc_critical_rot_bonds and zatom2_angle_ref in all_atoms_in_rc_critical_rot_bonds:  
+        #                 if (idx2, 1) not in dof_indices:
+        #                     dof_indices.append((idx2, 1))
+        #             if zatom2_id in all_atoms_in_rc_critical_rot_bonds and zatom2_bond_ref in all_atoms_in_rc_critical_rot_bonds and zatom2_dihedral_ref in all_atoms_in_rc_critical_rot_bonds and zatom2.get('chirality', 0) != 0:  
+        #                 if (idx2, 2) not in dof_indices:
+        #                     dof_indices.append((idx2, 2))
+
+        # Add the torsions
+        for idx in rotatable_indices:
+            if (idx, 2) not in dof_indices:
+                dof_indices.append((idx, 2))
+
+        return dof_indices
+    
+    @staticmethod
+    def _get_all_rotatable_indices(zmatrix: List[Dict]) -> List[int]:
+        """
+        Get all rotatable Z-matrix indices (all dihedrals with chirality == 0).
+        
+        When rotatable_bonds is not specified, all dihedrals that are not
+        chirality-constrained are considered rotatable.
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Z-matrix representation
+            
+        Returns
+        -------
+        List[int]
+            0-based indices of all rotatable atoms in Z-matrix
+        """
+        rotatable_indices = []
+        for i in range(3, len(zmatrix)):  # Only atoms 4+ have dihedrals
+            atom = zmatrix[i]
+            if atom.get('chirality', 0) == 0:  # Only true dihedrals (not chirality-constrained)
+                rotatable_indices.append(i)
+        
+        return rotatable_indices

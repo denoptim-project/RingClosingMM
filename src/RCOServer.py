@@ -354,7 +354,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     # Determine rotatable indices
     if rotatable_bonds is None:
         # Get all rotatable indices (all non-chirality-constrained dihedrals)
-        rotatable_indices = RingClosureOptimizer._get_all_rotatable_indices(zmatrix)
+        rotatable_indices = MolecularSystem._get_all_rotatable_indices(zmatrix)
     else:
         # Convert bond pairs to Z-matrix indices
         rotatable_indices = RingClosureOptimizer._convert_bonds_to_indices(rotatable_bonds, zmatrix)
@@ -381,7 +381,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             ring_closure_tolerance=request.get('ring_closure_tolerance', 1.54),
             ring_closure_decay_rate=request.get('ring_closure_decay_rate', 1.0),
             enable_smoothing_refinement=request.get('enable_smoothing_refinement', True),
-            enable_cartesian_refinement=request.get('enable_cartesian_refinement', True),
+            enable_zmatrix_refinement=request.get('enable_zmatrix_refinement', True),
             refinement_top_n=request.get('refinement_top_n', 1),
             smoothing_sequence=request.get('smoothing_sequence'),
             verbose=request.get('verbose', False)
@@ -442,8 +442,8 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         result = optimizer.minimize(
             max_iterations=request.get('max_iterations', 500),
             smoothing=smoothing_sequence,
-            torsional_space=request.get('torsional', False),
-            update_system=True,
+            space_type=request.get('space_type', 'Cartesian'),
+            gradient_tolerance=request.get('gradient_tolerance', 0.01),
             verbose=request.get('verbose', False)
         )
         

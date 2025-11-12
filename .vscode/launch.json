@@ -47,8 +47,10 @@
                 "-i", "tomin.int",
                 "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
                 "-c", "7", "39", "77", "35",
+                "--zmatrix-dof-bounds", "0.02", "5.0", "10.0", "0.01", "3.0", "5.0",
                 "-o", "min.xyz",
-                "--minimize-zmatrix"
+                "--minimize",
+                "--space-type", "zmatrix"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
@@ -146,8 +148,9 @@
                  "-i", "test.int",
                  "-c", "7", "39", "77", "35",
                  "--minimize",
-                 "--minimize-smoothing", "5.0", "2.5", "1.0", "0.0",
-                 "--minimize-iterations", "500",
+                 "--space-type", "Cartesian",
+                 "--smoothing", "5.0", "2.5", "1.0", "0.0",
+                 "--max-iterations", "500",
                  "-o", "test_minimized_cartesian.xyz"
              ],
              "console": "integratedTerminal",
@@ -166,9 +169,10 @@
                 "-i", "test.int",
                 "-c", "7", "39", "77", "35",
                 "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
-                "--minimize-torsional",
-                "--minimize-smoothing", "5.0", "2.5", "1.0", "0.0",
-                "--minimize-iterations", "100",
+                "--minimize",
+                "--space-type", "torsional",
+                "--smoothing", "5.0", "2.5", "1.0", "0.0",
+                "--max-iterations", "100",
                 "-o", "test_minimized_torsional.xyz"
             ],
             "console": "integratedTerminal",
@@ -219,9 +223,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/__main__.py",
             "args": [
-                "--minimize-zmatrix",
                 "-i", "c4.int",
                 "-c", "1", "11", "2", "14",
+                "--minimize",
+                "--space-type", "zmatrix",
                 "--ring-closure-tolerance", "0.001",
                 "-o", "c4_minimized_zmatrix.xyz"
             ],

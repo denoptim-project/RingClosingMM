@@ -1015,281 +1015,511 @@ class TestMolecularSystemRMSD(unittest.TestCase):
         self.assertAlmostEqual(rmsd_dihedrals, expected_rmsd_dihedrals, places=6)
 
 
-class TestMolecularSystemGradient(unittest.TestCase):
-    """Test analytical gradient conversion from Cartesian to Z-matrix DOF space."""
+class TestMolecularSystemGraphMethods(unittest.TestCase):
+    """Test graph methods in MolecularSystem (static methods)."""
+    
+    def test_build_graph_from_simple_zmatrix(self):
+        """Test building graph from simple linear Z-matrix."""
+        # Simple 3-atom linear chain: C-C-C
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
+        
+        # Check graph structure
+        self.assertEqual(len(graph), 3)
+        self.assertEqual(set(graph[0]), {1})      # Atom 0 bonded to 1
+        self.assertEqual(set(graph[1]), {0, 2})   # Atom 1 bonded to 0 and 2
+        self.assertEqual(set(graph[2]), {1})      # Atom 2 bonded to 1
+    
+    def test_build_graph_butane(self):
+        """Test building graph from butane-like Z-matrix."""
+        # 4-atom chain: C-C-C-C
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
+        
+        # Check graph structure
+        self.assertEqual(len(graph), 4)
+        self.assertEqual(set(graph[0]), {1})      # Atom 0 bonded to 1
+        self.assertEqual(set(graph[1]), {0, 2})   # Atom 1 bonded to 0 and 2
+        self.assertEqual(set(graph[2]), {1, 3})   # Atom 2 bonded to 1 and 3
+        self.assertEqual(set(graph[3]), {2})      # Atom 3 bonded to 2
+    
+    def test_graph_is_bidirectional(self):
+        """Test that graph edges are bidirectional."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
+        
+        graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
+        
+        # Check bidirectional edges
+        for atom, neighbors in graph.items():
+            for neighbor in neighbors:
+                self.assertIn(atom, graph[neighbor],
+                             f"Edge {atom}->{neighbor} exists, but reverse edge {neighbor}->{atom} missing")
+    
+    def test_path_in_linear_chain(self):
+        """Test finding path in a linear chain."""
+        # Graph: 0-1-2-3
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1, 3],
+            3: [2]
+        }
+        
+        # Path from 0 to 3
+        path = MolecularSystem._find_path_bfs(graph, 0, 3)
+        self.assertEqual(path, [0, 1, 2, 3])
+        
+        # Path from 3 to 0 (reverse)
+        path_reverse = MolecularSystem._find_path_bfs(graph, 3, 0)
+        self.assertEqual(path_reverse, [3, 2, 1, 0])
+    
+    def test_path_to_self(self):
+        """Test path from node to itself."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = MolecularSystem._find_path_bfs(graph, 1, 1)
+        self.assertEqual(path, [1])
+    
+    def test_path_in_branched_graph(self):
+        """Test finding path in branched structure."""
+        # Graph:
+        #     2
+        #     |
+        # 0-1-3-4
+        graph = {
+            0: [1],
+            1: [0, 2, 3],
+            2: [1],
+            3: [1, 4],
+            4: [3]
+        }
+        
+        # Path from 0 to 4 (should go through 1, 3)
+        path = MolecularSystem._find_path_bfs(graph, 0, 4)
+        self.assertEqual(path, [0, 1, 3, 4])
+        
+        # Path from 2 to 4
+        path = MolecularSystem._find_path_bfs(graph, 2, 4)
+        self.assertEqual(path, [2, 1, 3, 4])
+    
+    def test_path_in_cycle(self):
+        """Test finding path in cyclic graph."""
+        # Graph: 0-1-2-3-0 (square)
+        graph = {
+            0: [1, 3],
+            1: [0, 2],
+            2: [1, 3],
+            3: [2, 0]
+        }
+        
+        # Path from 0 to 2 (two possible paths of equal length)
+        path = MolecularSystem._find_path_bfs(graph, 0, 2)
+        self.assertIsNotNone(path)
+        self.assertEqual(len(path), 3)  # Shortest path
+        self.assertEqual(path[0], 0)
+        self.assertEqual(path[-1], 2)
+        # Path should be either [0,1,2] or [0,3,2]
+        self.assertIn(path, [[0, 1, 2], [0, 3, 2]])
+    
+    def test_no_path_disconnected(self):
+        """Test that no path is found in disconnected graph."""
+        # Two separate components: 0-1 and 2-3
+        graph = {
+            0: [1],
+            1: [0],
+            2: [3],
+            3: [2]
+        }
+        
+        # No path between disconnected components
+        path = MolecularSystem._find_path_bfs(graph, 0, 3)
+        self.assertIsNone(path)
+        
+        # Path within same component works
+        path = MolecularSystem._find_path_bfs(graph, 0, 1)
+        self.assertEqual(path, [0, 1])
+    
+    def test_invalid_start_node(self):
+        """Test with invalid start node."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = MolecularSystem._find_path_bfs(graph, 5, 1)
+        self.assertIsNone(path)
+    
+    def test_invalid_end_node(self):
+        """Test with invalid end node."""
+        graph = {
+            0: [1],
+            1: [0, 2],
+            2: [1]
+        }
+        
+        path = MolecularSystem._find_path_bfs(graph, 0, 5)
+        self.assertIsNone(path)
+    
+    def test_single_isolated_atom(self):
+        """Test with single isolated atom."""
+        graph = {0: []}
+        
+        path = MolecularSystem._find_path_bfs(graph, 0, 0)
+        self.assertEqual(path, [0])
+
+
+class TestMolecularSystemDOFMethods(unittest.TestCase):
+    """Test DOF-related methods in MolecularSystem."""
+    
+    def test_get_dofs_from_rotatable_indices(self):
+        """Test getting DOF indices from rotatable indices with hardcoded Z-matrix."""
+        # Create a larger branched Z-matrix with 12 atoms
+        # Includes both dihedrals (chirality=0) and second angles (chirality=+/-1)
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54, 'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}, # rotatable
+            {'id': 5, 'element': 'H', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 6, 'element': 'H', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -120.0, 'chirality': -1},
+            {'id': 7, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 8, 'element': 'H', 'atomic_num': 1, 'bond_ref': 4, 'bond_length': 1.09, 'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 9, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0}, # rotatable
+            {'id': 10, 'element': 'H', 'atomic_num': 1, 'bond_ref': 7, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 11, 'element': 'H', 'atomic_num': 1, 'bond_ref': 7, 'bond_length': 1.09, 'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -60.0, 'chirality': -1}
+        ]
+        
+        rotatable_indices = [9, 4]  # 0-based indices in zmatrix
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        rc_critical_atoms = []
+        dof_indices = MolecularSystem._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, rc_critical_atoms, zmatrix)
+        
+        # When rc_critical_rotatable_indeces is empty, only torsions (dihedrals) are returned
+        # Format: (atom_index, dof_type) where dof_type is 2=dihedral_ref
+        # For rotatable_indices [9, 4] (atoms with id 9 and 4):
+        #   - Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+        #   - Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF
+        expected_dof_indices = [
+            (9, 2),   # Atom 9 (id 9): dihedral_ref=2 - rotatable bond DOF
+            (4, 2)    # Atom 4 (id 4): dihedral_ref=1 - rotatable bond DOF
+        ]
+        
+        # Verify result matches expected
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), len(expected_dof_indices))
+        self.assertEqual(sorted(dof_indices), sorted(expected_dof_indices))
+        
+        for dof in dof_indices:
+            self.assertIsInstance(dof, tuple)
+            self.assertEqual(len(dof), 2)
+            # First element should be atom index, second should be DOF type (0=bond, 1=angle, 2=dihedral)
+            self.assertIsInstance(dof[0], int)
+            self.assertIsInstance(dof[1], int)
+            self.assertIn(dof[1], [0, 1, 2])
+    
+    def test_get_dofs_empty_rotatable_indices(self):
+        """Test with empty rotatable_indices list."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47, 'chirality': 0}
+        ]
+        
+        rotatable_indices = []
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        rc_critical_atoms = []
+        dof_indices = MolecularSystem._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, rc_critical_atoms, zmatrix)
+        
+        # Should return empty list
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), 0)
+    
+    def test_get_dofs_single_rotatable_index(self):
+        """Test with single rotatable index."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
+        
+        rotatable_indices = [3]  # Only atom 3
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        rc_critical_atoms = []
+        dof_indices = MolecularSystem._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, rc_critical_atoms, zmatrix)
+        
+        # Should find at least one DOF
+        self.assertIsInstance(dof_indices, list)
+        self.assertGreater(len(dof_indices), 0)
+        # All DOFs should reference valid atom indices
+        for atom_idx, dof_type in dof_indices:
+            self.assertLess(atom_idx, len(zmatrix))
+            self.assertIn(dof_type, [1, 2])
+    
+    def test_get_dofs_multiple_chirality_atoms(self):
+        """Test with multiple atoms having second bond angle"""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.09, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 3, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.09, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': -120.0, 'chirality': -1},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}
+        ]
+        
+        rotatable_indices = [4]  # Atom with chirality=0
+        rc_critical_rotatable_indeces = []  # No critical indices for this test
+        rc_critical_atoms = []
+        dof_indices = MolecularSystem._get_dofs_from_rotatable_indeces(rotatable_indices, rc_critical_rotatable_indeces, rc_critical_atoms, zmatrix)
+        
+        # When rc_critical_rotatable_indeces is empty, only torsions (dihedrals) are returned
+        self.assertIsInstance(dof_indices, list)
+        self.assertEqual(len(dof_indices), 1)
+        self.assertEqual(sorted(dof_indices), sorted([(4, 2)]))
+
+
+class TestMolecularSystemRotatableIndices(unittest.TestCase):
+    """Test rotatable indices methods in MolecularSystem."""
     
     def setUp(self):
         """Set up test fixtures."""
         self.test_dir = Path(__file__).parent / 'fixtures'
         self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
-        self.butane_file = self.test_dir / 'butane_like.int'
+        self.test_int_file = self.test_dir / 'simple_molecule.int'
     
-    def _finite_difference_gradient(self, system, zmatrix, dof_indices, h=1e-5):
-        """
-        Compute numerical gradient using finite differences.
-        
-        Parameters
-        ----------
-        system : MolecularSystem
-            Molecular system instance
-        zmatrix : List[Dict]
-            Z-matrix
-        dof_indices : List[Tuple[int, int]]
-            DOF indices
-        h : float
-            Finite difference step size
-        
-        Returns
-        -------
-        np.ndarray
-            Numerical gradient
-        """
-        import copy
-        dof_names = ['bond_length', 'angle', 'dihedral']
-        gradient = np.zeros(len(dof_indices))
-        
-        for k, (atom_idx, dof_type) in enumerate(dof_indices):
-            # Forward difference
-            zmatrix_plus = copy.deepcopy(zmatrix)
-            zmatrix_plus[atom_idx][dof_names[dof_type]] += h
-            coords_plus = zmatrix_to_cartesian(zmatrix_plus)
-            energy_plus = system.evaluate_energy(coords_plus)
-            
-            # Backward difference
-            zmatrix_minus = copy.deepcopy(zmatrix)
-            zmatrix_minus[atom_idx][dof_names[dof_type]] -= h
-            coords_minus = zmatrix_to_cartesian(zmatrix_minus)
-            energy_minus = system.evaluate_energy(coords_minus)
-            
-            # Central difference
-            gradient[k] = (energy_plus - energy_minus) / (2 * h)
-        
-        return gradient
-    
-    def test_gradient_bond_length(self):
-        """Test analytical gradient for bond length DOF."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
+    def test_get_all_rotatable_indices(self):
+        """Test getting all rotatable indices."""
+        if not self.test_int_file.exists() or not self.forcefield_file.exists():
             self.skipTest("Required test files not found")
         
         system = MolecularSystem.from_file(
-            str(self.butane_file),
+            str(self.test_int_file),
             str(self.forcefield_file),
             rcp_terms=None
         )
         
-        # Test bond length gradient for atom 1 (bond_ref = 0)
-        zmatrix = system.zmatrix
-        dof_indices = [(1, 0)]  # Atom 1, bond_length DOF
+        # Get all rotatable indices
+        indices = MolecularSystem._get_all_rotatable_indices(system.zmatrix)
         
-        # Analytical gradient
-        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        # Numerical gradient
-        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-5)
-        
-        # Compare (allow for numerical precision)
-        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-3, atol=1e-2)
-        self.assertEqual(len(grad_analytical), 1)
-        self.assertEqual(len(grad_numerical), 1)
+        # Should return list of indices >= 3 (only atoms 4+ have dihedrals)
+        self.assertIsInstance(indices, list)
+        self.assertTrue(all(i >= 3 for i in indices))
+
+
+class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
+    """Test RCP critical indices identification methods in MolecularSystem."""
     
-    def test_gradient_angle(self):
-        """Test analytical gradient for angle DOF."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_no_rcp_terms(self):
+        """Test with no RCP terms."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = [3]
+        rcp_terms = []
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        # Test angle gradient for atom 2 (has angle_ref)
-        zmatrix = system.zmatrix
-        if len(zmatrix) < 3:
-            self.skipTest("Z-matrix too small for angle test")
-        
-        # Find an atom with an angle
-        dof_indices = []
-        for i in range(2, len(zmatrix)):
-            if 'angle' in zmatrix[i]:
-                dof_indices.append((i, 1))  # angle DOF
-                break
-        
-        if not dof_indices:
-            self.skipTest("No atoms with angles found")
-        
-        # Analytical gradient
-        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        # Numerical gradient
-        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
-        
-        # Compare (angles are in degrees, so use larger tolerance)
-        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
-        self.assertEqual(len(grad_analytical), 1)
+        self.assertEqual(rc_critical_rotatable_indeces, [])
+        self.assertEqual(rc_critical_atoms, [])
     
-    def test_gradient_dihedral(self):
-        """Test analytical gradient for dihedral DOF."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_simple_path(self):
+        """Test with a simple linear path between RCP terms."""
+        # Linear chain: 0-1-2-3-4
+        # RCP terms: (0, 4)
+        # Rotatable indices: [3] (atom 3 has a dihedral)
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = [3]  # Atom 3 is rotatable
+        rcp_terms = [(0, 4)]  # Path from atom 0 to atom 4
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        # Test dihedral gradient
-        zmatrix = system.zmatrix
-        if len(zmatrix) < 4:
-            self.skipTest("Z-matrix too small for dihedral test")
-        
-        # Find an atom with a dihedral (chirality == 0)
-        dof_indices = []
-        for i in range(3, len(zmatrix)):
-            if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) == 0:
-                dof_indices.append((i, 2))  # dihedral DOF
-                break
-        
-        if not dof_indices:
-            self.skipTest("No atoms with dihedrals found")
-        
-        # Analytical gradient
-        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        # Numerical gradient
-        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
-        
-        # Compare (dihedrals are in degrees, so use larger tolerance)
-        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
-        self.assertEqual(len(grad_analytical), 1)
+        # The path from 0 to 4 is [0, 1, 2, 3, 4]
+        # Atom 3's bond_ref=2 and angle_ref=1, both are on the path, so it's critical
+        self.assertEqual(rc_critical_rotatable_indeces, [3])
+        # All atoms on the path should be included
+        self.assertEqual(sorted(rc_critical_atoms), [0, 1, 2, 3, 4])
     
-    def test_gradient_multiple_dofs(self):
-        """Test analytical gradient for multiple DOFs simultaneously."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_multiple_rcp_terms(self):
+        """Test with multiple RCP terms."""
+        # Branched structure:
+        #     2
+        #     |
+        # 0-1-3-4
+        # RCP terms: (0, 2) and (0, 4)
+        # Rotatable indices: [3] (atom 3 has a dihedral)
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = [3]  # Atom 3 is rotatable
+        rcp_terms = [(0, 2), (0, 4)]  # Two RCP paths
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        zmatrix = system.zmatrix
-        if len(zmatrix) < 4:
-            self.skipTest("Z-matrix too small for multiple DOF test")
-        
-        # Collect multiple DOFs: bond length, angle, dihedral
-        dof_indices = []
-        if len(zmatrix) > 1 and 'bond_length' in zmatrix[1]:
-            dof_indices.append((1, 0))  # bond length
-        if len(zmatrix) > 2 and 'angle' in zmatrix[2]:
-            dof_indices.append((2, 1))  # angle
-        if len(zmatrix) > 3:
-            for i in range(3, len(zmatrix)):
-                if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) == 0:
-                    dof_indices.append((i, 2))  # dihedral
-                    break
-        
-        if len(dof_indices) < 2:
-            self.skipTest("Not enough DOFs found for multiple DOF test")
-        
-        # Analytical gradient
-        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        # Numerical gradient
-        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
-        
-        # Compare
-        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
-        self.assertEqual(len(grad_analytical), len(dof_indices))
-        self.assertEqual(len(grad_numerical), len(dof_indices))
+        # Path (0, 2): [0, 1, 2]
+        # Path (0, 4): [0, 1, 3, 4]
+        # Combined critical atoms: {0, 1, 2, 3, 4}
+        # Atom 3's bond_ref=1 and angle_ref=0, both are on paths, so it's critical
+        self.assertEqual(rc_critical_rotatable_indeces, [3])
+        # All atoms on both paths should be included
+        self.assertEqual(sorted(rc_critical_atoms), [0, 1, 2, 3, 4])
     
-    def test_gradient_chirality_second_angle(self):
-        """Test analytical gradient for second angle (chirality != 0)."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_rcp_atoms_included(self):
+        """Test that RCP atoms themselves are included in rc_critical_atoms."""
+        # Simple chain: 0-1-2
+        # RCP terms: (0, 2)
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = []  # No rotatable indices
+        rcp_terms = [(0, 2)]  # Path from atom 0 to atom 2
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        zmatrix = system.zmatrix
-        
-        # Find an atom with chirality != 0 (second angle)
-        dof_indices = []
-        for i in range(3, len(zmatrix)):
-            if 'dihedral' in zmatrix[i] and zmatrix[i].get('chirality', 0) != 0:
-                dof_indices.append((i, 2))  # dihedral field, but it's actually a second angle
-                break
-        
-        if not dof_indices:
-            self.skipTest("No atoms with chirality found")
-        
-        # Analytical gradient
-        grad_analytical = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        # Numerical gradient
-        grad_numerical = self._finite_difference_gradient(system, zmatrix, dof_indices, h=1e-4)
-        
-        # Compare (treat as angle, so use angle tolerance)
-        np.testing.assert_allclose(grad_analytical, grad_numerical, rtol=1e-2, atol=0.1)
-        self.assertEqual(len(grad_analytical), 1)
+        # Path from 0 to 2 is [0, 1, 2]
+        # RCP atoms 0 and 2 should be included
+        self.assertEqual(rc_critical_rotatable_indeces, [])
+        self.assertEqual(sorted(rc_critical_atoms), [0, 1, 2])
+        # Verify RCP atoms are included
+        self.assertIn(0, rc_critical_atoms)
+        self.assertIn(2, rc_critical_atoms)
     
-    def test_gradient_empty_dof_indices(self):
-        """Test gradient with empty DOF indices."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_non_critical_rotatable(self):
+        """Test with a rotatable index that is not on the RCP path."""
+        # Linear chain: 0-1-2-3-4-5
+        # RCP terms: (0, 2) - path is [0, 1, 2]
+        # Rotatable indices: [3, 4] - atoms 3 and 4 are not on the path
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 0}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = [3, 4]  # Atoms 3 and 4 are rotatable
+        rcp_terms = [(0, 2)]  # Path from atom 0 to atom 2 is [0, 1, 2]
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        zmatrix = system.zmatrix
-        dof_indices = []
-        
-        grad = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-        
-        self.assertEqual(len(grad), 0)
-        self.assertIsInstance(grad, np.ndarray)
+        # Path is [0, 1, 2]
+        # Atom 3: bond_ref=2 (on path), angle_ref=1 (on path) - should be critical
+        # Atom 4: bond_ref=3 (not on path), angle_ref=2 (on path) - not critical (both must be on path)
+        # Actually, let me check: atom 3 has bond_ref=2 and angle_ref=1, both are on path [0,1,2], so it's critical
+        # Atom 4 has bond_ref=3 (not on path) and angle_ref=2 (on path), so it's not critical
+        self.assertEqual(rc_critical_rotatable_indeces, [3])
+        self.assertEqual(sorted(rc_critical_atoms), [0, 1, 2])
     
-    def test_gradient_shape_consistency(self):
-        """Test that gradient shape matches DOF indices length."""
-        if not self.butane_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
+    def test_identify_rc_critical_disconnected_path(self):
+        """Test with disconnected RCP atoms (no path exists)."""
+        # Two separate components: 0-1 and 2-3
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54}
+        ]
         
-        system = MolecularSystem.from_file(
-            str(self.butane_file),
-            str(self.forcefield_file),
-            rcp_terms=None
+        rotatable_indices = []
+        rcp_terms = [(0, 3)]  # No path between 0 and 3
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
         )
         
-        zmatrix = system.zmatrix
+        # No path exists, so no critical atoms
+        self.assertEqual(rc_critical_rotatable_indeces, [])
+        self.assertEqual(rc_critical_atoms, [])
+    
+    def test_identify_rc_critical_same_rcp_atom(self):
+        """Test with RCP term where both atoms are the same."""
+        zmatrix = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54}
+        ]
         
-        # Test with different numbers of DOFs
-        for n_dofs in [1, 2, 3]:
-            dof_indices = []
-            for i in range(min(n_dofs, len(zmatrix) - 1)):
-                if i == 0 and 'bond_length' in zmatrix[1]:
-                    dof_indices.append((1, 0))
-                elif i == 1 and len(zmatrix) > 2 and 'angle' in zmatrix[2]:
-                    dof_indices.append((2, 1))
-                elif i == 2 and len(zmatrix) > 3:
-                    for j in range(3, len(zmatrix)):
-                        if 'dihedral' in zmatrix[j]:
-                            dof_indices.append((j, 2))
-                            break
-                    if len(dof_indices) < 3:
-                        break
-            
-            if len(dof_indices) == n_dofs:
-                grad = system.evaluate_dofs_gradient(zmatrix, dof_indices)
-                self.assertEqual(len(grad), n_dofs, 
-                               f"Gradient length {len(grad)} != DOF count {n_dofs}")
+        rotatable_indices = []
+        rcp_terms = [(0, 0)]  # Same atom
+        
+        rc_critical_rotatable_indeces, rc_critical_atoms = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            zmatrix, rcp_terms, rotatable_indices, topology=None
+        )
+        
+        # Path from atom to itself is just [0]
+        self.assertEqual(rc_critical_rotatable_indeces, [])
+        self.assertEqual(sorted(rc_critical_atoms), [0])
 
 
 def run_tests(verbosity=2):
@@ -1307,7 +1537,10 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemSimulationCache))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemErrorHandling))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRMSD))
-    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemGradient))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemGraphMethods))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemDOFMethods))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRotatableIndices))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRCCriticalIndices))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)

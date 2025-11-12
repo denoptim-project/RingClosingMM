@@ -208,100 +208,6 @@ class GeneticAlgorithm:
         self.best_individual = None
         self.generation = 0
     
-    @staticmethod
-    def _build_bond_graph(base_zmatrix: List[Dict], topology=None) -> Dict[int, List[int]]:
-        """
-        Build bond connectivity graph from molecular topology or Z-matrix.
-        
-        Uses the complete molecular topology (including all bonds) if available,
-        otherwise falls back to Z-matrix bond_ref (which only includes tree structure).
-        
-        Parameters
-        ----------
-        base_zmatrix : List[Dict]
-            Z-matrix representation of the molecule
-        topology : openmm.app.Topology, optional
-            OpenMM topology object containing bond information
-        
-        Returns
-        -------
-        Dict[int, List[int]]
-            Adjacency list representation (0-based indices)
-        """
-        num_atoms = len(base_zmatrix)
-        graph = {i: [] for i in range(num_atoms)}
-        
-        if topology is not None:
-            # Use complete topology (includes all bonds, including RCP bonds)
-            for bond in topology.bonds():
-                atom1_idx = bond.atom1.index
-                atom2_idx = bond.atom2.index
-                if atom1_idx < num_atoms and atom2_idx < num_atoms:
-                    graph[atom1_idx].append(atom2_idx)
-                    graph[atom2_idx].append(atom1_idx)
-        else:
-            # Fall back to Z-matrix (only tree structure bonds)
-            for i, atom in enumerate(base_zmatrix):
-                if i == 0:
-                    continue
-                bond_ref = atom['bond_ref']
-                graph[i].append(bond_ref)
-                graph[bond_ref].append(i)
-        
-        return graph
-    
-    @staticmethod
-    def _find_path_bfs(graph: Dict[int, List[int]], start: int, end: int) -> Optional[List[int]]:
-        """
-        Find shortest path between two atoms using BFS.
-        
-        Parameters
-        ----------
-        graph : Dict[int, List[int]]
-            Bond connectivity graph (adjacency list)
-        start : int
-            Start atom index (0-based)
-        end : int
-            End atom index (0-based)
-        
-        Returns
-        -------
-        Optional[List[int]]
-            Path as list of atom indices, or None if no path exists
-        """
-        from collections import deque
-        
-        # Validate indices
-        if start not in graph:
-            return None
-        if end not in graph:
-            return None
-        
-        if start == end:
-            return [start]
-        
-        # BFS using deque for O(1) popleft (more efficient than list.pop(0))
-        visited = {start}
-        queue = deque([(start, [start])])
-        
-        while queue:
-            node, path = queue.popleft()
-            
-            # Safety check (should not happen if graph is well-formed)
-            if node not in graph:
-                continue
-            
-            for neighbor in graph[node]:
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    new_path = path + [neighbor]
-                    
-                    if neighbor == end:
-                        return new_path
-                    
-                    queue.append((neighbor, new_path))
-        
-        return None
     
     def _identify_rc_critical_rotatable_indeces(self) -> List[int]:
         """
@@ -312,47 +218,13 @@ class GeneticAlgorithm:
         List[int]
             Indices (into rotatable_indices) of critical torsions
         """
-        if not self.rcp_terms:
-            return []
-        
-        graph = self._build_bond_graph(self.base_zmatrix, self.topology)
-        num_atoms = len(self.base_zmatrix)
-        critical_atoms = set()
-        
-        # Find all atoms on paths between RCP pairs
-        # RCP terms are already 0-based
-        for atom1, atom2 in self.rcp_terms:
-            # Validate RCP atom indices (0-based, so range is [0, num_atoms-1])
-            if atom1 < 0 or atom1 >= num_atoms:
-                print(f"Warning: RCP atom1 index {atom1} is out of range [0, {num_atoms-1}], skipping")
-                continue
-            if atom2 < 0 or atom2 >= num_atoms:
-                print(f"Warning: RCP atom2 index {atom2} is out of range [0, {num_atoms-1}], skipping")
-                continue
-            
-            path = self._find_path_bfs(graph, atom1, atom2)
-            if path:
-                critical_atoms.update(path)
-            else:
-                print(f"Warning: No path found between RCP atoms {atom1} and {atom2} (0-based)")
-        
-        # Identify which rotatable torsions involve critical atoms
-        # A torsion is critical if ANY of its 4 defining atoms are on a critical path
-        critical_torsion_indices = []
-        for i in range(len(self.rotatable_indices)):
-            rot_idx = self.rotatable_indices[i]
-            atom = self.base_zmatrix[rot_idx]
-            atoms_in_rotatable_bond = [] 
-            if atom.get('bond_ref'):
-                atoms_in_rotatable_bond.append(atom['bond_ref'])
-            if atom.get('angle_ref'):
-                atoms_in_rotatable_bond.append(atom['angle_ref'])
-            
-            # Check if both atoms are on a critical path
-            if all(atom_idx in critical_atoms for atom_idx in atoms_in_rotatable_bond):
-                critical_torsion_indices.append(self.rotatable_indices[i])
-        
-        return critical_torsion_indices
+        rc_critical_rotatable_indeces, _ = MolecularSystem._identify_rc_critical_rotatable_indeces(
+            self.base_zmatrix,
+            self.rcp_terms,
+            self.rotatable_indices,
+            self.topology
+        )
+        return rc_critical_rotatable_indeces
     
     def _generate_systematic_samples(self) -> List[np.ndarray]:
         """
@@ -744,9 +616,9 @@ class LocalRefinementOptimizer:
                 minimized_zmatrix, minimized_energy, info = self.system.minimize_energy_in_zmatrix_space(
                     current_zmatrix,
                     dof_indices = dof_indices,
-                    dof_bounds = dof_bounds,
+                    dof_bounds_per_type = dof_bounds_per_type,
                     max_iterations=max_iterations,
-                    verbose = True
+                    verbose = True  
                 )
 
                 if info['success']:
@@ -854,15 +726,13 @@ class RingClosureOptimizer:
             Write candidate files (int and xyz)
         """
         self.system = molecular_system
-        self.rotatable_indices = rotatable_indices
-        self.rc_critical_rotatable_indeces = self._identify_rc_critical_rotatable_indeces()
-        self.dof_indices = self._get_dofs_from_rotatable_indeces(self.rotatable_indices, self.rc_critical_rotatable_indeces, self.system.zmatrix)
+        # Set rotatable indices on the system (this computes rc_critical_rotatable_indeces and dof_indices)
+        self.system.set_rotatable_indices(rotatable_indices)
         self.converter = CoordinateConverter()
         self.ga = None
         self.local_refinement = None
         self.write_candidate_files = write_candidate_files
         self.top_candidates = None
-    
     
     @classmethod
     def from_files(cls, structure_file: str, forcefield_file: str,
@@ -908,188 +778,13 @@ class RingClosureOptimizer:
         # Convert rotatable bonds to rotatable indices
         if rotatable_bonds is None:
             # All bonds are rotatable: get all dihedrals with chirality == 0
-            rotatable_indices = cls._get_all_rotatable_indices(system.zmatrix)
+            rotatable_indices = MolecularSystem._get_all_rotatable_indices(system.zmatrix)
         else:
             rotatable_indices = cls._convert_bonds_to_indices(rotatable_bonds, system.zmatrix)
         
         return cls(system, rotatable_indices, write_candidate_files)
     
 
-    def _identify_rc_critical_rotatable_indeces(self) -> List[int]:
-        """
-        Identify rotatable torsions on paths between RCP atoms.
-        
-        Returns
-        -------
-        List[int]
-            Indices (into rotatable_indices) of critical torsions
-        """
-        rcp_terms = self.system.rcpterms
-        topology = self.system.topology
-        if not rcp_terms:
-            return []
-        
-        graph = GeneticAlgorithm._build_bond_graph(self.system.zmatrix, topology)
-        num_atoms = len(self.system.zmatrix)
-        critical_atoms = set()
-        
-        # Find all atoms on paths between RCP pairs
-        # RCP terms are already 0-based
-        for atom1, atom2 in rcp_terms:
-            # Validate RCP atom indices (0-based, so range is [0, num_atoms-1])
-            if atom1 < 0 or atom1 >= num_atoms:
-                print(f"Warning: RCP atom1 index {atom1} is out of range [0, {num_atoms-1}], skipping")
-                continue
-            if atom2 < 0 or atom2 >= num_atoms:
-                print(f"Warning: RCP atom2 index {atom2} is out of range [0, {num_atoms-1}], skipping")
-                continue
-            
-            path = GeneticAlgorithm._find_path_bfs(graph, atom1, atom2)
-            if path:
-                critical_atoms.update(path)
-            else:
-                print(f"Warning: No path found between RCP atoms {atom1} and {atom2} (0-based)")
-        
-        # Identify which rotatable torsions involve critical atoms
-        # A torsion is critical if ANY of its 4 defining atoms are on a critical path
-        critical_torsion_indices = []
-        for i in range(len(self.rotatable_indices)):
-            rot_idx = self.rotatable_indices[i]
-            atom = self.system.zmatrix[rot_idx]
-            atoms_in_rotatable_bond = [] 
-            if atom.get('bond_ref'):
-                atoms_in_rotatable_bond.append(atom['bond_ref'])
-            if atom.get('angle_ref'):
-                atoms_in_rotatable_bond.append(atom['angle_ref'])
-            
-            # Check if both atoms are on a critical path
-            if all(atom_idx in critical_atoms for atom_idx in atoms_in_rotatable_bond):
-                critical_torsion_indices.append(self.rotatable_indices[i])
-        
-        return critical_torsion_indices
-
-
-    @staticmethod
-    def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], rc_critical_rotatable_indeces: List[int], zmatrix: List[Dict]) -> List[int]:
-        """
-        Get indexes of degrees of freedon on Z-matrix from rotatable indices.
-        
-        Parameters
-        ----------
-        rotatable_indices : List[int]
-            Indices of rotatable atoms in Z-matrix
-        zmatrix : List[Dict]
-            Z-matrix representation
-        
-        Returns
-        -------
-        List[Tuple[int, int]]
-            Indices of DOFs in Z-matrix. The first index is the atom index, 
-            the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
-            the first atom's first degree of freedom (distance) and the second atom's third 
-            degree of freedom (torsion).
-        """
-        dof_indices = []
-        dof_names = ['id', 'bond_ref', 'angle_ref', 'dihedral_ref']
-
-        all_atoms_in_rot_bonds = []
-        for idx in rc_critical_rotatable_indeces:
-            zatom = zmatrix[idx]
-            rb_bond_ref = zatom.get(dof_names[1])
-            rb_angle_ref = zatom.get(dof_names[2])
-            if not rb_bond_ref in all_atoms_in_rot_bonds:
-                all_atoms_in_rot_bonds.append(rb_bond_ref)
-            if not rb_angle_ref in all_atoms_in_rot_bonds:
-                all_atoms_in_rot_bonds.append(rb_angle_ref)
-
-        for idx in rotatable_indices:
-            zatom = zmatrix[idx]
-            # these two indexes identify the roatable bond
-            rb_bond_ref = zatom.get(dof_names[1])
-            rb_angle_ref = zatom.get(dof_names[2])
-            if rb_bond_ref is None or rb_angle_ref is None:
-                continue  # Skip if references don't exist
-
-            if True:
-                # Identify bond angles that act on the rotatable bond
-                for idx2, zatom2 in enumerate(zmatrix):
-                    zatom2_id = zatom2.get(dof_names[0])
-                    zatom2_bond_ref = zatom2.get(dof_names[1])
-                    zatom2_angle_ref = zatom2.get(dof_names[2])
-                    zatom2_dihedral_ref = zatom2.get(dof_names[3])
-
-                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-                        if zatom2_id in all_atoms_in_rot_bonds and zatom2_bond_ref in all_atoms_in_rot_bonds and zatom2_angle_ref in all_atoms_in_rot_bonds:  
-                            if (idx2, 1) not in dof_indices:
-                                dof_indices.append((idx2, 1))
-                        if zatom2_id in all_atoms_in_rot_bonds and zatom2_bond_ref in all_atoms_in_rot_bonds and zatom2_dihedral_ref in all_atoms_in_rot_bonds and zatom2.get('chirality', 0) != 0:  
-                            if (idx2, 2) not in dof_indices:
-                                dof_indices.append((idx2, 2))
-            else:
-                # Identify bond angles that act on the rotatable bond
-                for idx2, zatom2 in enumerate(zmatrix):
-                    zatom2_id = zatom2.get(dof_names[0])
-                    zatom2_bond_ref = zatom2.get(dof_names[1])
-                    zatom2_angle_ref = zatom2.get(dof_names[2])
-                    zatom2_dihedral_ref = zatom2.get(dof_names[3])
-
-                    # if either of the atoms defining the rotatable bond is the first atom and the other is the center of the angle
-                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-                        if (zatom2_id == rb_bond_ref and zatom2_bond_ref == rb_angle_ref) or \
-                        (zatom2_id == rb_angle_ref and zatom2_bond_ref == rb_bond_ref):
-                            if (idx2, 1) not in dof_indices:
-                                dof_indices.append((idx2, 1))
-                            if zatom2.get('chirality', 0) != 0:
-                                if (idx2, 2) not in dof_indices:
-                                    dof_indices.append((idx2, 2))
-                    
-                    # if the center of the first angle is either of the atoms defining the rotatable bond
-                    if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-                        if (zatom2_bond_ref == rb_bond_ref and zatom2_angle_ref == rb_angle_ref) or \
-                        (zatom2_angle_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
-                            if (idx2, 1) not in dof_indices:
-                                dof_indices.append((idx2, 1))
-                    
-                    # if the center of the second angle is either of the atoms defining the rotatable bond
-                    if zatom2.get('chirality', 0) != 0 and zatom2_bond_ref is not None and zatom2_dihedral_ref is not None:
-                        if (zatom2_bond_ref == rb_bond_ref and zatom2_dihedral_ref == rb_angle_ref) or \
-                        (zatom2_dihedral_ref == rb_bond_ref and zatom2_bond_ref == rb_angle_ref):
-                            if (idx2, 2) not in dof_indices:
-                                dof_indices.append((idx2, 2))
-
-        # Add the torsions
-        for idx in rotatable_indices:
-            if (idx, 2) not in dof_indices:
-                dof_indices.append((idx, 2))
-
-        return dof_indices  
-
-    @staticmethod
-    def _get_all_rotatable_indices(zmatrix: List[Dict]) -> List[int]:
-        """
-        Get all rotatable Z-matrix indices (all dihedrals with chirality == 0).
-        
-        When rotatable_bonds is not specified, all dihedrals that are not
-        chirality-constrained are considered rotatable.
-        
-        Parameters
-        ----------
-        zmatrix : List[Dict]
-            Z-matrix representation
-            
-        Returns
-        -------
-        List[int]
-            0-based indices of all rotatable atoms in Z-matrix
-        """
-        rotatable_indices = []
-        for i in range(3, len(zmatrix)):  # Only atoms 4+ have dihedrals
-            atom = zmatrix[i]
-            if atom.get('chirality', 0) == 0:  # Only true dihedrals (not chirality-constrained)
-                rotatable_indices.append(i)
-        
-        return rotatable_indices
-    
     @staticmethod
     def _convert_bonds_to_indices(rotatable_bonds: List[Tuple[int, int]], 
                                    zmatrix: List[Dict]) -> List[int]:
@@ -1256,9 +951,9 @@ class RingClosureOptimizer:
         
         # Initialize GA with base zmatrix
         self.ga = GeneticAlgorithm(
-            num_torsions=len(self.rotatable_indices),
+            num_torsions=len(self.system.rotatable_indices),
             base_zmatrix=self.system.zmatrix,
-            rotatable_indices=self.rotatable_indices,
+            rotatable_indices=self.system.rotatable_indices,
             population_size=population_size,
             mutation_rate=mutation_rate,
             mutation_strength=mutation_strength,
@@ -1274,7 +969,7 @@ class RingClosureOptimizer:
         if enable_smoothing_refinement or enable_zmatrix_refinement:
             self.local_refinement = LocalRefinementOptimizer(
                 self.system,
-                self.rotatable_indices
+                self.system.rotatable_indices
             )
         
         # Evaluate initial ring closure score
@@ -1287,7 +982,7 @@ class RingClosureOptimizer:
         if verbose:
             print(f"Initial ring closure score: {initial_closure_score:.4f}")
             print(f"Initial energy: {initial_energy:.2f} kcal/mol")
-            print(f"Rotatable dihedrals: {len(self.rotatable_indices)}")
+            print(f"Rotatable dihedrals: {len(self.system.rotatable_indices)}")
             print(f"Fitness function: exponential ring closure score (tolerance={ring_closure_tolerance:.2f} Å, decay_rate={ring_closure_decay_rate:.2f})")
             if enable_smoothing_refinement:
                 print(f"Smoothing refinement: enabled on top {refinement_top_n} candidates")
@@ -1305,7 +1000,7 @@ class RingClosureOptimizer:
         num_conv_gen = 0
         
         # Run GA
-        print(f"\nGA exploration of torsional space with {len(self.rotatable_indices)} torsions...")
+        print(f"\nGA exploration of torsional space with {len(self.system.rotatable_indices)} torsions...")
 
         for gen in range(generations):
             # Evaluate population
@@ -1352,9 +1047,9 @@ class RingClosureOptimizer:
         top_candidates = [self.ga.population[i] for i in top_indices]
 
         # Select which torsions to refine: do we protect the critical torsions?
-        selected_rotatable_indices = self.rotatable_indices
+        selected_rotatable_indices = self.system.rotatable_indices
         if protect_rc_critical_rotatable_bonds:
-            selected_rotatable_indices = [idx for idx in self.rotatable_indices if idx not in self.ga.rc_critical_rotatable_indeces]
+            selected_rotatable_indices = [idx for idx in self.system.rotatable_indices if idx not in self.system.rc_critical_rotatable_indeces]
         
         non_rc_dof_indexes = []
         for idx in selected_rotatable_indices:
@@ -1390,9 +1085,9 @@ class RingClosureOptimizer:
                 print(f"  Torsional refinement time: {pss_ref_time:.2f} seconds")
 
         if enable_zmatrix_refinement:
-            print(f"\nApplying Z-matrix refinement ({len(self.dof_indices)} DOFs) to top candidates...")
+            print(f"\nApplying Z-matrix refinement ({len(self.system.dof_indices)} DOFs) to top candidates...")
 
-            if len(self.dof_indices) == 0:
+            if len(self.system.dof_indices) == 0:
                 print("Warning: No torsions to refine. Skipping Z-matrix refinement.")
             else:
                 zms_ref_init = time.time()
@@ -1403,7 +1098,7 @@ class RingClosureOptimizer:
                         individual.energy = initial_energy
                     refined_individual = self.local_refinement.refine_individual_in_zmatrix_space_with_smoothing(individual,
                         smoothing_sequence = [0.0],
-                        dof_indices = self.dof_indices,
+                        dof_indices = self.system.dof_indices,
                         max_iterations=zmatrix_iterations)
                     top_candidates[i] = refined_individual
                     refined_energy = refined_individual.energy
@@ -1455,9 +1150,9 @@ class RingClosureOptimizer:
         
     def minimize(self, max_iterations: int = 500,
                  smoothing: Optional[Union[float, List[float]]] = None,
-                 torsional_space: bool = False,
-                 zmat_space: bool = False,
-                 update_system: bool = True,
+                 space_type: str = "Cartesian",
+                 zmatrix_dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[10.0, 180.0, 180.0]],
+                 gradient_tolerance: float = 0.01,
                  verbose: bool = True) -> Dict[str, Any]:
         """
         Perform energy minimization on the current structure.
@@ -1480,14 +1175,13 @@ class RingClosureOptimizer:
             - float: single smoothing value
             - List[float]: sequence of smoothing values to apply in decreasing order
               Example: [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
-        torsional_space : bool
-            If True, perform minimization in torsional space only (optimize dihedrals).
-            If False, perform minimization in Cartesian space (default: False)
-        zmat_space : bool
-            If True, perform minimization in Z-matrix space only (optimize bond lengths, angles, and dihedrals).
-            If False, perform minimization in Cartesian space (default: False)
-        update_system : bool
-            If True, update self.system.zmatrix with minimized structure (default: True)
+        space_type : str
+            Type of space to minimize in: 'torsional', 'zmatrix', or 'Cartesian' (default: 'Cartesian')
+        zmatrix_dof_bounds_per_type : Optional[List[Tuple[float, float, float]]]
+            Bounds for types of degrees of freedom in Z-matrix space. Example: [0.02, 5.0, 10.0] means 
+            that bond lengths are bound to change to up to 0.02 Å of the current value, angles and 5.0 degrees, and torsions by 10.0 degrees. Multiple tuples can be provided to request any stepwise application of bounds. Example: [[0.02, 5.0, 10.0], [0.01, 3.0, 8.0]] means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is [(10.0, 180.0, 180.0)].
+        gradient_tolerance : float
+            Gradient tolerance for minimization (default: 0.01)
         verbose : bool
             Print minimization progress (default: True)
         
@@ -1499,12 +1193,12 @@ class RingClosureOptimizer:
             - 'final_energy': Energy after minimization (kcal/mol)
             - 'coordinates': Minimized Cartesian coordinates (numpy array)
             - 'zmatrix': Minimized Z-matrix (list of dicts)
-            - 'torsions': Extracted torsional angles (numpy array)
             - 'ring_closure_score': Ring closure score after minimization
-            - 'improvement': Energy improvement (kcal/mol)
-            - 'minimization_type': 'cartesian' or 'torsional'
+            - 'minimization_type': 'cartesian' or 'torsional' or 'zmatrix'
             - 'optimization_info': Additional optimization info (for torsional minimization)
             - 'smoothing_sequence': List of smoothing values used
+            - 'success': True if minimization was successful, False otherwise
+            - 'error': Error message if minimization failed
         
         Example
         -------
@@ -1532,45 +1226,41 @@ class RingClosureOptimizer:
         else:
             # Single smoothing value
             smoothing_values = [smoothing]
-        
+
         # Evaluate initial energy at first smoothing value
         self.system.setSmoothingParameter(smoothing_values[0])
         initial_energy = self.system.evaluate_energy(initial_coords)
-
-        #write_xyz_file(initial_coords, self.system.elements, "initial_coords.xyz")
-        
-        # Extract initial torsions
-        initial_torsions = np.array([initial_zmatrix[idx]['dihedral']
-                                    for idx in self.rotatable_indices])
+        ring_closure_score = self.system.ring_closure_score_exponential(
+                initial_coords,
+                verbose=False
+            )
         
         if verbose:
-            space_type = "torsional" if torsional_space else "zmatrix" if zmat_space else "Cartesian"
+            print(f"Initial energy: {initial_energy:.4f} kcal/mol")
+            print(f"Initial ring closure score: {ring_closure_score:.4f}")
             if len(smoothing_values) > 1:
-                print(f"Initial energy: {initial_energy:.4f} kcal/mol")
                 print(f"Minimizing in {space_type} space with smoothing sequence: {smoothing_values}")
             else:
-                print(f"Initial energy: {initial_energy:.4f} kcal/mol")
                 print(f"Minimizing in {space_type} space with {max_iterations} max iterations (smoothing={smoothing_values[0]:.2f})...")
         
         try:
             current_zmatrix = initial_zmatrix
             all_opt_info = []
             
-            # Perform sequence of minimizations with decreasing smoothing
+            # Perform sequence of minimizations with smoothed potential energy
             for step, smoothing_val in enumerate(smoothing_values):
                 self.system.setSmoothingParameter(smoothing_val)
                 
                 if verbose and len(smoothing_values) > 1:
                     print(f"Step {step+1}/{len(smoothing_values)}: smoothing={smoothing_val:.2f}")
                 
-                if torsional_space:
+                if space_type == 'torsional':
                     # Perform torsional minimization
                     refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_torsional_space(
                         current_zmatrix,
-                        self.rotatable_indices,
+                        self.system.rotatable_indices,
                         max_iterations=max_iterations,
-                        method='Powell',
-                        verbose=verbose and len(smoothing_values) == 1  # Only verbose for single step
+                        verbose=verbose
                     )
                     
                     if opt_info.get('success'):
@@ -1580,19 +1270,19 @@ class RingClosureOptimizer:
                         if verbose:
                             print(f"  Warning: Minimization step failed, continuing with previous structure")
                         
-                elif zmat_space:
+                elif space_type == 'zmatrix':
                     # Perform Z-matrix minimization
                     init_time = time.time()
                     refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_zmatrix_space(
                         current_zmatrix,
-                        self.dof_indices,
-                        dof_bounds = [[0.02, 10.0, 10.0],[0.02, 5.0, 5.0]],
+                        self.system.dof_indices,
+                        dof_bounds_per_type = zmatrix_dof_bounds_per_type,
                         max_iterations=max_iterations,
-                        method='L-BFGS-B',
-                        verbose=verbose and len(smoothing_values) == 1  # Only verbose for single step
+                        gradient_tolerance=gradient_tolerance,
+                        verbose=verbose
                     )
                     time_taken = time.time() - init_time
-                    print(f"  Time taken: {time_taken:.2f} seconds")
+                    print(f"\nTime taken for Z-matrix minimization: {time_taken:.2f} seconds")
 
                     if opt_info.get('success'):
                         current_zmatrix = refined_zmatrix
@@ -1601,7 +1291,7 @@ class RingClosureOptimizer:
                         if verbose:
                             print(f"  Warning: Minimization step failed, continuing with previous structure")
                         
-                else:
+                elif space_type == 'Cartesian':
                     # Work in Cartesian space, even though results are in Z-matrix space
                     minimized_coords, step_energy = self.system.minimize_energy(
                         current_zmatrix,
@@ -1615,6 +1305,9 @@ class RingClosureOptimizer:
                     )
                     current_zmatrix = refined_zmatrix
                     opt_info = {}
+                
+                else:
+                    raise ValueError(f"Invalid space type: {space_type}")
             
             # Final state after all smoothing steps
             minimized_zmatrix = current_zmatrix
@@ -1624,43 +1317,17 @@ class RingClosureOptimizer:
             self.system.setSmoothingParameter(0.0)  # Final evaluation at no smoothing
             minimized_energy = self.system.evaluate_energy(minimized_coords)
             
-            # Extract refined torsions
-            refined_torsions = np.array([minimized_zmatrix[idx]['dihedral']
-                                        for idx in self.rotatable_indices])
-            
-            # Combine optimization info (for torsional minimization)
-            if torsional_space and all_opt_info:
-                combined_opt_info = {
-                    'nfev': sum(info.get('nfev', 0) for info in all_opt_info),
-                    'nit': sum(info.get('nit', 0) for info in all_opt_info),
-                    'steps': len(all_opt_info),
-                    'step_info': all_opt_info
-                }
-            elif zmat_space and all_opt_info:
-                combined_opt_info = {
-                    'nfev': sum(info.get('nfev', 0) for info in all_opt_info),
-                    'nit': sum(info.get('nit', 0) for info in all_opt_info),
-                    'steps': len(all_opt_info),
-                    'step_info': all_opt_info
-                }
-            else:
-                combined_opt_info = {}
-            
             # Calculate ring closure score
             ring_closure_score = self.system.ring_closure_score_exponential(
                 minimized_coords,
                 verbose=False
             )
             
-            # Update system Z-matrix if requested
-            if update_system:
-                self.system.zmatrix = minimized_zmatrix
-            
-            improvement = initial_energy - minimized_energy
+            self.system.zmatrix = minimized_zmatrix
             
             if verbose:
-                print(f"Final energy:   {minimized_energy:.4f} kcal/mol")
-                print(f"Improvement:    {improvement:.4f} kcal/mol")
+                print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
+                print(f"Improvement:    {initial_energy - minimized_energy:.4f} kcal/mol")
                 print(f"Ring closure:   {ring_closure_score:.4f}")
                 rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = self.system.calculate_rmsd(initial_zmatrix, minimized_zmatrix)
                 print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
@@ -1672,14 +1339,12 @@ class RingClosureOptimizer:
                 'final_energy': minimized_energy,
                 'coordinates': minimized_coords,
                 'zmatrix': minimized_zmatrix,
-                'torsions': refined_torsions,
                 'ring_closure_score': ring_closure_score,
                 'rmsd_bond_lengths': rmsd_bond_lengths,
                 'rmsd_angles': rmsd_angles,
                 'rmsd_dihedrals': rmsd_dihedrals,
-                'improvement': improvement,
-                'minimization_type': 'torsional' if torsional_space else 'zmatrix' if zmat_space else 'Cartesian',
-                'optimization_info': combined_opt_info,
+                'minimization_type': space_type,
+                'optimization_info': all_opt_info,
                 'smoothing_sequence': smoothing_values,
                 'success': True
             }
@@ -1692,14 +1357,12 @@ class RingClosureOptimizer:
                 'final_energy': initial_energy,
                 'coordinates': initial_coords,
                 'zmatrix': initial_zmatrix,
-                'torsions': initial_torsions,
                 'ring_closure_score': self.system.ring_closure_score_exponential(
                     initial_coords, verbose=False),
                 'rmsd_bond_lengths': 0.0,
                 'rmsd_angles': 0.0,
                 'rmsd_dihedrals': 0.0,
-                'improvement': 0.0,
-                'minimization_type': 'torsional' if torsional_space else 'zmatrix' if zmat_space else 'Cartesian',
+                'minimization_type': space_type,
                 'optimization_info': {},
                 'smoothing_sequence': smoothing_values,
                 'success': False,
