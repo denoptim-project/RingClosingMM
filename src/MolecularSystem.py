@@ -845,72 +845,7 @@ class MolecularSystem:
                 'final_torsions': initial_torsions.copy()
             }
             return zmatrix, 1e6, info
-    
 
-#TODO: delete this and related tests
-    def ring_closure_penalty_quadratic(self, coords: np.ndarray, 
-                                        target_distance: float = 1.54,
-                                        verbose: bool = False) -> float:
-        """
-        Calculate continuous ring closure penalty using squared excess distances.
-        
-        This provides a smooth, continuous metric suitable for optimization,
-        unlike the discrete count from count_near_closed_rings(). The penalty
-        is zero when all RCP distances are at or below the target distance,
-        and increases quadratically with distance above the target.
-        
-        Parameters
-        ----------
-        coords : np.ndarray
-            Cartesian coordinates (Angstroms)
-        target_distance : float
-            Target bond distance for closed rings (default: 1.54 Å for C-C single bond)
-        verbose : bool
-            If True, print detailed penalty breakdown for each RCP term
-        
-        Returns
-        -------
-        float
-            Sum of squared excess distances (Ų). Zero indicates all rings are closed
-            or nearly closed (within target_distance).
-        
-        Notes
-        -----
-        The quadratic penalty penalizes large distances more heavily than small ones,
-        providing better gradient information for optimization algorithms.
-        
-        Examples
-        --------
-        If RCP distances are [1.5, 2.5, 5.0] Å with target=1.54:
-        - RCP 1: (1.5-1.54)² = 0.0016 (essentially closed, small penalty)
-        - RCP 2: (2.5-1.54)² = 0.9216 (moderate penalty)
-        - RCP 3: (5.0-1.54)² = 11.9716 (large penalty for distant atoms)
-        Total penalty = 12.8948 Ų
-        """
-        if not self.rcpterms:
-            return 0.0
-        
-        total_penalty = 0.0
-        
-        if verbose:
-            print(f"\n  RCP Penalty Analysis (target distance: {target_distance:.2f} Å):")
-        
-        for rcp_term in self.rcpterms:
-            distance = _calc_distance(coords[rcp_term[0]], coords[rcp_term[1]])
-            excess = max(0.0, distance - target_distance)
-            penalty = excess ** 2
-            total_penalty += penalty
-            
-            if verbose:
-                status = "✓ OK" if excess < 0.1 else "⚠ OPEN"
-                print(f"    RCP {rcp_term[0]:3d}-{rcp_term[1]:3d}: "
-                      f"dist={distance:6.3f} Å, excess={excess:6.3f} Å, "
-                      f"penalty={penalty:8.4f} Ų  {status}")
-        
-        if verbose:
-            print(f"  Total penalty: {total_penalty:.4f} Ų\n")
-        
-        return total_penalty
 
     def ring_closure_score_exponential(self, coords: np.ndarray, 
                                         tolerance: float = 0.001,

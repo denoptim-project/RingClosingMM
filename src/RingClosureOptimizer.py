@@ -945,7 +945,7 @@ class RingClosureOptimizer:
                 print(f"  Z-matrix refinement time: {zms_ref_time:.2f} seconds")
 
         # Compile results
-        final_closure_scores = np.array([self.system.ring_closure_score_exponential(
+        final_closure_scores = np.array([MolecularSystem.ring_closure_score_exponential(
             zmatrix_to_cartesian(individual.zmatrix)
         ) for individual in top_candidates])
 

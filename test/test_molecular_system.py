@@ -328,30 +328,6 @@ class TestMolecularSystemRingClosure(unittest.TestCase):
         # With very large tolerance, should get score of 1.0
         score = system.ring_closure_score_exponential(coords, tolerance=100.0, decay_rate=1.0)
         self.assertEqual(score, 1.0)
-    
-    def test_ring_closure_penalty_quadratic(self):
-        """Test quadratic penalty calculation."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        rcp_terms = [(0, 2)]
-        system = MolecularSystem.from_file(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rcp_terms=rcp_terms
-        )
-        
-        coords = zmatrix_to_cartesian(system.zmatrix)
-        
-        # Calculate penalty
-        penalty = system.ring_closure_penalty_quadratic(coords, target_distance=1.5)
-        
-        # Penalty should be non-negative
-        self.assertGreaterEqual(penalty, 0.0)
-        
-        # With very large target distance, penalty should be 0.0
-        penalty_large = system.ring_closure_penalty_quadratic(coords, target_distance=100.0)
-        self.assertEqual(penalty_large, 0.0)
 
 
 class TestMolecularSystemMinimization(unittest.TestCase):
@@ -644,10 +620,6 @@ class TestMolecularSystemErrorHandling(unittest.TestCase):
         score = system.ring_closure_score_exponential(coords, verbose=True)
         self.assertGreaterEqual(score, 0.0)
         self.assertLessEqual(score, 1.0)
-        
-        # Test penalty with verbose=True
-        penalty = system.ring_closure_penalty_quadratic(coords, verbose=True)
-        self.assertGreaterEqual(penalty, 0.0)
 
 
 class TestMolecularSystemRMSD(unittest.TestCase):
