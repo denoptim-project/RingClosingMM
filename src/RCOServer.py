@@ -30,10 +30,12 @@ try:
     from .MolecularSystem import MolecularSystem
     from .RingClosureOptimizer import RingClosureOptimizer
     from .CoordinateConverter import zmatrix_to_cartesian
+    from .ZMatrix import ZMatrix
 except ImportError:
     from MolecularSystem import MolecularSystem
     from RingClosureOptimizer import RingClosureOptimizer
     from CoordinateConverter import zmatrix_to_cartesian
+    from ZMatrix import ZMatrix
 
 MY_NAME = "rc-optimizer-server"
 
@@ -297,8 +299,9 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     # The Z-matrix from JSON uses 1-based indexing for all reference atoms
     zmatrix_0based = []
     for atom in zmatrix:
-        atom_0based = atom.copy()  # Copy all fields
+        atom_0based = atom.copy() 
         # Convert reference indices from 1-based to 0-based
+        atom_0based['id'] = atom_0based['id'] - 1
         if 'bond_ref' in atom_0based:
             atom_0based['bond_ref'] = atom_0based['bond_ref'] - 1
         if 'angle_ref' in atom_0based:
@@ -306,7 +309,16 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         if 'dihedral_ref' in atom_0based:
             atom_0based['dihedral_ref'] = atom_0based['dihedral_ref'] - 1
         zmatrix_0based.append(atom_0based)
-    zmatrix = zmatrix_0based  # Use converted Z-matrix
+
+    # List of atom indices that are bonded to each other and the bond type
+    # This is needed because the Z-matrix does not imply bond definition
+    bonds_data = request.get('bonds_data') # 1-based indexing
+    if not bonds_data:
+        raise ValueError("Missing required field: bonds_data")
+    bonds_data = [(a-1, b-1, c) for a, b, c in bonds_data] # 0-based indexing
+
+    # Convert to ZMatrix immediately - this is the only boundary where we convert List[Dict] to ZMatrix
+    zmatrix = ZMatrix(zmatrix_0based, bonds_data)
     
     # Get forcefield file (use default if not provided)
     forcefield_file = request.get('forcefield_file')
@@ -322,13 +334,6 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         logger.debug(f"Using default force field: {forcefield_file}")
     
     mode = request.get('mode', 'optimize')  # 'optimize' or 'minimize'
-    
-    # List of atom indices that are bonded to each other and the bond type
-    # This is needed because the Z-matrix does not imply bond definition
-    bonds_data = request.get('bonds_data') # 1-based indexing
-    if not bonds_data:
-        raise ValueError("Missing required field: bonds_data")
-    bonds_data = [(a-1, b-1, c) for a, b, c in bonds_data] # 0-based indexing
 
     # Input about defining bonds that can be rotated
     rotatable_bonds = request.get('rotatable_bonds')  # 1-based or None
@@ -344,7 +349,6 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     try:
         system = MolecularSystem.from_data(
             zmatrix=zmatrix,
-            bonds_data=bonds_data,
             forcefield_file=forcefield_file,
             rcp_terms=rcp_terms if rcp_terms else None
         )
@@ -372,40 +376,33 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     if mode == 'optimize':
         # Extract optimization parameters
         result = optimizer.optimize(
-            population_size=request.get('population_size', 30),
-            generations=request.get('generations', 50),
-            mutation_rate=request.get('mutation_rate', 0.15),
-            mutation_strength=request.get('mutation_strength', 10.0),
-            crossover_rate=request.get('crossover_rate', 0.7),
-            elite_size=request.get('elite_size', 5),
             ring_closure_tolerance=request.get('ring_closure_tolerance', 1.54),
             ring_closure_decay_rate=request.get('ring_closure_decay_rate', 1.0),
-            enable_smoothing_refinement=request.get('enable_smoothing_refinement', True),
+            enable_pssrot_refinement=request.get('enable_pssrot_refinement', True),
             enable_zmatrix_refinement=request.get('enable_zmatrix_refinement', True),
-            refinement_top_n=request.get('refinement_top_n', 1),
             smoothing_sequence=request.get('smoothing_sequence'),
+            torsional_iterations=request.get('torsional_iterations', 50),
+            zmatrix_iterations=request.get('zmatrix_iterations', 50),
             verbose=request.get('verbose', False)
         )
         
-        # Get best individual
-        if optimizer.top_candidates and len(optimizer.top_candidates) > 0:
-            best_individual = optimizer.top_candidates[0]
-            best_coords = zmatrix_to_cartesian(best_individual.zmatrix)
-            final_energy = best_individual.energy
-            final_rcscore = result['final_closure_score']
-            if isinstance(final_rcscore, (list, tuple)):
-                final_rcscore = max(final_rcscore) if final_rcscore else 0.0
-        else:
-            best_coords = zmatrix_to_cartesian(optimizer.system.zmatrix)
-            final_energy = optimizer.system.evaluate_energy(best_coords)
-            final_rcscore = result.get('final_closure_score', 0.0)
-            if isinstance(final_rcscore, (list, tuple)):
-                final_rcscore = max(final_rcscore) if final_rcscore else 0.0
+        # Get best result from optimize()
+        best_zmatrix = result['final_zmatrix']
+        best_coords = zmatrix_to_cartesian(best_zmatrix)
+        final_energy = result['final_energy']
+        final_rcscore = result['final_closure_score']
+        if isinstance(final_rcscore, (list, tuple)):
+            final_rcscore = max(final_rcscore) if final_rcscore else 0.0
         
         # Convert Z-matrix back to 1-based for JSON response
         zmatrix_1based = []
-        zmatrix_internal = best_individual.zmatrix if optimizer.top_candidates else optimizer.system.zmatrix
-        for atom in zmatrix_internal:
+        # Convert ZMatrix to list if needed
+        if isinstance(best_zmatrix, ZMatrix):
+            zmatrix_list = best_zmatrix.to_list()
+        else:
+            zmatrix_list = best_zmatrix
+        
+        for atom in zmatrix_list:
             atom_1based = atom.copy()
             # Convert reference indices from 0-based to 1-based
             if 'bond_ref' in atom_1based:
@@ -454,7 +451,13 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         # Convert Z-matrix back to 1-based for JSON response
         zmatrix_1based = []
         zmatrix_internal = result['zmatrix']
-        for atom in zmatrix_internal:
+        # Convert ZMatrix to list if needed
+        if isinstance(zmatrix_internal, ZMatrix):
+            zmatrix_list = zmatrix_internal.to_list()
+        else:
+            zmatrix_list = zmatrix_internal
+        
+        for atom in zmatrix_list:
             atom_1based = atom.copy()
             # Convert reference indices from 0-based to 1-based
             if 'bond_ref' in atom_1based:
@@ -466,7 +469,12 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             zmatrix_1based.append(atom_1based)
         
         # Compute Cartesian coordinates from the final Z-matrix to ensure consistency
-        final_coords = zmatrix_to_cartesian(zmatrix_internal)
+        # Convert ZMatrix to list if needed for zmatrix_to_cartesian
+        if isinstance(zmatrix_internal, ZMatrix):
+            zmatrix_for_coords = zmatrix_internal
+        else:
+            zmatrix_for_coords = ZMatrix(zmatrix_internal, [])
+        final_coords = zmatrix_to_cartesian(zmatrix_for_coords)
         
         response = {
             "STATUS": "SUCCESS",

@@ -10,6 +10,7 @@ try:
         CoordinateConverter
     )
     from .MolecularSystem import MolecularSystem
+    from .ZMatrix import ZMatrix
 except ImportError:
     # Absolute imports for direct script use
     from CoordinateConverter import (
@@ -17,6 +18,7 @@ except ImportError:
         CoordinateConverter
     )
     from MolecularSystem import MolecularSystem
+    from ZMatrix import ZMatrix
 
 class RingClosureOptimizer:
     """
@@ -102,7 +104,7 @@ class RingClosureOptimizer:
 
     @staticmethod
     def _convert_bonds_to_indices(rotatable_bonds: List[Tuple[int, int]], 
-                                   zmatrix: List[Dict]) -> List[int]:
+                                   zmatrix: ZMatrix) -> List[int]:
         """
         Convert rotatable bond pairs to rotatable Z-matrix indices.
         
@@ -110,7 +112,7 @@ class RingClosureOptimizer:
         ----------
         rotatable_bonds : List[Tuple[int, int]]
             List of (atom1, atom2) pairs
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation
             
         Returns
@@ -330,7 +332,7 @@ class RingClosureOptimizer:
             - 'initial_energy': Energy before minimization (kcal/mol)
             - 'final_energy': Energy after minimization (kcal/mol)
             - 'coordinates': Minimized Cartesian coordinates (numpy array)
-            - 'zmatrix': Minimized Z-matrix (list of dicts)
+            - 'zmatrix': Minimized Z-matrix (ZMatrix instance)
             - 'ring_closure_score': Ring closure score after minimization
             - 'rmsd_bond_lengths': RMSD of bond lengths after minimization
             - 'rmsd_angles': RMSD of angles after minimization

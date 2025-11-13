@@ -20,8 +20,10 @@ from openmm.app import Element, Simulation, Topology
 # Dual import handling for package and direct script use
 try:
     from .IOTools import read_int_file, write_xyz_file
+    from .ZMatrix import ZMatrix
 except ImportError:
     from IOTools import read_int_file, write_xyz_file
+    from ZMatrix import ZMatrix
 
 try:
     # Relative imports for package use
@@ -110,14 +112,14 @@ class MolecularSystem:
         OpenMM topology object
     rcpterms : List[Tuple[int, int]]
         Ring closure pair terms
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix (internal coordinates) representation
     step_length : float
         Integration step length for simulations
     """
     
     def __init__(self, system, topology, rcpterms: List[Tuple[int, int]], 
-                 zmatrix: List[Dict],
+                 zmatrix: ZMatrix,
                  step_length: float = 0.0002,
                  write_candidate_files: bool = False,
                  ring_closure_threshold: float = 1.5):
@@ -132,7 +134,7 @@ class MolecularSystem:
             OpenMM topology object
         rcpterms : List[Tuple[int, int]]
             Ring closure pair terms
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation
         step_length : float
             Integration step length
@@ -163,7 +165,7 @@ class MolecularSystem:
     @property
     def elements(self) -> List[str]:
         """Get element symbols from Z-matrix."""
-        return [atom['element'] for atom in self.zmatrix]
+        return self.zmatrix.get_elements()
     
     def set_rotatable_indices(self, rotatable_indices: List[int]):
         """
@@ -235,21 +237,15 @@ class MolecularSystem:
         if not structure_file.endswith('.int'):
             raise ValueError("Only .int files containing Z-matrix data are supported as input files.")
         
-        data = read_int_file(structure_file)
+        zmatrix = read_int_file(structure_file)
         
-        # Get Z-matrix
-        if 'zmatrix' in data and data['zmatrix']:
-            zmatrix = data['zmatrix']
-        else:
-            raise ValueError("Z-matrix not found in file. Use .int format for Z-matrix files.")
-
-        bonds_data = data['bonds']
+        if not isinstance(zmatrix, ZMatrix):
+            raise TypeError(f"Expected ZMatrix instance, got {type(zmatrix)}")
         
-        return cls.from_data(zmatrix, bonds_data, forcefield_file, rcp_terms, write_candidate_files, ring_closure_threshold, step_length)
+        return cls.from_data(zmatrix, forcefield_file, rcp_terms, write_candidate_files, ring_closure_threshold, step_length)
     
     @classmethod
-    def from_data(cls, zmatrix: List[Dict], 
-                     bonds_data: List[Tuple[int, int, int]], 
+    def from_data(cls, zmatrix: ZMatrix, 
                      forcefield_file: str,
                      rcp_terms: Optional[List[Tuple[int, int]]] = None,
                      write_candidate_files: bool = False,
@@ -260,12 +256,9 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation. All reference indices (bond_ref, angle_ref, 
             dihedral_ref) must be in 0-based indexing.
-        bonds_data : List[Tuple[int, int, int]]
-            List of atom indices that are bonded to each other and the bond type.
-            All indices must be in 0-based indexing.
         forcefield_file : str
             Path to force field XML file
         rcp_terms : Optional[List[Tuple[int, int]]]
@@ -286,7 +279,9 @@ class MolecularSystem:
         coords = zmatrix_to_cartesian(zmatrix) * 0.1 * unit.nanometer  # Angstroms to nm
         
         # Build topology from Z-matrix data
-        atoms_data = [(atom['element'], i) for i, atom in enumerate(zmatrix)]
+        atoms_data = [(zmatrix[i]['element'], i) for i in range(len(zmatrix))]
+
+        bonds_data = zmatrix.bonds
 
         # Build topology from data
         topology = build_topology_from_data(atoms_data, bonds_data)
@@ -382,7 +377,7 @@ class MolecularSystem:
             return 1e6
 
 
-    def minimize_energy(self, zmatrix: List[Dict], max_iterations: int = 100) -> Tuple[np.ndarray, float]:
+    def minimize_energy(self, zmatrix: ZMatrix, max_iterations: int = 100) -> Tuple[np.ndarray, float]:
         """
         Perform energy minimization with OpenMM engine in Cartesian space and return optimized coordinates.
         
@@ -391,7 +386,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Starting Z-matrix
         max_iterations : int
             Maximum minimization iterations
@@ -424,13 +419,13 @@ class MolecularSystem:
             return coords, 1e6
 
 
-    def minimize_energy_in_zmatrix_space(self, zmatrix: List[Dict], 
+    def minimize_energy_in_zmatrix_space(self, zmatrix: ZMatrix, 
                                             dof_indices: List[Tuple[int,int]],
                                             dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[10.0, 180.0, 180.0]],
                                             max_iterations: int = 100,
                                             gradient_tolerance: float = 0.01,
                                             verbose: bool = False,
-                                            trajectory_file: Optional[str] = None) -> Tuple[List[Dict], float, Dict[str, Any]]:
+                                            trajectory_file: Optional[str] = None) -> Tuple[ZMatrix, float, Dict[str, Any]]:
         """
         Perform energy minimization in Z-matrix space only.
         
@@ -439,7 +434,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Starting Z-matrix
         dof_indices : List[int]
             Indices of degrees of freedom in Z-matrix. The first index is the atom index, 
@@ -462,15 +457,14 @@ class MolecularSystem:
             
         Returns
         -------
-        Tuple[List[Dict], float, Dict[str, Any]]
+            Tuple[ZMatrix, float, Dict[str, Any]]
             Optimized Z-matrix, optimized energy (kcal/mol), and optimization info dict
         """
-        # Convention in Zmatrix: should come from the ZMatrix class, not here
-        # WARNING: the 'dihedral' can actially be a second angle!
-        dof_names = ['bond_length', 'angle', 'dihedral']
+        # Use DOF names from ZMatrix class
+        dof_names = ZMatrix.DOF_NAMES
 
         # Record the initial values of the dofs
-        initial_dofs = np.array([zmatrix[idx[0]][dof_names[idx[1]]] for idx in dof_indices])
+        initial_dofs = np.array([zmatrix.get_dof(idx[0], idx[1]) for idx in dof_indices])
         
         # Clear trajectory file if provided
         if trajectory_file:
@@ -479,13 +473,13 @@ class MolecularSystem:
         # Iteration counter for trajectory
         iteration_counter = [0]
 
-        def get_updated_zmatrix(zmatrix: List[Dict], dofs: np.ndarray) -> List[Dict]:
+        def get_updated_zmatrix(zmatrix: ZMatrix, dofs: np.ndarray) -> ZMatrix:
             """Get updated Z-matrix with given dofs."""
-            updated_zmatrix = copy.deepcopy(zmatrix)
+            updated_zmatrix = zmatrix.copy()
             for j, idx in enumerate(dof_indices):
                 zmat_idx = idx[0]
                 dof_idx = idx[1]
-                updated_zmatrix[zmat_idx][dof_names[dof_idx]] = dofs[j]
+                updated_zmatrix.update_dof(zmat_idx, dof_idx, dofs[j])
             return updated_zmatrix
         
         def objective(dofs: np.ndarray) -> float:
@@ -512,7 +506,7 @@ class MolecularSystem:
                     
                     # Convert to Cartesian
                     coords = zmatrix_to_cartesian(current_zmatrix)
-                    elements = [current_zmatrix[idx]['element'] for idx in range(len(current_zmatrix))]
+                    elements = current_zmatrix.get_elements()
                     
                     # Evaluate energy for comment
                     energy = objective(dofs)
@@ -564,10 +558,10 @@ class MolecularSystem:
                     if dof_type == 'bond_length':
                         deviation = dof_bound_coeffs[0]
                         current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
-                    elif (dof_type == 'angle') or (dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] != 0):
+                    elif (dof_type == 'angle') or (dof_type == 'dihedral' and zmatrix[zmat_idx].get('chirality', 0) != 0):
                         deviation = dof_bound_coeffs[1]
                         current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
-                    elif dof_type == 'dihedral' and zmatrix[zmat_idx]['chirality'] == 0:
+                    elif dof_type == 'dihedral' and zmatrix[zmat_idx].get('chirality', 0) == 0:
                         deviation = dof_bound_coeffs[2]
                         if deviation < 179.0:
                             current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
@@ -640,17 +634,16 @@ class MolecularSystem:
                 'initial_energy': initial_energy if 'initial_energy' in locals() else 1e6,
                 'final_energy': 1e6,
                 'improvement': 0.0,
-                'initial_dofs': initial_dofs.copy(),
-                'final_dofs': initial_dofs.copy()
+                'initial_dofs': initial_dofs.copy() if 'initial_dofs' in locals() else np.array([]),
+                'final_dofs': initial_dofs.copy() if 'initial_dofs' in locals() else np.array([])
             }
-            return zmatrix, 1e6, info
+            return zmatrix.copy(), 1e6, info
 
 
-    def report_dof_info(self, zmatrix: List[Dict], dof_indices: List[Tuple[int,int]], dofs: np.ndarray, dof_bounds: List[Tuple[float, float]], gradient: Optional[np.ndarray]):
+    def report_dof_info(self, zmatrix: ZMatrix, dof_indices: List[Tuple[int,int]], dofs: np.ndarray, dof_bounds: List[Tuple[float, float]], gradient: Optional[np.ndarray]):
         """Report information about the degrees of freedom on screen."""
         # Format gradient norm and max gradient with NA handling    
-        
-        dof_names = ['bond_length', 'angle', 'dihedral']
+        dof_names = ZMatrix.DOF_NAMES
         
         for j, dof_index in enumerate(dof_indices):
             zmat_idx, dof_type = dof_index
@@ -682,12 +675,12 @@ class MolecularSystem:
                       f"={dof_value: 9.4f}  bounds=[{bound_low: 9.4f}, {bound_high: 9.4f}]  grad={grad_value_str}")
             
 
-    def minimize_energy_in_torsional_space(self, zmatrix: List[Dict], 
+    def minimize_energy_in_torsional_space(self, zmatrix: ZMatrix, 
                                             rotatable_indices: List[int],
                                             max_iterations: int = 100,
                                             method: str = 'Powell', 
                                             verbose: bool = False,
-                                            trajectory_file: Optional[str] = None) -> Tuple[List[Dict], float, Dict[str, Any]]:
+                                            trajectory_file: Optional[str] = None) -> Tuple[ZMatrix, float, Dict[str, Any]]:
         """
         Perform energy minimization in torsional space only.
         
@@ -696,7 +689,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Starting Z-matrix
         rotatable_indices : List[int]
             Indices of rotatable atoms in Z-matrix (atoms whose dihedrals can be optimized)
@@ -712,7 +705,7 @@ class MolecularSystem:
             
         Returns
         -------
-        Tuple[List[Dict], float, Dict[str, Any]]
+            Tuple[ZMatrix, float, Dict[str, Any]]
             Optimized Z-matrix, optimized energy (kcal/mol), and optimization info dict
         """
         # Extract initial torsion angles
@@ -729,7 +722,7 @@ class MolecularSystem:
             """Objective function: evaluate energy for given torsions."""
             try:
                 # Update zmatrix with new torsion values
-                updated_zmatrix = copy.deepcopy(zmatrix)
+                updated_zmatrix = zmatrix.copy()
                 for j, idx in enumerate(rotatable_indices):
                     updated_zmatrix[idx]['dihedral'] = torsions[j]
                 
@@ -747,13 +740,13 @@ class MolecularSystem:
             if trajectory_file:
                 try:
                     # Update zmatrix with current torsion values
-                    current_zmatrix = copy.deepcopy(zmatrix)
+                    current_zmatrix = zmatrix.copy()
                     for j, idx in enumerate(rotatable_indices):
                         current_zmatrix[idx]['dihedral'] = xk[j]
                     
                     # Convert to Cartesian
                     coords = zmatrix_to_cartesian(current_zmatrix)
-                    elements = [current_zmatrix[idx]['element'] for idx in range(len(current_zmatrix))]
+                    elements = current_zmatrix.get_elements()
                     
                     # Evaluate energy for comment
                     energy = objective(xk)
@@ -808,7 +801,7 @@ class MolecularSystem:
                 print(f"  Improvement: {initial_energy - result.fun:.4f} kcal/mol")
             
             # Create optimized zmatrix
-            optimized_zmatrix = copy.deepcopy(zmatrix)
+            optimized_zmatrix = zmatrix.copy()
             for j, idx in enumerate(rotatable_indices):
                 optimized_zmatrix[idx]['dihedral'] = result.x[j]
             
@@ -840,24 +833,24 @@ class MolecularSystem:
                 'initial_energy': initial_energy if 'initial_energy' in locals() else 1e6,
                 'final_energy': 1e6,
                 'improvement': 0.0,
-                'initial_torsions': initial_torsions.copy(),
-                'final_torsions': initial_torsions.copy()
+                'initial_torsions': initial_torsions.copy() if 'initial_torsions' in locals() else np.array([]),
+                'final_torsions': initial_torsions.copy() if 'initial_torsions' in locals() else np.array([])
             }
-            return zmatrix, 1e6, info
+            return zmatrix.copy(), 1e6, info
 
 
-    def maximize_ring_closure_in_torsional_space(self, zmatrix: List[Dict], 
+    def maximize_ring_closure_in_torsional_space(self, zmatrix: ZMatrix, 
                                                   rotatable_indices: List[int],
                                                   max_iterations: int = 100,
                                                   ring_closure_tolerance: float = 0.2,
                                                   ring_closure_decay_rate: float = 0.5,
-                                                  verbose: bool = False) -> Tuple[List[Dict], float, Dict[str, Any]]:
+                                                  verbose: bool = False) -> Tuple[ZMatrix, float, Dict[str, Any]]:
         """
         Maximize ring closure in torsional space by dual annealing.
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Starting Z-matrix
         rotatable_indices : List[int]
             Indices of rotatable atoms in Z-matrix (atoms whose dihedrals can be optimized)
@@ -866,12 +859,11 @@ class MolecularSystem:
         verbose : bool
             Print optimization progress
         """
-
         def objective(torsions: np.ndarray) -> float:
             """Objective function: evaluate ring closure score for given torsions."""
             try:
                 # Update zmatrix with new torsion values
-                updated_zmatrix = copy.deepcopy(zmatrix)
+                updated_zmatrix = zmatrix.copy()
                 for j, idx in enumerate(rotatable_indices):
                     updated_zmatrix[idx]['dihedral'] = torsions[j]
                 coords = zmatrix_to_cartesian(updated_zmatrix)
@@ -910,7 +902,7 @@ class MolecularSystem:
             final_score = -result.fun
 
             # Create optimized zmatrix
-            optimized_zmatrix = copy.deepcopy(zmatrix)
+            optimized_zmatrix = zmatrix.copy()
             for j, idx in enumerate(rotatable_indices):
                 optimized_zmatrix[idx]['dihedral'] = result.x[j]
             info['final_score'] = final_score
@@ -923,7 +915,7 @@ class MolecularSystem:
             info['message'] = str(e)
             info['final_score'] = initial_score
             info['improvement'] = 0.0
-            return zmatrix, -initial_score, info
+            return zmatrix.copy(), -initial_score, info
 
     def ring_closure_score_exponential(self, coords: np.ndarray, 
                                         tolerance: float = 0.001,
@@ -1029,7 +1021,7 @@ class MolecularSystem:
 
 
     @staticmethod
-    def _calculate_rmsd(zmatrix1: List[Dict], zmatrix2: List[Dict]) -> Tuple[float, float, float]:
+    def _calculate_rmsd(zmatrix1: ZMatrix, zmatrix2: ZMatrix) -> Tuple[float, float, float]:
         """
         Calculate RMSD between two Z-matrices for bond lengths, angles, and dihedrals.
         
@@ -1038,9 +1030,9 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix1 : List[Dict]
+        zmatrix1 : ZMatrix
             First Z-matrix (e.g., initial structure)
-        zmatrix2 : List[Dict]
+        zmatrix2 : ZMatrix
             Second Z-matrix (e.g., optimized structure)
         
         Returns
@@ -1112,7 +1104,7 @@ class MolecularSystem:
         return rmsd_bonds, rmsd_angles, rmsd_dihedrals
 
     @staticmethod
-    def _build_bond_graph(zmatrix: List[Dict], topology=None) -> Dict[int, List[int]]:
+    def _build_bond_graph(zmatrix: ZMatrix, topology=None) -> Dict[int, List[int]]:
         """
         Build bond connectivity graph from molecular topology or Z-matrix.
         
@@ -1121,7 +1113,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation of the molecule
         topology : openmm.app.Topology, optional
             OpenMM topology object containing bond information
@@ -1141,9 +1133,10 @@ class MolecularSystem:
                 graph[bond.atom2.index].append(bond.atom1.index)
         else:
             # Fall back to Z-matrix (only tree structure bonds)
-            for i, atom in enumerate(zmatrix):
+            for i in range(num_atoms):
                 if i == 0:
                     continue
+                atom = zmatrix[i]
                 bond_ref = atom.get('bond_ref')
                 if bond_ref is not None:
                     graph[i].append(bond_ref)
@@ -1205,7 +1198,7 @@ class MolecularSystem:
         return None
     
     @staticmethod
-    def _identify_rc_critical_rotatable_indeces(zmatrix: List[Dict], 
+    def _identify_rc_critical_rotatable_indeces(zmatrix: ZMatrix, 
                                                  rcp_terms: List[Tuple[int, int]], 
                                                  rotatable_indices: List[int],
                                                  topology=None) -> Tuple[List[int], List[int]]:
@@ -1214,7 +1207,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation
         rcp_terms : List[Tuple[int, int]]
             Ring closure pairs (0-based atom indices)
@@ -1276,7 +1269,7 @@ class MolecularSystem:
     def _get_dofs_from_rotatable_indeces(rotatable_indices: List[int], 
                                          rc_critical_rotatable_indeces: List[int], 
                                          rc_critical_atoms: List[int],
-                                         zmatrix: List[Dict]) -> List[Tuple[int, int]]:
+                                         zmatrix: ZMatrix) -> List[Tuple[int, int]]:
         """
         Get indexes of degrees of freedom on Z-matrix from rotatable bonds and atoms that are on paths between RCP terms.
         
@@ -1288,7 +1281,7 @@ class MolecularSystem:
             Indices of critical rotatable atoms (from RCP paths)
         rc_critical_atoms : List[int]
             Indices of all atoms on paths between RCP terms (including RCP atoms themselves)
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation
         
         Returns
@@ -1339,7 +1332,7 @@ class MolecularSystem:
         return dof_indices
     
     @staticmethod
-    def _get_all_rotatable_indices(zmatrix: List[Dict]) -> List[int]:
+    def _get_all_rotatable_indices(zmatrix: ZMatrix) -> List[int]:
         """
         Get all rotatable Z-matrix indices (all dihedrals with chirality == 0).
         
@@ -1348,7 +1341,7 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : List[Dict]
+        zmatrix : ZMatrix
             Z-matrix representation
             
         Returns
@@ -1356,10 +1349,4 @@ class MolecularSystem:
         List[int]
             0-based indices of all rotatable atoms in Z-matrix
         """
-        rotatable_indices = []
-        for i in range(3, len(zmatrix)):  # Only atoms 4+ have dihedrals
-            atom = zmatrix[i]
-            if atom.get('chirality', 0) == 0:  # Only true dihedrals (not chirality-constrained)
-                rotatable_indices.append(i)
-        
-        return rotatable_indices
+        return zmatrix.get_rotatable_indices()

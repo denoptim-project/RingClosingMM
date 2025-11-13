@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from IOTools import read_int_file, write_zmatrix_file, write_xyz_file
-from CoordinateConverter import zmatrix_to_cartesian
+from ZMatrix import ZMatrix
 
 
 class TestIOToolsFileIO(unittest.TestCase):
@@ -33,13 +33,9 @@ class TestIOToolsFileIO(unittest.TestCase):
             self.skipTest(f"Test INT file not found: {self.test_int_file}")
         
         data = read_int_file(str(self.test_int_file))
-        
-        self.assertIn('atoms', data)
-        self.assertIn('zmatrix', data)
-        self.assertIn('positions', data)
-        self.assertIn('bonds', data)
-        self.assertEqual(len(data['atoms']), 3)
-        self.assertEqual(len(data['zmatrix']), 3)
+        self.assertIsInstance(data, ZMatrix)
+        self.assertEqual(len(data.atoms), 6)
+        self.assertEqual(len(data.bonds), 6)
     
     def test_read_int_file_zmatrix_structure(self):
         """Test that read INT file data has correct Z-matrix structure."""
@@ -47,12 +43,12 @@ class TestIOToolsFileIO(unittest.TestCase):
             self.skipTest(f"Test INT file not found: {self.test_int_file}")
         
         data = read_int_file(str(self.test_int_file))
-        zmatrix = data['zmatrix']
+        zmatrix = data.atoms
         
         # First atom should have id, element, atomic_num
-        self.assertIn('id', zmatrix[0])
-        self.assertIn('element', zmatrix[0])
-        self.assertIn('atomic_num', zmatrix[0])
+        self.assertIn('id', data[0])
+        self.assertIn('element', data[0])
+        self.assertIn('atomic_num', data[0])
         
         # Second atom should have bond_ref and bond_length
         if len(zmatrix) > 1:
@@ -64,26 +60,32 @@ class TestIOToolsFileIO(unittest.TestCase):
         if not self.test_int_file.exists():
             self.skipTest(f"Test INT file not found: {self.test_int_file}")
         
-        data = read_int_file(str(self.test_int_file))
+        zmatrix = read_int_file(str(self.test_int_file))
         
-        self.assertIn('bonds', data)
-        self.assertIsInstance(data['bonds'], list)
+        self.assertIsInstance(zmatrix.bonds, list)
+        self.assertEqual(len(zmatrix.bonds), 6)
         # Each bond should be a tuple of (atom1_idx, atom2_idx, bond_type)
-        if len(data['bonds']) > 0:
-            bond = data['bonds'][0]
-            self.assertEqual(len(bond), 3)
-            self.assertIsInstance(bond[0], int)
-            self.assertIsInstance(bond[1], int)
-            self.assertIsInstance(bond[2], int)
+        if len(zmatrix.bonds) > 0:
+            for bond in zmatrix.bonds:
+                self.assertEqual(len(bond), 3)
+                self.assertIsInstance(bond[0], int)
+                self.assertIsInstance(bond[1], int)
+                self.assertIsInstance(bond[2], int)
+        # Check that the bonds are correct
+        expected_bonds = [(0, 1, 1), (1, 2, 1), (2, 4, 1), (2, 5, 1), (4, 5, 1), (3, 4, 1)]
+        actual_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in zmatrix.bonds]
+        for bond in actual_bonds_sorted:
+            self.assertIn(bond, expected_bonds)
     
     def test_write_zmatrix_file(self):
         """Test writing Z-matrix to file."""
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'H', 'atomic_num': 1},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (0, 2, 1)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -180,8 +182,7 @@ class TestIOToolsFileIO(unittest.TestCase):
             self.skipTest(f"Test INT file not found: {self.test_int_file}")
         
         # Read original file
-        original_data = read_int_file(str(self.test_int_file))
-        original_zmatrix = original_data['zmatrix']
+        original_zmatrix = read_int_file(str(self.test_int_file))
         
         # Write to temporary file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
@@ -191,13 +192,13 @@ class TestIOToolsFileIO(unittest.TestCase):
             write_zmatrix_file(original_zmatrix, temp_path)
             
             # Read back
-            new_data = read_int_file(temp_path)
-            new_zmatrix = new_data['zmatrix']
+            new_zmatrix = read_int_file(temp_path)
             
             # Compare structure
-            self.assertEqual(len(original_zmatrix), len(new_zmatrix))
+            self.assertEqual(len(original_zmatrix.atoms), len(new_zmatrix.atoms))
+            self.assertEqual(len(original_zmatrix.bonds), len(new_zmatrix.bonds))
             
-            for orig_atom, new_atom in zip(original_zmatrix, new_zmatrix):
+            for orig_atom, new_atom in zip(original_zmatrix.atoms, new_zmatrix.atoms):
                 self.assertEqual(orig_atom['id'], new_atom['id'])
                 self.assertEqual(orig_atom['element'], new_atom['element'])
                 self.assertEqual(orig_atom['atomic_num'], new_atom['atomic_num'])
@@ -217,7 +218,15 @@ class TestIOToolsFileIO(unittest.TestCase):
                     self.assertEqual(orig_atom['dihedral_ref'], new_atom['dihedral_ref'])
                     self.assertAlmostEqual(orig_atom['dihedral'], new_atom['dihedral'], places=5)
                     self.assertEqual(orig_atom.get('chirality', 0), new_atom.get('chirality', 0))
-            
+
+            # Compare bonds
+            original_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in original_zmatrix.bonds]
+            new_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in new_zmatrix.bonds]
+
+            for bond in new_bonds_sorted:
+                self.assertIn(bond, original_bonds_sorted)
+            for bond in original_bonds_sorted:
+                self.assertIn(bond, new_bonds_sorted)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -244,7 +253,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
             data = read_int_file(temp_path)
             
             # Check that bond (1,4) was added (0-based: 0,3)
-            bonds = data['bonds']
+            bonds = data.bonds
             bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
             self.assertIn((0, 3), bond_set)
             
@@ -271,7 +280,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
             data = read_int_file(temp_path)
             
             # Check that bond (2,3) was removed (0-based: 1,2)
-            bonds = data['bonds']
+            bonds = data.bonds
             bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
             self.assertNotIn((1, 2), bond_set)
             
@@ -298,7 +307,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
         try:
             data = read_int_file(temp_path)
             
-            bonds = data['bonds']
+            bonds = data.bonds
             bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
             
             # Check additions and removals
@@ -315,7 +324,7 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
     
     def test_write_zmatrix_with_dihedrals(self):
         """Test writing Z-matrix with dihedral angles."""
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -323,6 +332,7 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -348,10 +358,11 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
     
     def test_write_zmatrix_formatting(self):
         """Test that Z-matrix file has correct formatting."""
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'H', 'atomic_num': 1},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.74},
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -432,10 +443,10 @@ class TestIOToolsEdgeCases(unittest.TestCase):
         try:
             data = read_int_file(temp_path)
             
-            self.assertEqual(len(data['atoms']), 1)
-            self.assertEqual(len(data['zmatrix']), 1)
-            self.assertEqual(data['zmatrix'][0]['element'], 'H')
-            self.assertEqual(len(data['bonds']), 0)
+            self.assertEqual(len(data.atoms), 1)
+            self.assertEqual(len(data.atoms), 1)
+            self.assertEqual(data.atoms[0]['element'], 'H')
+            self.assertEqual(len(data.bonds), 0)
             
         finally:
             if os.path.exists(temp_path):

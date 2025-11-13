@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from RCOServer import start, stop
 import RCOServer as rco_server
 import socketserver
+from ZMatrix import ZMatrix
 
 
 def start_server_in_thread(result_queue, host='localhost', port=0):
@@ -54,8 +55,9 @@ class TestServerMinimize(unittest.TestCase):
         Note: JSON requests to the server use 1-based indexing (chemistry convention).
         The server internally converts to 0-based for Python processing.
         """
+        
         # Z-matrix using 1-based indices (as would come from a client)
-        self.zmatrix = [
+        self.zmatrix_request = [
             {'id': 1, 'element': 'C', 'atomic_num': 6},
             {'id': 2, 'element': 'ATN', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.54},
             {'id': 3, 'element': 'ATN', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 2.50,
@@ -78,7 +80,7 @@ class TestServerMinimize(unittest.TestCase):
         """Test minimize request handling."""
         # Create request
         request = {
-            "zmatrix": self.zmatrix,
+            "zmatrix": self.zmatrix_request,
             "bonds_data": self.bonds_data,
             "rcp_terms": self.rcp_terms,
             "mode": "minimize",
@@ -217,7 +219,7 @@ class TestServerMinimize(unittest.TestCase):
             
             # Create request
             request = {
-                "zmatrix": self.zmatrix,
+                "zmatrix": self.zmatrix_request,
                 "bonds_data": self.bonds_data,
                 "rcp_terms": self.rcp_terms,
                 "mode": "minimize",
@@ -290,7 +292,7 @@ class TestServerMinimize(unittest.TestCase):
     def test_invalid_mode(self):
         """Test handling of invalid mode."""
         request = {
-            "zmatrix": self.zmatrix,
+            "zmatrix": self.zmatrix_request,
             "bonds_data": self.bonds_data,
             "rcp_terms": self.rcp_terms,
             "mode": "invalid_mode"

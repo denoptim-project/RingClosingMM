@@ -23,6 +23,7 @@ from CoordinateConverter import (
     _calc_angle,
     _calc_dihedral
 )
+from ZMatrix import ZMatrix
 
 
 class TestGeometryCalculations(unittest.TestCase):
@@ -118,23 +119,25 @@ class TestSimpleZMatrix(unittest.TestCase):
     def setUp(self):
         """Create simple test Z-matrices."""
         # Linear molecule: H-H-H (0-based indices)
-        self.linear_zmatrix = [
+        linear_atoms = [
             {'id': 0, 'element': 'H', 'atomic_num': 1},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
              'angle_ref': 0, 'angle': 180.0},
         ]
+        self.linear_zmatrix = ZMatrix(linear_atoms, [(0, 1, 1), (1, 2, 1)])
         
         # Bent molecule: H-O-H (water-like) (0-based indices)
-        self.bent_zmatrix = [
+        bent_atoms = [
             {'id': 0, 'element': 'O', 'atomic_num': 8},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.96,
              'angle_ref': 1, 'angle': 104.5},
         ]
+        self.bent_zmatrix = ZMatrix(bent_atoms, [(0, 1, 1), (0, 2, 1)])
         
         # Tetrahedral: C with 4 H (methane-like) (0-based indices)
-        self.tetrahedral_zmatrix = [
+        tetrahedral_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
@@ -144,6 +147,7 @@ class TestSimpleZMatrix(unittest.TestCase):
             {'id': 4, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.09,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': -120.0, 'chirality': 0},
         ]
+        self.tetrahedral_zmatrix = ZMatrix(tetrahedral_atoms, [(0, 1, 1), (0, 2, 1), (0, 3, 1), (0, 4, 1)])
     
     def test_linear_conversion(self):
         """Test that linear molecules raise ValueError."""
@@ -194,7 +198,7 @@ class TestConversionCycle(unittest.TestCase):
     def setUp(self):
         """Create test Z-matrices with various features."""
         # Simple 4-atom chain with dihedral (0-based indices)
-        self.simple_chain = [
+        simple_chain_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -202,9 +206,10 @@ class TestConversionCycle(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 110.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
         ]
+        self.simple_chain = ZMatrix(simple_chain_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
         
         # Mixed structure with both chiral and non-chiral atoms (0-based indices)
-        self.mixed_chirality = [
+        mixed_chirality_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -214,6 +219,7 @@ class TestConversionCycle(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 109.5, 'chirality': 1},
         ]
+        self.mixed_chirality = ZMatrix(mixed_chirality_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (1, 4, 1)])
     
     def test_single_cycle(self):
         """Test one complete conversion cycle: INT → XYZ → INT."""
@@ -350,7 +356,7 @@ class TestChiralityHandling(unittest.TestCase):
     def setUp(self):
         """Create test Z-matrix with chiral center."""
         # Simple branched structure with chirality (0-based indices)
-        self.chiral_zmatrix = [
+        chiral_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -358,6 +364,7 @@ class TestChiralityHandling(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1},
         ]
+        self.chiral_zmatrix = ZMatrix(chiral_atoms, [(0, 1, 1), (1, 2, 1), (1, 3, 1)])
     
     def test_chirality_preservation(self):
         """Test that chirality sign is preserved through conversion cycle."""
@@ -416,10 +423,11 @@ class TestCartesianToZMatrix(unittest.TestCase):
         ])
         
         # Template Z-matrix (0-based indices)
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1)])
         
         # Extract Z-matrix
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -437,12 +445,13 @@ class TestCartesianToZMatrix(unittest.TestCase):
         ])
         
         # Template Z-matrix (0-based indices)
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
         
         # Extract Z-matrix
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -462,7 +471,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
         ])
         
         # Template Z-matrix
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
@@ -470,6 +479,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 0.0,
              'angle_ref': 1, 'angle': 0.0, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
         
         # Extract Z-matrix
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -489,12 +499,13 @@ class TestCartesianToZMatrix(unittest.TestCase):
             [0.0, 0.0, 2.0]
         ])
         
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
         
         result = cartesian_to_zmatrix(coords, zmatrix)
         
@@ -508,14 +519,15 @@ class TestCartesianToZMatrix(unittest.TestCase):
     def test_chiral_center_extraction(self):
         """Test extraction of chirality information."""
         # Create a chiral center
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
-            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
-             'angle_ref': 1, 'angle': 110.0},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 110.0},
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 1}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (1, 3, 1)])
         
         # Convert to Cartesian with known chirality
         coords = zmatrix_to_cartesian(zmatrix)
@@ -531,14 +543,15 @@ class TestCartesianToZMatrix(unittest.TestCase):
     
     def test_negative_chirality_extraction(self):
         """Test extraction of negative chirality."""
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
-            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
-             'angle_ref': 1, 'angle': 110.0},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
+             'angle_ref': 0, 'angle': 110.0},
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': -1}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (1, 3, 1)])
         
         coords = zmatrix_to_cartesian(zmatrix)
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -548,7 +561,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
     
     def test_reference_atoms_preserved(self):
         """Test that reference atom indices are preserved."""
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54,
@@ -556,6 +569,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 60.0, 'chirality': 0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (0, 2, 1), (1, 3, 1)])
         
         coords = zmatrix_to_cartesian(zmatrix)
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -577,12 +591,13 @@ class TestCartesianToZMatrix(unittest.TestCase):
             [2.0, 0.01, 0.0]  # Nearly linear
         ])
         
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 0.0},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 0.0,
              'angle_ref': 0, 'angle': 0.0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
         
         result = cartesian_to_zmatrix(coords, zmatrix)
         
@@ -593,7 +608,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
     def test_multiple_atoms_extraction(self):
         """Test extraction with larger molecule."""
         # Create a chain of 6 atoms (0-based indices)
-        zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -605,6 +620,7 @@ class TestCartesianToZMatrix(unittest.TestCase):
             {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
              'angle_ref': 3, 'angle': 110.0, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0}
         ]
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1), (4, 5, 1)])
         
         coords = zmatrix_to_cartesian(zmatrix)
         result = cartesian_to_zmatrix(coords, zmatrix)
@@ -632,7 +648,7 @@ class TestTorsionExtraction(unittest.TestCase):
     
     def setUp(self):
         """Create test Z-matrix."""
-        self.zmatrix = [
+        zmatrix_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
@@ -642,6 +658,7 @@ class TestTorsionExtraction(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 110.0, 'dihedral_ref': 1, 'dihedral': -60.0, 'chirality': 0},
         ]
+        self.zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
         
         self.rotatable_indices = [3, 4]  # Atoms 4 and 5 (0-based: 3, 4)
     

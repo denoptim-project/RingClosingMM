@@ -13,8 +13,10 @@ from typing import List, Dict
 # Dual import handling for package and direct script use
 try:
     from .CoordinateConverter import zmatrix_to_cartesian
+    from .ZMatrix import ZMatrix
 except ImportError:
     from CoordinateConverter import zmatrix_to_cartesian
+    from ZMatrix import ZMatrix
 
 def read_int_file(pathname):
     """
@@ -25,19 +27,13 @@ def read_int_file(pathname):
     Subsequent lines: atom_id element atomic_num [ref_bond bond_length] [ref_angle angle] [ref_dihedral dihedral chirality]
     
     This function reads the Z-matrix, converts all reference indices from 
-    1-based (file format) to 0-based (internal representation), converts 
-    to Cartesian coordinates, and extracts bond connectivity.
+    1-based (file format) to 0-based (internal representation).
     
     Returns
     -------
-    dict with keys:
-        'atoms': list of tuples (element_symbol, atom_index) - 0-based indices
-        'positions': list of [x, y, z] in Angstroms (converted from Z-matrix)
-        'bonds': list of tuples (atom1_idx, atom2_idx, bond_type=1) - 0-based indices
-        'rcpterms': empty list
-        'rotatableBonds': empty list
-        'zmatrix': list of dict (Z-matrix representation) - all reference indices are 0-based
+    ZMatrix instance
     """
+
     with open(pathname, 'r') as f:
         lines = f.readlines()
     
@@ -121,20 +117,13 @@ def read_int_file(pathname):
             bonds = [(a1, a2, bt) for a1, a2, bt in bonds 
                     if not ((a1 == atom1 and a2 == atom2) or (a1 == atom2 and a2 == atom1))]
 
-    # Convert Z-matrix to Cartesian coordinates
-    positions = zmatrix_to_cartesian(zmatrix)
+    # Create ZMatrix instance
+    zmatrix_obj = ZMatrix(zmatrix, bonds)
     
-    return {
-        'atoms': atoms,
-        'positions': positions.tolist(),
-        'bonds': bonds,
-        'rcpterms': [],
-        'rotatableBonds': [],
-        'zmatrix': zmatrix
-    }
+    return zmatrix_obj
 
 
-def write_zmatrix_file(zmatrix: List[Dict], filepath: str) -> None:
+def write_zmatrix_file(zmatrix: ZMatrix, filepath: str) -> None:
     """
     Write Z-matrix to INT file format.
     
@@ -144,15 +133,45 @@ def write_zmatrix_file(zmatrix: List[Dict], filepath: str) -> None:
     
     Parameters
     ----------
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix representation. All reference indices (bond_ref, angle_ref, 
         dihedral_ref) are expected to be in 0-based indexing (internal format).
     filepath : str
         Output file path
     """
+    atoms_list = zmatrix.to_list()
+
+    bonds_implicit_in_zmatrix = []
+    for atom in zmatrix.atoms:
+        if atom.get('bond_ref') is not None:
+            atm1 = atom['id']
+            atm2 = atom['bond_ref']
+            if atm1 < atm2:
+                bonds_implicit_in_zmatrix.append((atm1, atm2, 1))
+            else:
+                bonds_implicit_in_zmatrix.append((atm2, atm1, 1))
+
+    bonds_declared_sorted = [(min(bond[0], bond[1]), max(bond[0], bond[1]), bond[2]) for bond in zmatrix.bonds]
+
+    bonds_to_add = []
+    for bond in zmatrix.bonds:
+        atm1 = bond[0]
+        atm2 = bond[1]
+        sorted_bond = (min(atm1, atm2), max(atm1, atm2), 1)
+        if sorted_bond not in bonds_implicit_in_zmatrix:
+            bonds_to_add.append(sorted_bond)
+    
+    bonds_to_remove = []
+    for bond in bonds_implicit_in_zmatrix:
+        atm1 = bond[0]
+        atm2 = bond[1]
+        sorted_bond = (min(atm1, atm2), max(atm1, atm2), 1)
+        if sorted_bond not in bonds_declared_sorted:
+            bonds_to_remove.append(sorted_bond)
+
     with open(filepath, 'w') as f:
-        f.write(f"{len(zmatrix)}\n")
-        for i, atom in enumerate(zmatrix):
+        f.write(f"{len(atoms_list)}\n")
+        for i, atom in enumerate(atoms_list):
             id_1based = atom['id'] + 1
             if i == 0:
                 f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}\n")
@@ -178,6 +197,13 @@ def write_zmatrix_file(zmatrix: List[Dict], filepath: str) -> None:
                        f"{angle_ref_1based:6d}{atom['angle']:12.6f}"
                        f"{dihedral_ref_1based:6d}{atom['dihedral']:12.6f}"
                        f"{atom['chirality']:6d}\n")
+
+        f.write("\n")
+        for bond in bonds_to_add:
+            f.write(f"{bond[0]+1:6d} {bond[1]+1:6d}\n")
+        f.write("\n")
+        for bond in bonds_to_remove:
+            f.write(f"{bond[0]+1:6d} {bond[1]+1:6d}\n")
 
 
 def write_xyz_file(coords: np.ndarray, elements: List[str], filepath: str, comment: str = "", append: bool = False) -> None:
@@ -206,7 +232,7 @@ def write_xyz_file(coords: np.ndarray, elements: List[str], filepath: str, comme
             f.write(f"{correctedElement:<4s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
 
 
-def save_structure_to_file(filepath: str, zmatrix: List[Dict], energy: float) -> None:
+def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> None:
     """
     Save structure to file.
     
@@ -214,11 +240,12 @@ def save_structure_to_file(filepath: str, zmatrix: List[Dict], energy: float) ->
     ----------
     filepath : str
         Output file path
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix to save
     energy : float
         Energy of the structure (default: None)
     """
+    atoms_list = zmatrix.to_list()
     filename_xyz = None;
     filename_int = None;
     if filepath.endswith('.xyz'):
@@ -234,7 +261,7 @@ def save_structure_to_file(filepath: str, zmatrix: List[Dict], energy: float) ->
 
     if filename_xyz is not None:
         optimized_coords = zmatrix_to_cartesian(zmatrix)
-        elements = [zmatrix[idx]['element'] for idx in range(len(zmatrix))]
+        elements = zmatrix.get_elements()
         comment = f"E={energy:.2f} kcal/mol" if energy is not None else ""
         write_xyz_file(optimized_coords, elements, filename_xyz, comment=comment)
 

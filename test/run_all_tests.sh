@@ -21,6 +21,7 @@ ENV_FILE="../environment.yml"
 # Test files to run
 TEST_FILES=(
     "test_coordinate_conversion.py"
+    "test_zmatrix.py"
     "test_molecular_system.py"
     "test_ring_closing_force_field.py"
     "test_ring_closure_optimizer.py"

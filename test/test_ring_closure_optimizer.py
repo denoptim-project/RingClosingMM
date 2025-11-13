@@ -39,7 +39,7 @@ class TestRingClosureOptimizerUtilities(unittest.TestCase):
         )
         
         # Test bond conversion
-        # For simple 3-atom molecule: bond (0,1) and (1,2) might map to different indices
+        # For simple 6-atom molecule: bond (0,1) and (1,2) might map to different indices
         rotatable_bonds = [(0, 1)]  # 0-based
         
         indices = RingClosureOptimizer._convert_bonds_to_indices(

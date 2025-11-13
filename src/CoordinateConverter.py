@@ -36,6 +36,12 @@ import numpy as np
 from typing import List, Dict
 import copy
 
+# Dual import handling for package and direct script use
+try:
+    from .ZMatrix import ZMatrix
+except ImportError:
+    from ZMatrix import ZMatrix
+
 
 # =============================================================================
 # Geometry Calculation Helpers
@@ -122,7 +128,7 @@ def _calc_dihedral(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, p4: np.ndarra
     return 0.0
 
 
-def zmatrix_to_cartesian(zmatrix: List[Dict]) -> np.ndarray:
+def zmatrix_to_cartesian(zmatrix: ZMatrix) -> np.ndarray:
     """
     Convert Z-matrix to Cartesian coordinates.
     
@@ -137,7 +143,7 @@ def zmatrix_to_cartesian(zmatrix: List[Dict]) -> np.ndarray:
     
     Parameters
     ----------
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix representation with keys (all indices must be 0-based):
         - 'bond_ref': reference atom for bond (0-based index)
         - 'bond_length': bond length in Angstroms
@@ -161,7 +167,9 @@ def zmatrix_to_cartesian(zmatrix: List[Dict]) -> np.ndarray:
         If linear geometries are detected (angles ≈ 0° or ≈ 180°) that make
         dihedral or chirality angles undefined.
     """
-    num_atoms = len(zmatrix)
+    # Use list interface for iteration
+    atoms_list = zmatrix.to_list()
+    num_atoms = len(atoms_list)
     coords = np.zeros((num_atoms, 3))
     
     # Atom 1: place at origin
@@ -171,13 +179,13 @@ def zmatrix_to_cartesian(zmatrix: List[Dict]) -> np.ndarray:
         return coords
     
     # Atom 2: place along +Z axis
-    coords[1] = [0.0, 0.0, zmatrix[1]['bond_length']]
+    coords[1] = [0.0, 0.0, atoms_list[1]['bond_length']]
     
     if num_atoms < 3:
         return coords
     
     # Atom 3: place in XZ plane
-    atom3 = zmatrix[2]
+    atom3 = atoms_list[2]
     ref_bond = atom3['bond_ref']  # Already 0-based internally
     ref_angle = atom3['angle_ref']  # Already 0-based internally
     
@@ -221,7 +229,7 @@ def zmatrix_to_cartesian(zmatrix: List[Dict]) -> np.ndarray:
     
     # Atoms 4+
     for i in range(3, num_atoms):
-        atom = zmatrix[i]
+        atom = atoms_list[i]
         ia = atom['bond_ref']  # Already 0-based internally
         ib = atom['angle_ref']  # Already 0-based internally
         ic = atom['dihedral_ref']  # Already 0-based internally
@@ -355,14 +363,14 @@ def compute_chirality_sign(coords: np.ndarray, atom_idx: int,
 
     return chirality
 
-def apply_torsions(base_zmatrix: List[Dict], rotatable_indices: List[int],
-                  torsion_values: np.ndarray) -> List[Dict]:
+def apply_torsions(base_zmatrix: ZMatrix, rotatable_indices: List[int],
+                  torsion_values: np.ndarray) -> ZMatrix:
     """
     Apply torsional angle changes to Z-matrix.
     
     Parameters
     ----------
-    base_zmatrix : List[Dict]
+    base_zmatrix : ZMatrix
         Base Z-matrix structure
     rotatable_indices : List[int]
         Indices of rotatable atoms
@@ -371,16 +379,16 @@ def apply_torsions(base_zmatrix: List[Dict], rotatable_indices: List[int],
         
     Returns
     -------
-    List[Dict]
+    ZMatrix
         Modified Z-matrix
     """
-    new_zmatrix = copy.deepcopy(base_zmatrix)
+    new_zmatrix = base_zmatrix.copy()
     for idx, new_dihedral in zip(rotatable_indices, torsion_values):
         new_zmatrix[idx]['dihedral'] = new_dihedral
     return new_zmatrix
 
 
-def extract_torsions(coords: np.ndarray, zmatrix: List[Dict],
+def extract_torsions(coords: np.ndarray, zmatrix: ZMatrix,
                     rotatable_indices: List[int]) -> np.ndarray:
     """
     Extract dihedral angles from Cartesian coordinates.
@@ -389,7 +397,7 @@ def extract_torsions(coords: np.ndarray, zmatrix: List[Dict],
     ----------
     coords : np.ndarray
         Nx3 Cartesian coordinates in Angstroms
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix with reference atoms (0-based indices)
     rotatable_indices : List[int]
         Indices of rotatable atoms (0-based)
@@ -413,7 +421,7 @@ def extract_torsions(coords: np.ndarray, zmatrix: List[Dict],
     return np.array(torsions)
 
 
-def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: List[Dict]) -> List[Dict]:
+def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
     """
     Convert Cartesian coordinates to Z-matrix (internal coordinates).
     
@@ -425,15 +433,15 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: List[Dict]) -> List[Dict]:
     ----------
     coords : np.ndarray
         Nx3 Cartesian coordinates in Angstroms
-    zmatrix : List[Dict]
+    zmatrix : ZMatrix
         Z-matrix template with reference atoms (defines connectivity)
         
     Returns
     -------
-    List[Dict]
+    ZMatrix
         Updated Z-matrix with recalculated internal coordinates
     """
-    new_zmatrix = copy.deepcopy(zmatrix)
+    new_zmatrix = zmatrix.copy()
     
     # Update internal coordinates for all atoms (except first one)
     for i in range(1, len(new_zmatrix)):
@@ -478,6 +486,8 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: List[Dict]) -> List[Dict]:
                     angle_ref_idx=angle_ref_idx,
                     dihedral_ref_idx=dihedral_ref_idx
                 )
+        # Update the ZMatrix with modified atom (atom dict is already updated by reference)
+        # No need to reassign since we're modifying the dict in place
     
     return new_zmatrix
 
@@ -502,19 +512,19 @@ class CoordinateConverter:
     """
     
     @staticmethod
-    def apply_torsions(base_zmatrix: List[Dict], rotatable_indices: List[int],
-                      torsion_values: np.ndarray) -> List[Dict]:
+    def apply_torsions(base_zmatrix: ZMatrix, rotatable_indices: List[int],
+                      torsion_values: np.ndarray) -> ZMatrix:
         """Apply torsions (delegates to module function)."""
         return apply_torsions(base_zmatrix, rotatable_indices, torsion_values)
     
     @staticmethod
-    def extract_torsions(coords: np.ndarray, zmatrix: List[Dict],
+    def extract_torsions(coords: np.ndarray, zmatrix: ZMatrix,
                         rotatable_indices: List[int]) -> np.ndarray:
         """Extract torsions (delegates to module function)."""
         return extract_torsions(coords, zmatrix, rotatable_indices)
     
     @staticmethod
-    def extract_zmatrix(coords: np.ndarray, zmatrix: List[Dict]) -> List[Dict]:
+    def extract_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
         """Extract Z-matrix (delegates to cartesian_to_zmatrix)."""
         return cartesian_to_zmatrix(coords, zmatrix)
 
