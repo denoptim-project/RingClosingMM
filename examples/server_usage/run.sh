@@ -14,7 +14,7 @@ rc-optimizer --server-start --host "${HOST}" --port "${PORT}" > server.log 2>&1 
 
 sleep 3
 
-if ! rc-optimizer --server-status --host "${HOST}" --port "${PORT}" | grep -q "Status: RUNNING" ; then
+if ! rc-optimizer --server-status --host "${HOST}" --port "${PORT}" | grep -q "RUNNING" ; then
     echo "ERROR: failed to start server"
     exit -1
 else

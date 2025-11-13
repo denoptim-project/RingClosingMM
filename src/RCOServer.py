@@ -376,13 +376,14 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     if mode == 'optimize':
         # Extract optimization parameters
         result = optimizer.optimize(
-            ring_closure_tolerance=request.get('ring_closure_tolerance', 1.54),
-            ring_closure_decay_rate=request.get('ring_closure_decay_rate', 1.0),
+            ring_closure_tolerance=request.get('ring_closure_tolerance', 0.1),
+            ring_closure_decay_rate=request.get('ring_closure_decay_rate', 0.5),
             enable_pssrot_refinement=request.get('enable_pssrot_refinement', True),
             enable_zmatrix_refinement=request.get('enable_zmatrix_refinement', True),
             smoothing_sequence=request.get('smoothing_sequence'),
             torsional_iterations=request.get('torsional_iterations', 50),
             zmatrix_iterations=request.get('zmatrix_iterations', 50),
+            gradient_tolerance=request.get('gradient_tolerance', 0.01),
             verbose=request.get('verbose', False)
         )
         
@@ -446,7 +447,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Get final energy and ring closure score
         final_energy = result['final_energy']
-        final_rcscore = result['ring_closure_score']
+        final_rcscore = result['final_ring_closure_score']
         
         # Convert Z-matrix back to 1-based for JSON response
         zmatrix_1based = []

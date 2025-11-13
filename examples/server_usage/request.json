@@ -8,9 +8,6 @@
   "bonds_data": [[1, 2, 1], [3, 4, 1]],
   "rcp_terms": [[1, 3], [2, 4]],
   "mode": "minimize",
-  "max_iterations": 50,
-  "smoothing": null,
-  "torsional": false,
-  "verbose": false
+  "verbose": true
 }
 
