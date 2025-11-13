@@ -14,7 +14,6 @@ from typing import List, Tuple, Dict, Optional, Any
 from pathlib import Path
 import copy
 
-from numpy._typing import _128Bit
 import openmm.unit as unit
 from openmm.app import Element, Simulation, Topology
 
@@ -47,7 +46,7 @@ except ImportError:
         _calc_distance
     )
 
-from scipy.optimize import dual_annealing, minimize
+from scipy.optimize import OptimizeResult, differential_evolution, minimize
 
 
 def build_topology_from_data(atoms_data, bonds_data):
@@ -879,46 +878,37 @@ class MolecularSystem:
                 # Negated because we want to maximize ring closure score
                 return -self.ring_closure_score_exponential(coords, ring_closure_tolerance, ring_closure_decay_rate)
             except Exception as e:
-                # Return high penalty on failure
-                return 1e6
+                print(f'Error in objective function: {e.message if hasattr(e, "message") else str(e)}')
+                return 0.0
+
+        def callback(intermediate_result: OptimizeResult):
+            """Callback function called after each optimizer iteration to verify reaching of theoretical best solution (i.e., f(x) = -1.0)."""
+            # scipy works on minimization, hence we use a negated ring closing score.
+            return (intermediate_result.fun + 1.0) < 0.02 
 
         initial_torsions = np.array([zmatrix[idx]['dihedral'] for idx in rotatable_indices])
         bounds = [(-180.0, 180.0) for _ in range(len(initial_torsions))]
         initial_score = -objective(initial_torsions)
-        if verbose:
-            print(f"  Initial score: {initial_score:.4f}")
-            info = {
-                'initial_score': initial_score,
-                'final_score': None,
-                'improvement': None
-            }
+
+        info = {
+            'initial_score': initial_score,
+            'final_score': None,
+            'improvement': None
+        }
 
         try:
-            result = dual_annealing(
+            result = differential_evolution(
                 objective,
                 bounds,
                 args=(),
+                callback=callback,
+                atol=0.05,
                 maxiter=250,
-                # minimizer_kwargs={
-                #     'method': 'Powell', 
-                #     'tol': 0.1,   # Function tolerance
-                #     #'xtol': 0.5,    # Tolerance for changes in the variables (degrees)
-                #     #'disp': False
-                # },
-                initial_temp=2000.0,
-                restart_temp_ratio=2.e-3,
-                visit=3.0,
-                accept=-2.5,
-                # maxfun=1e7,
-                # rng=None,
-                # callback=None,
-                no_local_search=True,
-                x0=initial_torsions
+                polish=False,
+                disp=verbose
             )
             final_score = -result.fun
-            if verbose:
-                print(f"  Final score: {final_score:.4f}")
-                print(f"  Improvement: {final_score - initial_score :.4f}")
+
             # Create optimized zmatrix
             optimized_zmatrix = copy.deepcopy(zmatrix)
             for j, idx in enumerate(rotatable_indices):
@@ -1340,30 +1330,6 @@ class MolecularSystem:
                 if zatom2_id in rc_critical_atoms and zatom2_bond_ref in rc_critical_atoms and zatom2_dihedral_ref in rc_critical_atoms and zatom2.get('chirality', 0) != 0:  
                     if (idx2, 2) not in dof_indices:
                         dof_indices.append((idx2, 2))
-
-        # TODO when we are sure the assumption taken above is sound.
-        # Add all bond angles involving only atoms that are connected by rotatable bonds
-        # for idx in all_atoms_in_rc_critical_rot_bonds:
-        #     zatom = zmatrix[idx]
-        #     # these two indexes identify the rotatable bond
-        #     rb_bond_ref = zatom.get(dof_names[1])
-        #     rb_angle_ref = zatom.get(dof_names[2])
-        #     if rb_bond_ref is None or rb_angle_ref is None:
-        #         continue  # Skip if references don't exist
-
-        #     for idx2, zatom2 in enumerate(zmatrix):
-        #         zatom2_id = zatom2.get(dof_names[0])
-        #         zatom2_bond_ref = zatom2.get(dof_names[1])
-        #         zatom2_angle_ref = zatom2.get(dof_names[2])
-        #         zatom2_dihedral_ref = zatom2.get(dof_names[3])
-
-        #         if zatom2_bond_ref is not None and zatom2_angle_ref is not None:
-        #             if zatom2_id in all_atoms_in_rc_critical_rot_bonds and zatom2_bond_ref in all_atoms_in_rc_critical_rot_bonds and zatom2_angle_ref in all_atoms_in_rc_critical_rot_bonds:  
-        #                 if (idx2, 1) not in dof_indices:
-        #                     dof_indices.append((idx2, 1))
-        #             if zatom2_id in all_atoms_in_rc_critical_rot_bonds and zatom2_bond_ref in all_atoms_in_rc_critical_rot_bonds and zatom2_dihedral_ref in all_atoms_in_rc_critical_rot_bonds and zatom2.get('chirality', 0) != 0:  
-        #                 if (idx2, 2) not in dof_indices:
-        #                     dof_indices.append((idx2, 2))
 
         # Add the torsions
         for idx in rotatable_indices:

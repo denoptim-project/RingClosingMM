@@ -2,103 +2,19 @@
 """
 Unit tests for RingClosureOptimizer components.
 
-Tests Individual class, GeneticAlgorithm operations, and optimizer utilities.
+Tests RingClosureOptimizer utilities, optimization, and minimization methods.
 """
 
 import unittest
 import numpy as np
 import sys
-import copy
 from pathlib import Path
-
-from src.IOTools import write_xyz_file
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from RingClosureOptimizer import (
-    Individual,
-    GeneticAlgorithm,
-    RingClosureOptimizer
-)
+from RingClosureOptimizer import RingClosureOptimizer
 from MolecularSystem import MolecularSystem
-import tempfile
-import os
-
-
-class TestIndividual(unittest.TestCase):
-    """Test Individual class for GA."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        # Simple Z-matrix
-        self.zmatrix = [
-            {'id': 0, 'element': 'H', 'atomic_num': 1},
-            {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0},
-            {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
-             'angle_ref': 2, 'angle': 109.47}
-        ]
-        self.torsions = np.array([120.0])
-        self.rotatable_indices = [2]  # Only third atom has dihedral
-    
-    def test_individual_creation(self):
-        """Test creating Individual."""
-        individual = Individual(self.torsions, self.zmatrix)
-        
-        self.assertEqual(len(individual.torsions), 1)
-        self.assertEqual(len(individual.zmatrix), 3)
-        # Fitness defaults to np.inf (not None)
-        self.assertEqual(individual.fitness, np.inf)
-        self.assertEqual(individual.ring_closure_score, 0)
-    
-    def test_individual_fitness_assignment(self):
-        """Test assigning fitness to Individual."""
-        individual = Individual(self.torsions, self.zmatrix)
-        individual.fitness = -0.85
-        
-        self.assertEqual(individual.fitness, -0.85)
-    
-    def test_individual_torsion_hash(self):
-        """Test torsion hash computation."""
-        individual = Individual(self.torsions, self.zmatrix)
-        
-        hash1 = individual._compute_torsion_hash()
-        self.assertIsInstance(hash1, int)
-        
-        # Same torsions should give same hash
-        hash2 = individual._compute_torsion_hash()
-        self.assertEqual(hash1, hash2)
-    
-    def test_individual_torsion_hash_changes(self):
-        """Test that hash changes when torsions change."""
-        individual1 = Individual(self.torsions, self.zmatrix)
-        individual2 = Individual(np.array([-120.0]), self.zmatrix)
-        
-        hash1 = individual1._compute_torsion_hash()
-        hash2 = individual2._compute_torsion_hash()
-        
-        self.assertNotEqual(hash1, hash2)
-    
-    def test_individual_update_torsion_hash(self):
-        """Test updating torsion hash."""
-        individual = Individual(self.torsions, self.zmatrix)
-        
-        initial_hash = individual.torsion_hash
-        individual.update_torsion_hash()
-        
-        self.assertIsNotNone(individual.torsion_hash)
-        self.assertEqual(individual.torsion_hash, individual._compute_torsion_hash())
-    
-    def test_individual_copy(self):
-        """Test copying Individual."""
-        individual = Individual(self.torsions, self.zmatrix)
-        individual.fitness = -0.5
-        
-        copy_ind = copy.copy(individual)
-        
-        self.assertEqual(len(copy_ind.torsions), len(individual.torsions))
-        self.assertEqual(copy_ind.fitness, individual.fitness)
-        self.assertEqual(len(copy_ind.zmatrix), len(individual.zmatrix))
 
 
 class TestRingClosureOptimizerUtilities(unittest.TestCase):
@@ -274,195 +190,6 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         self.assertLessEqual(result['final_energy'], result['initial_energy'])
 
 
-class TestGeneticAlgorithm(unittest.TestCase):
-    """Test GeneticAlgorithm class."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        # Create a 4-atom Z-matrix with one rotatable dihedral
-        self.zmatrix = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
-            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
-             'angle_ref': 0, 'angle': 109.47},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
-             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
-        ]
-        self.rotatable_indices = [3]  # 4th atom has rotatable dihedral
-        self.num_torsions = 1
-    
-    def test_ga_initialization(self):
-        """Test GA initialization."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=10,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        self.assertEqual(ga.num_torsions, self.num_torsions)
-        self.assertEqual(ga.population_size, 10)
-        self.assertEqual(len(ga.population), 10)
-        self.assertIsNone(ga.best_individual)
-        self.assertEqual(ga.generation, 0)
-    
-    def test_ga_evaluate_population(self):
-        """Test population evaluation."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=5,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        # Simple fitness function
-        def fitness_fn(individual, gen, idx):
-            return np.sum(individual.torsions**2)
-        
-        ga.evaluate_population(fitness_fn, 0)
-        
-        # Check that fitness was assigned
-        for ind in ga.population:
-            self.assertNotEqual(ind.fitness, np.inf)
-        
-        # Check that best_individual is set
-        self.assertIsNotNone(ga.best_individual)
-    
-    def test_ga_selection(self):
-        """Test tournament selection."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=10,
-            elite_size=2,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        # Assign fitness
-        for i, ind in enumerate(ga.population):
-            ind.fitness = float(i)
-        
-        selected = ga.selection()
-        
-        self.assertEqual(len(selected), ga.population_size - ga.elite_size)
-        self.assertTrue(all(isinstance(ind, Individual) for ind in selected))
-    
-    def test_ga_crossover(self):
-        """Test crossover operation."""
-        # Create extended z-matrix with 2 rotatable dihedrals
-        extended_zmatrix = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
-            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
-            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
-             'angle_ref': 0, 'angle': 109.47},
-            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
-             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
-             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}
-        ]
-        
-        ga = GeneticAlgorithm(
-            num_torsions=2,
-            base_zmatrix=extended_zmatrix,
-            rotatable_indices=[3, 4],
-            population_size=5,
-            crossover_rate=1.0,  # Always crossover
-            rcp_terms=None,
-            topology=None
-        )
-        
-        parent1 = Individual(np.array([60.0, 120.0]), extended_zmatrix)
-        parent2 = Individual(np.array([-60.0, -120.0]), extended_zmatrix)
-        
-        child1, child2 = ga.crossover(parent1, parent2)
-        
-        # Children should have correct number of torsions
-        self.assertEqual(len(child1.torsions), 2)
-        self.assertEqual(len(child2.torsions), 2)
-        self.assertIsInstance(child1, Individual)
-        self.assertIsInstance(child2, Individual)
-    
-    def test_ga_mutate(self):
-        """Test mutation operation."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=5,
-            mutation_rate=1.0,  # Always mutate
-            mutation_strength=10.0,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        individual = Individual(np.array([60.0]), self.zmatrix)
-        original_torsion = individual.torsions[0]
-        
-        mutated = ga.mutate(individual)
-        
-        # Mutated torsion should be different (with high probability)
-        # But we can't guarantee it changed due to random gaussian
-        self.assertIsInstance(mutated, Individual)
-        self.assertEqual(len(mutated.torsions), 1)
-    
-    def test_ga_evolve(self):
-        """Test evolution to next generation."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=10,
-            elite_size=2,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        # Assign fitness
-        for i, ind in enumerate(ga.population):
-            ind.fitness = float(i)
-        
-        initial_generation = ga.generation
-        ga.evolve()
-        
-        self.assertEqual(ga.generation, initial_generation + 1)
-        self.assertEqual(len(ga.population), 10)
-    
-    def test_ga_get_statistics(self):
-        """Test getting population statistics."""
-        ga = GeneticAlgorithm(
-            num_torsions=self.num_torsions,
-            base_zmatrix=self.zmatrix,
-            rotatable_indices=self.rotatable_indices,
-            population_size=5,
-            rcp_terms=None,
-            topology=None
-        )
-        
-        # Assign known fitness values
-        fitness_values = [1.0, 2.0, 3.0, 4.0, 5.0]
-        for ind, fitness in zip(ga.population, fitness_values):
-            ind.fitness = fitness
-        ga.best_individual = ga.population[0]
-        
-        stats = ga.get_statistics()
-        
-        self.assertIn('best', stats)
-        self.assertIn('current_best', stats)
-        self.assertIn('average', stats)
-        self.assertIn('std', stats)
-        self.assertIn('worst', stats)
-        self.assertEqual(stats['best'], 1.0)
-        self.assertEqual(stats['current_best'], 1.0)
-        self.assertEqual(stats['worst'], 5.0)
-        self.assertAlmostEqual(stats['average'], 3.0)
-
-
 class TestRingClosureOptimizerOptimize(unittest.TestCase):
     """Test full optimization functionality."""
     
@@ -489,16 +216,16 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             self.skipTest("No rotatable indices")
         
         result = optimizer.optimize(
-            population_size=5,
-            generations=3,
-            enable_smoothing_refinement=False,
+            enable_pssrot_refinement=False,
+            enable_zmatrix_refinement=False,
             verbose=False
         )
         
         self.assertIn('initial_closure_score', result)
         self.assertIn('final_closure_score', result)
-        self.assertIsNotNone(optimizer.ga)
-        self.assertIsNotNone(optimizer.ga.best_individual)
+        self.assertIn('final_zmatrix', result)
+        self.assertIn('final_energy', result)
+        self.assertTrue(result['final_success'])
     
     def test_optimize_with_refinement(self):
         """Test optimization with refinement enabled."""
@@ -516,76 +243,19 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             self.skipTest("No rotatable indices")
         
         result = optimizer.optimize(
-            population_size=5,
-            generations=2,
-            enable_smoothing_refinement=True,
-            refinement_top_n=1,
+            enable_pssrot_refinement=True,
+            enable_zmatrix_refinement=True,
             smoothing_sequence=[10.0, 0.0],
             torsional_iterations=5,
+            zmatrix_iterations=5,
             verbose=False
         )
         
         self.assertIn('initial_closure_score', result)
         self.assertIn('final_closure_score', result)
-        self.assertIsNotNone(optimizer.top_candidates)
-        self.assertGreater(len(optimizer.top_candidates), 0)
-    
-    def test_save_optimized_structure(self):
-        """Test saving optimized structure."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        optimizer = RingClosureOptimizer.from_files(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rotatable_bonds=None,
-            rcp_terms=None
-        )
-        
-        if len(optimizer.system.rotatable_indices) == 0:
-            self.skipTest("No rotatable indices")
-        
-        # Run optimization
-        result = optimizer.optimize(
-            population_size=5,
-            generations=2,
-            enable_smoothing_refinement=False,
-            verbose=False
-        )
-        
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
-            temp_file = f.name
-        
-        try:
-            optimizer.save_optimized_structure(temp_file)
-            
-            # Check file was created and has content
-            self.assertTrue(os.path.exists(temp_file))
-            with open(temp_file, 'r') as f:
-                content = f.read()
-                self.assertGreater(len(content), 0)
-                # First line should be atom count
-                lines = content.strip().split('\n')
-                self.assertGreater(len(lines), 0)
-        finally:
-            if os.path.exists(temp_file):
-                os.unlink(temp_file)
-    
-    def test_save_before_optimize_raises_error(self):
-        """Test that saving before optimization raises error."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        optimizer = RingClosureOptimizer.from_files(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rotatable_bonds=None,
-            rcp_terms=None
-        )
-        
-        with self.assertRaises(ValueError):
-            optimizer.save_optimized_structure('output.xyz')
+        self.assertIn('final_zmatrix', result)
+        self.assertIn('final_energy', result)
+        self.assertTrue(result['final_success'])
     
     def test_minimize_with_smoothing_sequence(self):
         """Test minimization with smoothing sequence."""
@@ -642,10 +312,8 @@ def run_tests(verbosity=2):
     suite = unittest.TestSuite()
     
     # Add all test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestIndividual))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerUtilities))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerMinimize))
-    suite.addTests(loader.loadTestsFromTestCase(TestGeneticAlgorithm))
     suite.addTests(loader.loadTestsFromTestCase(TestRingClosureOptimizerOptimize))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
