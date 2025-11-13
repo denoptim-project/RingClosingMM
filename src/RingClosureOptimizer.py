@@ -289,8 +289,8 @@ class RingClosureOptimizer:
             'final_rc_score': best_rc_score,
             'final_energy_improvement': best_energy - initial_energy,
             'final_rc_score_improvement': best_rc_score - initial_ring_closure_score,
-            'final_time': diff_evo_time + pss_ref_time + zms_ref_time,
-            'final_success': True
+            'time': diff_evo_time + pss_ref_time + zms_ref_time,
+            'success': True
         }
         
         return results

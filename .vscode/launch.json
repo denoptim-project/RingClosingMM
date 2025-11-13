@@ -29,28 +29,7 @@
                 "-i", "test.int",
                 "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
                 "-c", "7", "39", "77", "35",
-                "-o", "test_result.xyz"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "Python: MIN cyclic test",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/__main__.py",
-            "args": [
-                "-i", "tomin.int",
-                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
-                "-c", "7", "39", "77", "35",
-                "--zmatrix-dof-bounds", "0.02", "5.0", "10.0", "0.01", "3.0", "5.0",
-                "-o", "min.xyz",
-                "--minimize",
-                "--space-type", "zmatrix"
+                "-o", "test_opt.xyz"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
