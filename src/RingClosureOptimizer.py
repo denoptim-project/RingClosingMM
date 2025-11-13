@@ -689,13 +689,14 @@ class RingClosureOptimizer:
                 ring_closure_decay_rate: float = 0.5, 
                 convergence_interval: int = 5,
                 protect_rc_critical_rotatable_bonds: bool = True,
+                enable_ga_exploration: bool = False,
                 enable_smoothing_refinement: bool = True,
                 enable_zmatrix_refinement: bool = True,
                 refinement_top_n: int = 1,
                 smoothing_sequence: List[float] = None,
                 torsional_iterations: int = 50,
                 zmatrix_iterations: int = 50,
-                refinement_convergence: float = 0.01,
+                convergence_threshold: float = 0.01,
                 systematic_sampling_divisions: int = 6,
                 verbose: bool = True, 
                 print_interval: int = 5) -> Dict[str, Any]:
@@ -743,8 +744,10 @@ class RingClosureOptimizer:
             Iterations per torsional optimization step (default: 50)
         zmatrix_iterations : int
             Iterations for Z-matrix space minimization (default: 50)
-        refinement_convergence : float
+        convergence_threshold : float
             Fitness improvement threshold for GA convergence (default: 0.01)
+        convergence_interval : int
+            Number of consecutive generations with small improvement to declare convergence (default: 5)
         systematic_sampling_divisions : int
             Number of discrete values for systematic sampling of critical torsions (default: 6)
         verbose : bool
@@ -765,99 +768,39 @@ class RingClosureOptimizer:
         if smoothing_sequence is None:
             smoothing_sequence = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
         
-        # Get RCP terms and topology from system
-        rcp_terms = self.system.rcpterms
-        topology = self.system.topology
-        
-        # Initialize GA with base zmatrix
-        self.ga = GeneticAlgorithm(
-            num_torsions=len(self.system.rotatable_indices),
-            base_zmatrix=self.system.zmatrix,
-            rotatable_indices=self.system.rotatable_indices,
-            population_size=population_size,
-            mutation_rate=mutation_rate,
-            mutation_strength=mutation_strength,
-            crossover_rate=crossover_rate,
-            elite_size=elite_size,
-            torsion_range=torsion_range,
-            rcp_terms=rcp_terms,
-            systematic_sampling_divisions=systematic_sampling_divisions,
-            topology=topology
-        )
-        
-        # Evaluate initial ring closure score
-        coords = zmatrix_to_cartesian(self.system.zmatrix)
-        initial_zmatrix = self.system.zmatrix
-        initial_coords = coords
-        initial_closure_score = self.system.ring_closure_score_exponential(coords)
-        initial_energy = self.system.evaluate_energy(coords)
-        
-        if verbose:
-            print(f"Initial ring closure score: {initial_closure_score:.4f}")
-            print(f"Initial energy: {initial_energy:.2f} kcal/mol")
-            print(f"Rotatable dihedrals: {len(self.system.rotatable_indices)}")
-            print(f"Fitness function: exponential ring closure score (tolerance={ring_closure_tolerance:.2f} Å, decay_rate={ring_closure_decay_rate:.2f})")
-            if enable_smoothing_refinement:
-                print(f"Smoothing refinement: enabled on top {refinement_top_n} candidates")
-                print(f"  Smoothing sequence: {smoothing_sequence}")
-                print(f"  Torsional iterations: {torsional_iterations}")
-            if enable_zmatrix_refinement:
-                print(f"Z-matrix refinement: enabled on top {refinement_top_n} candidates")
-                print(f"  Z-matrix iterations: {zmatrix_iterations}")
-        
-        # Create fitness function
-        fitness_fn = self._create_fitness_function(ring_closure_tolerance, ring_closure_decay_rate)
-        
-        # Genetic Algorithm 
-        prev_best = np.inf
-        num_conv_gen = 0
-        
-        # Run GA
-        print(f"\nGA exploration of torsional space with {len(self.system.rotatable_indices)} torsions...")
-
-        for gen in range(generations):
-            # Evaluate population
-            self.ga.evaluate_population(fitness_fn, gen)
-            
-            # Get current best fitness
-            current_best = self.ga.best_individual.fitness if self.ga.best_individual else np.inf
-            
-            # Count number of consecutive generations with improvement less than threshold
-            if gen > 0 and abs(prev_best - current_best) < refinement_convergence:
-                num_conv_gen += 1
-            else:
-                num_conv_gen = 0
-
-            # Check if convergence interval has been reached
-            converged = False if num_conv_gen < convergence_interval else True;
-            if converged:
-                if verbose:
-                    print(f"Converged at generation {gen}")
-                break
-            
-            # Print progress
-            if verbose and (gen % print_interval == 0 or gen == generations - 1):
-                stats = self.ga.get_statistics()
-                print(f"Gen {gen:3d}: Best fitness = {stats['best']:8.4f}, "
-                      f"Avg = {stats['average']:8.4f} - Conv: {num_conv_gen}/{convergence_interval}")
-                
-            prev_best = current_best
-            
-            # Evolve
-            if gen < generations - 1:
-                self.ga.evolve()
-        
-        # Show detailed RCP analysis after GA convergence
-        if verbose:
-            print("\nRCP analysis of best individual after GA convergence:")
-            best_coords = zmatrix_to_cartesian(self.ga.best_individual.zmatrix)
-            self.system.ring_closure_score_exponential(best_coords, verbose=True)
-        
-        # Take top N candidates from GA population
-        sorted_indices = sorted(range(len(self.ga.population)),
-                               key=lambda i: self.ga.population[i].fitness)
-        top_indices = sorted_indices[:refinement_top_n]
-        top_candidates = [self.ga.population[i] for i in top_indices]
+        if enable_ga_exploration:
+            ga_time = time.time()
+            top_candidates = self.run_ga_to_ring_closure_score(
+                ring_closure_tolerance=ring_closure_tolerance,
+                ring_closure_decay_rate=ring_closure_decay_rate,
+                population_size=population_size,
+                generations=generations,
+                mutation_rate=mutation_rate,
+                mutation_strength=mutation_strength,
+                crossover_rate=crossover_rate,
+                elite_size=elite_size,
+                torsion_range=torsion_range,
+                rcp_terms=self.system.rcpterms,
+                systematic_sampling_divisions=systematic_sampling_divisions,
+                convergence_threshold=convergence_threshold,
+                convergence_interval=convergence_interval,
+                final_elite_size=refinement_top_n,
+                print_interval=print_interval,
+                verbose=verbose)
+            ga_time = time.time() - ga_time
+            print(f"GA exploration time: {ga_time:.2f} seconds")
+        else:
+            dual_annealing_time = time.time()
+            top_candidate, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
+                zmatrix=self.system.zmatrix,
+                rotatable_indices=self.system.rotatable_indices,
+                max_iterations=500,
+                ring_closure_tolerance=ring_closure_tolerance,
+                ring_closure_decay_rate=ring_closure_decay_rate,
+                verbose=verbose)
+            dual_annealing_time = time.time() - dual_annealing_time
+            print(f"Dual Annealing exploration time: {dual_annealing_time:.2f} seconds")
+            top_candidates = [Individual(np.array([top_candidate[idx]['dihedral'] for idx in self.system.rotatable_indices]), top_candidate, fitness=-final_score, energy=None)]
 
         # Select which torsions to refine: do we protect the critical torsions?
         selected_rotatable_indices = self.system.rotatable_indices
@@ -966,7 +909,115 @@ class RingClosureOptimizer:
         self.top_candidates = top_candidates
         
         return results
+
     
+    def run_ga_to_ring_closure_score(self, ring_closure_tolerance: float = 0.1, 
+                                    ring_closure_decay_rate: float = 0.5, 
+                                    population_size: int = 30, 
+                                    generations: int = 50, 
+                                    mutation_rate: float = 0.15, 
+                                    mutation_strength: float = 10.0, 
+                                    crossover_rate: float = 0.7, 
+                                    elite_size: int = 3, 
+                                    torsion_range: Tuple[float, float] = (-180.0, 180.0), 
+                                    rcp_terms: Optional[List[Tuple[int, int]]] = None, systematic_sampling_divisions: int = 6, 
+                                    convergence_threshold: float = 0.01, 
+                                    convergence_interval: int = 5, 
+                                    final_elite_size: int = 1, 
+                                    print_interval: int = 5, 
+                                    verbose: bool = True) -> List[Individual]:
+        """
+        Run the GA to find the best ring closure score.
+        """
+        self.ga = GeneticAlgorithm(
+            num_torsions=len(self.system.rotatable_indices),
+            base_zmatrix=self.system.zmatrix,
+            rotatable_indices=self.system.rotatable_indices,
+        )
+        # Initialize GA with base zmatrix
+        self.ga = GeneticAlgorithm(
+            num_torsions=len(self.system.rotatable_indices),
+            base_zmatrix=self.system.zmatrix,
+            rotatable_indices=self.system.rotatable_indices,
+            population_size=population_size,
+            mutation_rate=mutation_rate,
+            mutation_strength=mutation_strength,
+            crossover_rate=crossover_rate,
+            elite_size=elite_size,
+            torsion_range=torsion_range,
+            rcp_terms=rcp_terms,
+            systematic_sampling_divisions=systematic_sampling_divisions,
+            topology=self.system.topology
+        )
+        
+        # Evaluate initial ring closure score
+        coords = zmatrix_to_cartesian(self.system.zmatrix)
+        initial_zmatrix = self.system.zmatrix
+        initial_coords = coords
+        initial_closure_score = self.system.ring_closure_score_exponential(coords)
+        initial_energy = self.system.evaluate_energy(coords)
+        
+        if verbose:
+            print(f"Initial ring closure score: {initial_closure_score:.4f}")
+            print(f"Initial energy: {initial_energy:.2f} kcal/mol")
+            print(f"Rotatable dihedrals: {len(self.system.rotatable_indices)}")
+            print(f"Fitness function: exponential ring closure score (tolerance={ring_closure_tolerance:.2f} Å, decay_rate={ring_closure_decay_rate:.2f})")
+        
+        # Create fitness function
+        fitness_fn = self._create_fitness_function(ring_closure_tolerance, ring_closure_decay_rate)
+        
+        # Genetic Algorithm 
+        prev_best = np.inf
+        num_conv_gen = 0
+        
+        # Run GA
+        print(f"\nGA exploration of torsional space with {len(self.system.rotatable_indices)} torsions...")
+
+        for gen in range(generations):
+            # Evaluate population
+            self.ga.evaluate_population(fitness_fn, gen)
+            
+            # Get current best fitness
+            current_best = self.ga.best_individual.fitness if self.ga.best_individual else np.inf
+            
+            # Count number of consecutive generations with improvement less than threshold
+            if gen > 0 and abs(prev_best - current_best) < convergence_threshold:
+                num_conv_gen += 1
+            else:
+                num_conv_gen = 0
+
+            # Check if convergence interval has been reached
+            converged = False if num_conv_gen < convergence_interval else True;
+            if converged:
+                if verbose:
+                    print(f"Converged at generation {gen}")
+                break
+            
+            # Print progress
+            if verbose and (gen % print_interval == 0 or gen == generations - 1):
+                stats = self.ga.get_statistics()
+                print(f"Gen {gen:3d}: Best fitness = {stats['best']:8.4f}, "
+                      f"Avg = {stats['average']:8.4f} - Conv: {num_conv_gen}/{convergence_interval}")
+                
+            prev_best = current_best
+            
+            # Evolve
+            if gen < generations - 1:
+                self.ga.evolve()
+        
+        # Show detailed RCP analysis after GA convergence
+        if verbose:
+            print("\nRCP analysis of best individual after GA convergence:")
+            best_coords = zmatrix_to_cartesian(self.ga.best_individual.zmatrix)
+            self.system.ring_closure_score_exponential(best_coords, verbose=True)
+        
+        # Take top N candidates from GA population
+        sorted_indices = sorted(range(len(self.ga.population)),
+                               key=lambda i: self.ga.population[i].fitness)
+        top_indices = sorted_indices[:final_elite_size]
+        top_candidates = [self.ga.population[i] for i in top_indices]
+        return top_candidates
+
 
     def save_optimized_structure(self, filepath: str) -> None:
         """

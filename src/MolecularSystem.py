@@ -47,7 +47,7 @@ except ImportError:
         _calc_distance
     )
 
-from scipy.optimize import minimize
+from scipy.optimize import dual_annealing, minimize
 
 
 def build_topology_from_data(atoms_data, bonds_data):
@@ -385,7 +385,7 @@ class MolecularSystem:
 
     def minimize_energy(self, zmatrix: List[Dict], max_iterations: int = 100) -> Tuple[np.ndarray, float]:
         """
-        Perform energy minimization and return optimized coordinates.
+        Perform energy minimization with OpenMM engine in Cartesian space and return optimized coordinates.
         
         Uses a cached Simulation for the current smoothing parameter (creating it
         if necessary on first use), then updates positions and performs minimization.
@@ -846,6 +846,94 @@ class MolecularSystem:
             }
             return zmatrix, 1e6, info
 
+
+    def maximize_ring_closure_in_torsional_space(self, zmatrix: List[Dict], 
+                                                  rotatable_indices: List[int],
+                                                  max_iterations: int = 100,
+                                                  ring_closure_tolerance: float = 0.2,
+                                                  ring_closure_decay_rate: float = 0.5,
+                                                  verbose: bool = False) -> Tuple[List[Dict], float, Dict[str, Any]]:
+        """
+        Maximize ring closure in torsional space by dual annealing.
+        
+        Parameters
+        ----------
+        zmatrix : List[Dict]
+            Starting Z-matrix
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix (atoms whose dihedrals can be optimized)
+        max_iterations : int
+            Maximum optimization iterations
+        verbose : bool
+            Print optimization progress
+        """
+
+        def objective(torsions: np.ndarray) -> float:
+            """Objective function: evaluate ring closure score for given torsions."""
+            try:
+                # Update zmatrix with new torsion values
+                updated_zmatrix = copy.deepcopy(zmatrix)
+                for j, idx in enumerate(rotatable_indices):
+                    updated_zmatrix[idx]['dihedral'] = torsions[j]
+                coords = zmatrix_to_cartesian(updated_zmatrix)
+                # Negated because we want to maximize ring closure score
+                return -self.ring_closure_score_exponential(coords, ring_closure_tolerance, ring_closure_decay_rate)
+            except Exception as e:
+                # Return high penalty on failure
+                return 1e6
+
+        initial_torsions = np.array([zmatrix[idx]['dihedral'] for idx in rotatable_indices])
+        bounds = [(-180.0, 180.0) for _ in range(len(initial_torsions))]
+        initial_score = -objective(initial_torsions)
+        if verbose:
+            print(f"  Initial score: {initial_score:.4f}")
+            info = {
+                'initial_score': initial_score,
+                'final_score': None,
+                'improvement': None
+            }
+
+        try:
+            result = dual_annealing(
+                objective,
+                bounds,
+                args=(),
+                maxiter=250,
+                # minimizer_kwargs={
+                #     'method': 'Powell', 
+                #     'tol': 0.1,   # Function tolerance
+                #     #'xtol': 0.5,    # Tolerance for changes in the variables (degrees)
+                #     #'disp': False
+                # },
+                initial_temp=2000.0,
+                restart_temp_ratio=2.e-3,
+                visit=3.0,
+                accept=-2.5,
+                # maxfun=1e7,
+                # rng=None,
+                # callback=None,
+                no_local_search=True,
+                x0=initial_torsions
+            )
+            final_score = -result.fun
+            if verbose:
+                print(f"  Final score: {final_score:.4f}")
+                print(f"  Improvement: {final_score - initial_score :.4f}")
+            # Create optimized zmatrix
+            optimized_zmatrix = copy.deepcopy(zmatrix)
+            for j, idx in enumerate(rotatable_indices):
+                optimized_zmatrix[idx]['dihedral'] = result.x[j]
+            info['final_score'] = final_score
+            info['improvement'] = final_score - initial_score
+            return optimized_zmatrix, final_score, info
+
+        except Exception as e:
+            print(e)
+            info['success'] = False
+            info['message'] = str(e)
+            info['final_score'] = initial_score
+            info['improvement'] = 0.0
+            return zmatrix, -initial_score, info
 
     def ring_closure_score_exponential(self, coords: np.ndarray, 
                                         tolerance: float = 0.001,

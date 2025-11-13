@@ -59,12 +59,11 @@ DEFAULT_SYSTEMATIC_SAMPLING_DIVISIONS = 4
 # Ring closure score parameters
 DEFAULT_RING_CLOSURE_TOLERANCE = 0.1  # Angstroms (C-C bond)
 DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  # Exponential decay rate
-#
-# Smoothing refinement parameters  
+
 DEFAULT_REFINEMENT_TOP_N = 1
 DEFAULT_TORSIONAL_ITERATIONS = 50
 DEFAULT_ZMATRIX_ITERATIONS = 50
-DEFAULT_REFINEMENT_CONVERGENCE = 0.01
+DEFAULT_CONVERGENCE_THRESHOLD = 0.01
 DEFAULT_SMOOTHING_SEQUENCE = [50.0, 25.0, 10.0, 5.0, 2.5, 1.0, 0.0]
 
 
@@ -164,8 +163,8 @@ def parse_arguments():
     mem_group.add_argument('--zmatrix-iterations', type=int,
                           default=DEFAULT_ZMATRIX_ITERATIONS,
                           help='Iterations for Z-matrix space minimization')
-    mem_group.add_argument('--refinement-convergence', type=float,
-                          default=DEFAULT_REFINEMENT_CONVERGENCE,
+    mem_group.add_argument('--convergence-threshold', type=float,
+                          default=DEFAULT_CONVERGENCE,
                           help='Fitness improvement threshold for GA convergence')
     
     # Minimization option 
@@ -432,7 +431,7 @@ def main():
                 print(f"  Mutation: {args.mutation} (strength: {args.mutation_strength}°)")
                 print(f"  Elite size: {args.elite_size}")
                 print(f"  Torsion range: {args.torsion_min}° to {args.torsion_max}°")
-                print(f"  Convergence threshold: {args.refinement_convergence}")
+                print(f"  Convergence threshold: {args.convergence_threshold}")
                 if args.rcp_terms:
                     print(f"  Systematic sampling: {args.systematic_sampling_divisions} divisions for critical torsions")
                 
@@ -488,7 +487,7 @@ def main():
                 smoothing_sequence=None,  # Use default
                 torsional_iterations=args.torsional_iterations,
                 zmatrix_iterations=args.zmatrix_iterations,
-                refinement_convergence=args.refinement_convergence,
+                convergence_threshold=args.convergence_threshold,
                 systematic_sampling_divisions=args.systematic_sampling_divisions,
                 print_interval=args.print_interval,
                 verbose=verbose
