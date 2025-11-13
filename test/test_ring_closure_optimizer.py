@@ -221,11 +221,11 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             verbose=False
         )
         
-        self.assertIn('initial_closure_score', result)
-        self.assertIn('final_closure_score', result)
+        self.assertIn('initial_ring_closure_score', result)
+        self.assertIn('final_ring_closure_score', result)
         self.assertIn('final_zmatrix', result)
         self.assertIn('final_energy', result)
-        self.assertTrue(result['final_success'])
+        self.assertTrue(result['success'])
     
     def test_optimize_with_refinement(self):
         """Test optimization with refinement enabled."""
@@ -251,11 +251,11 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             verbose=False
         )
         
-        self.assertIn('initial_closure_score', result)
-        self.assertIn('final_closure_score', result)
+        self.assertIn('initial_ring_closure_score', result)
+        self.assertIn('final_ring_closure_score', result)
         self.assertIn('final_zmatrix', result)
         self.assertIn('final_energy', result)
-        self.assertTrue(result['final_success'])
+        self.assertTrue(result['success'])
     
     def test_minimize_with_smoothing_sequence(self):
         """Test minimization with smoothing sequence."""
