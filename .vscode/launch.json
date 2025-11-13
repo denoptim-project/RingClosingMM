@@ -79,23 +79,6 @@
             }
         },
         {
-            "name": "Python: example from server usage",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/__main__.py",
-            "args": [
-                "-i", "tt.int",
-                "-c", "1", "3", "2", "4",
-                "--minimize"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/examples/server_usage",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
             "name": "Python: policyclic_bond_formation test",
             "type": "debugpy",
             "request": "launch",
@@ -126,84 +109,6 @@
             }
         },
         {
-             "name": "Python: Cartesian Minimization",
-             "type": "debugpy",
-             "request": "launch",
-             "program": "${workspaceFolder}/src/__main__.py",
-             "args": [
-                 "-i", "test.int",
-                 "-c", "7", "39", "77", "35",
-                 "--minimize",
-                 "--space-type", "Cartesian",
-                 "--smoothing", "5.0", "2.5", "1.0", "0.0",
-                 "--max-iterations", "500",
-                 "-o", "test_minimized_cartesian.xyz"
-             ],
-             "console": "integratedTerminal",
-             "cwd": "${workspaceFolder}/examples/simple_minimization",
-             "justMyCode": false,
-             "env": {
-                 "PYTHONPATH": "${workspaceFolder}/src"
-             }
-        },
-        {
-            "name": "Python: Torsional Minimization",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/src/__main__.py",
-            "args": [
-                "-i", "test.int",
-                "-c", "7", "39", "77", "35",
-                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
-                "--minimize",
-                "--space-type", "torsional",
-                "--smoothing", "5.0", "2.5", "1.0", "0.0",
-                "--max-iterations", "100",
-                "-o", "test_minimized_torsional.xyz"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/examples/simple_minimization",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "Test: Graph Methods Only",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "test/test_ring_closure_optimizer.py::TestGeneticAlgorithmGraphMethods",
-                "-v"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "Test: DOF Methods Only",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "test/test_ring_closure_optimizer.py::TestRingClosureOptimizerDOFMethods::test_get_dofs_from_rotatable_indices",
-                "-v",
-                "-s"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
             "name": "Python: c4",
             "type": "debugpy",
             "request": "launch",
@@ -211,10 +116,8 @@
             "args": [
                 "-i", "c4.int",
                 "-c", "1", "11", "2", "14",
-                "--minimize",
-                "--space-type", "zmatrix",
-                "--ring-closure-tolerance", "0.001",
-                "-o", "c4_minimized_zmatrix.xyz"
+                "-o", "c4_min.xyz",
+                "-v"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/strained_ring_closure",
@@ -222,60 +125,7 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
-        },
-        {
-            "name": "Test: RMSD Methods Only",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "test/test_molecular_system.py::TestMolecularSystemRMSD",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "Test: Gradient Methods Only",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "test/test_molecular_system.py::TestMolecularSystemGradient",
-                "-v",
-                "--tb=short"
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
-        {
-            "name": "Compute Energy and Gradient",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/compute_energy_gradient.py",
-            "args": [
-                "examples/strained_ring_closure/complex_result.int",
-                "-v",
-                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
-                "-c", "7", "39", "77", "35",
-            ],
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
-            }
-        },
+        }
     ]
 }
 

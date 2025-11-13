@@ -304,9 +304,9 @@
    <!-- NB: dummy values for bending. This term is here only to enable
         the generation of constraints.-->
    <!-- NB: the values of equilibrium angle is added programamtically.-->
-  <!-- k=80 still allows for closure of 4-membered ring.-->
-   <Angle class1="" class2="Atom" class3=""  k="80"/>
-   <Angle class1="" class2="ATR"  class3=""  k="80"/>  
+  <!-- k=40 still allows for closure of 4-membered ring.-->
+   <Angle class1="" class2="Atom" class3=""  k="40"/>
+   <Angle class1="" class2="ATR"  class3=""  k="40"/>  
    <Angle class1="Dummy" class2="" class3="" k="1000"/>
    <Angle class1="" class2="Dummy" class3="" k="1000"/>
   </ConstrainedAngleForce>
