@@ -121,7 +121,6 @@ class MolecularSystem:
     def __init__(self, system, topology, rcpterms: List[Tuple[int, int]], 
                  zmatrix: ZMatrix,
                  step_length: float = 0.0002,
-                 write_candidate_files: bool = False,
                  ring_closure_threshold: float = 1.5):
         """
         Initialize molecular system.
@@ -138,8 +137,6 @@ class MolecularSystem:
             Z-matrix representation
         step_length : float
             Integration step length
-        write_candidate_files : bool
-            Write candidate files (int and xyz)
         ring_closure_threshold : float
             Distance threshold (Angstroms) for considering a ring nearly closed
         """
@@ -148,14 +145,15 @@ class MolecularSystem:
         self.rcpterms = rcpterms if rcpterms else []
         self.zmatrix = zmatrix
         self.step_length = step_length
-        self.write_candidate_files = write_candidate_files
-        self.candidate_files_prefix = "candidate"
         self.ring_closure_threshold = ring_closure_threshold
         
         # Rotatable indices and related fields (computed when rotatable_indices is set)
         self.rotatable_indices: Optional[List[int]] = None
         self.rc_critical_atoms: Optional[List[int]] = None
         self.rc_critical_rotatable_indeces: Optional[List[int]] = None
+
+        # Degrees of freedom indices are computed automatically when rotatable_indices is set, but can be
+        # set by a specific call to set_dof_indices
         self.dof_indices: Optional[List[Tuple[int, int]]] = None
         
         # Cache simulations by smoothing parameter to avoid recreating them
@@ -201,10 +199,23 @@ class MolecularSystem:
         else:
             self.dof_indices = []
 
+    def set_dof_indices(self, dof_indices: List[Tuple[int, int]]):
+        """
+        Set degrees of freedom indices.
+        
+        Parameters
+        ----------
+        dof_indices : List[Tuple[int, int]]
+            Degrees of freedom indices (0-based). The first index is the atom index, 
+            the second index is the degree of freedom index. Example: [(0, 0), (1, 2)] means 
+            the first atom's first degree of freedom (distance) and the second atom's third 
+            degree of freedom (torsion).
+        """
+        self.dof_indices = dof_indices
+
     @classmethod
     def from_file(cls, structure_file: str, forcefield_file: str,
                   rcp_terms: Optional[List[Tuple[int, int]]] = None,
-                  write_candidate_files: bool = False,
                   ring_closure_threshold: float = 1.5,
                   step_length: float = 0.0002) -> 'MolecularSystem':
         """
@@ -221,8 +232,6 @@ class MolecularSystem:
             Path to force field XML file
         rcp_terms : Optional[List[Tuple[int, int]]]
             RCP terms (optional). All indices must be in 0-based indexing.
-        write_candidate_files : bool
-            Write candidate files (int and xyz)
         ring_closure_threshold : float
             Distance threshold (Angstroms) for considering a ring nearly closed
         step_length : float
@@ -242,13 +251,12 @@ class MolecularSystem:
         if not isinstance(zmatrix, ZMatrix):
             raise TypeError(f"Expected ZMatrix instance, got {type(zmatrix)}")
         
-        return cls.from_data(zmatrix, forcefield_file, rcp_terms, write_candidate_files, ring_closure_threshold, step_length)
+        return cls.from_data(zmatrix, forcefield_file, rcp_terms, ring_closure_threshold, step_length)
     
     @classmethod
     def from_data(cls, zmatrix: ZMatrix, 
                      forcefield_file: str,
                      rcp_terms: Optional[List[Tuple[int, int]]] = None,
-                     write_candidate_files: bool = False,
                      ring_closure_threshold: float = 1.5,
                      step_length: float = 0.0002) -> 'MolecularSystem':
         """
@@ -263,8 +271,6 @@ class MolecularSystem:
             Path to force field XML file
         rcp_terms : Optional[List[Tuple[int, int]]]
             RCP terms (optional). All indices must be in 0-based indexing.
-        write_candidate_files : bool
-            Write candidate files (int and xyz)
         ring_closure_threshold : float
             Distance threshold (Angstroms) for considering a ring nearly closed
         step_length : float
@@ -297,8 +303,7 @@ class MolecularSystem:
             scalingRCP=1.0
         )
         
-        return cls(system, topology, rcp_terms or [], zmatrix, step_length, 
-                  write_candidate_files, ring_closure_threshold)
+        return cls(system, topology, rcp_terms or [], zmatrix, step_length, ring_closure_threshold)
 
 
     def setSmoothingParameter(self, smoothing: float):
@@ -460,6 +465,10 @@ class MolecularSystem:
             Tuple[ZMatrix, float, Dict[str, Any]]
             Optimized Z-matrix, optimized energy (kcal/mol), and optimization info dict
         """
+
+        # Step size for numerical gradient calculation
+        eps = 0.1
+
         # Use DOF names from ZMatrix class
         dof_names = ZMatrix.DOF_NAMES
 
@@ -557,10 +566,13 @@ class MolecularSystem:
                     dof_type = dof_names[dof_idx]
                     if dof_type == 'bond_length':
                         deviation = dof_bound_coeffs[0]
-                        current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        current_dof_bounds.append((max(dof_current_value-deviation, eps+0.005), dof_current_value+deviation))
                     elif (dof_type == 'angle') or (dof_type == 'dihedral' and zmatrix[zmat_idx].get('chirality', 0) != 0):
                         deviation = dof_bound_coeffs[1]
-                        current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        if deviation < 179.0:
+                            current_dof_bounds.append((dof_current_value-deviation, dof_current_value+deviation))
+                        else:
+                            current_dof_bounds.append((-180.0, 180.0))
                     elif dof_type == 'dihedral' and zmatrix[zmat_idx].get('chirality', 0) == 0:
                         deviation = dof_bound_coeffs[2]
                         if deviation < 179.0:
@@ -574,8 +586,6 @@ class MolecularSystem:
                     print(f"\n  Initial DOFs:")
                     self.report_dof_info(zmatrix, dof_indices, current_dofs, current_dof_bounds, current_gradient) 
 
-                # Provide jac (gradient function) so scipy uses our numerical gradient
-                # with appropriate step size (h=0.1) instead of machine epsilon
                 result = minimize(
                     objective,
                     current_dofs,
@@ -589,7 +599,7 @@ class MolecularSystem:
                         'ftol': 0,  # 0 disables the function tolerance
                         'gtol': gradient_tolerance, 
                         'disp': True,
-                        'eps': 0.1  # step size for numerical gradient calculation
+                        'eps': eps  # step size for numerical gradient calculation
                     }
                 )
                 
@@ -603,7 +613,7 @@ class MolecularSystem:
                 if verbose:
                     print(f"\n  Iteration {i+1}: nfev={result.nfev} nit={result.nit} E={current_energy:.4f} kcal/mol Gnorm={current_gradient_norm_check:.4f} Gmax={current_max_gradient_check:.4f} message={result.message}")
                     self.report_dof_info(zmatrix, dof_indices, current_dofs, current_dof_bounds, current_gradient)
-            
+                
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
             

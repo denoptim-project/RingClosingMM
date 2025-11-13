@@ -47,7 +47,7 @@ DEFAULT_RING_CLOSURE_TOLERANCE = 0.1  # Angstroms (C-C bond)
 DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  # Exponential decay rate
 DEFAULT_TORSIONAL_ITERATIONS = 50
 DEFAULT_ZMATRIX_ITERATIONS = 50
-
+DEFAULT_GRADIENT_TOLERANCE = 0.01
 
 # Default forcefield path (relative to this script's location)
 DEFAULT_FORCEFIELD = str(Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml')
@@ -122,8 +122,13 @@ def parse_arguments():
                           default=500,
                           help='Maximum iterations for minimization')
     min_group.add_argument('--gradient-tolerance', type=float,
-                          default=0.01,
-                          help='Gradient tolerance convergecy critrion for minimization')
+                          default=DEFAULT_GRADIENT_TOLERANCE,
+                          help='Gradient tolerance convergecy critrion for minimization (default: {DEFAULT_GRADIENT_TOLERANCE})')
+    min_group.add_argument('--dof-indices', nargs='+', type=int,
+                          help='Degrees of freedom indices (1-based). The first index is the atom index, '
+                               'the second index is the degree of freedom index. Example: 1 1 2 3 means '
+                               'the first atom\'s first degree of freedom (distance) and the second atom\'s third '
+                               'degree of freedom (torsion).')
     min_group.add_argument('--zmatrix-dof-bounds', nargs='+', type=float,
                           help='Bounds for the three types of degrees of freedom in Z-matrix space. Example: 0.02 5.0 10.0 means that bond lengths are bound to change by up to 0.02 Å from the current value, angles and 5.0 degrees, and torsions by 10.0 degrees from the current value. Multiple triplets can be provided to request any stepwise application of bounds. Example: 0.02 5.0 10.0 0.01 3.0 8.0 means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is 0.02 20.0 180.0.')
    
@@ -255,6 +260,12 @@ def main():
             traceback.print_exc()
             return 1
     
+    # PArse definition of degrees of freedom from list of integers (1-based) to list of tuples (0-based)
+    dof_indices = None
+    if args.dof_indices:
+        dof_indices = [(args.dof_indices[i] - 1, args.dof_indices[i+1] - 1) 
+                       for i in range(0, len(args.dof_indices), 2)]
+
     # Parse Z-matrix DOF bounds from list of floats to list of tuples
     zmatrix_dof_bounds_per_type = None
     if args.zmatrix_dof_bounds:
@@ -296,6 +307,9 @@ def main():
             rcp_terms=rcp_terms,
             ring_closure_threshold=args.ring_closure_tolerance
         )
+
+        if dof_indices:
+            optimizer.system.set_dof_indices(dof_indices)
         
         if verbose:
             print(f"  Z-matrix size: {len(optimizer.system.zmatrix)}")
@@ -335,19 +349,25 @@ def main():
                 smoothing_sequence=None,  # Use default
                 torsional_iterations=args.torsional_iterations,
                 zmatrix_iterations=args.zmatrix_iterations,
+                gradient_tolerance=args.gradient_tolerance,
                 verbose=verbose
             )
             
-            print("\n" + "=" * 70)
-            print("RESULTS")
-            print("=" * 70)
-            print(f"Initial ring closure score: {result['initial_closure_score']:.4f}")
-            print(f"Initial energy: {result['initial_energy']:.4f} kcal/mol")
-            print(f"Final ring closure score:   {result['final_closure_score']:.4f}")
-            print(f"Final energy: {result['final_energy']:.4f} kcal/mol")
-            
             IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
     
+        
+        print("\n" + "=" * 70)
+        print("RESULTS")
+        print("=" * 70)
+        print(f"Initial ring closure score: {result['initial_ring_closure_score']:.4f}")
+        print(f"Initial energy: {result['initial_energy']:.4f} kcal/mol")
+        if result['success']:
+            print("SUCCESS")
+            print(f"Final ring closure score:   {result['final_ring_closure_score']:.4f}")
+            print(f"Final energy: {result['final_energy']:.4f} kcal/mol")
+        else:
+            print("FAILURE")
+
         print(f"\nFinal structure saved to: {args.output}")
         print("=" * 70)
         
@@ -355,9 +375,8 @@ def main():
     
     except Exception as e:
         print(f"\nError: {e}", file=sys.stderr)
-        if verbose:
-            import traceback
-            traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return 1
 
 

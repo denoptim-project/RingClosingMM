@@ -81,9 +81,16 @@
             "program": "${workspaceFolder}/src/__main__.py",
             "args": [
                 "-i", "test.int",
-                "-r", "1", "2", "2", "6", "8", "9", "9", "10", "10", "11",
-                "-c", "6", "10", "9", "2",
-                "-o", "test_result.xyz"
+                "-c", "5", "14", "6", "13",
+                "--dof-indices", 
+                "9", "1", 
+                "9", "2", 
+                "9", "3", 
+                "10", "2", 
+                "10", "3",
+                "-o", "test_result.xyz",
+                "--minimize",
+                "--space-type", "Cartesian"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/acyclic_bond_formation",

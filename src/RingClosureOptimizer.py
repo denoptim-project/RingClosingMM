@@ -144,6 +144,7 @@ class RingClosureOptimizer:
                 smoothing_sequence: List[float] = None,
                 torsional_iterations: int = 50,
                 zmatrix_iterations: int = 50,
+                gradient_tolerance: float = 0.01,
                 verbose: bool = False) -> Dict[str, Any]:
         """
         Run torsional optimization using a divide and conquer strategy:
@@ -183,7 +184,7 @@ class RingClosureOptimizer:
 
         initial_zmatrix = self.system.zmatrix
         initial_coords = zmatrix_to_cartesian(initial_zmatrix)
-        initial_closure_score = self.system.ring_closure_score_exponential(initial_coords)
+        initial_ring_closure_score = self.system.ring_closure_score_exponential(initial_coords)
         initial_energy = self.system.evaluate_energy(initial_coords)
     
         print(f"\nTorsional space optimization to maximize ring closure score...")
@@ -197,7 +198,7 @@ class RingClosureOptimizer:
             verbose=verbose)
         diff_evo_time = time.time() - diff_evo_time
         print(f"  Time: {diff_evo_time:.2f} seconds")
-        print(f"  Ring closure score change = {final_score - initial_closure_score:.4f} (from {initial_closure_score:.4f} to {final_score:.4f})")
+        print(f"  Ring closure score change = {final_score - initial_ring_closure_score:.4f} (from {initial_ring_closure_score:.4f} to {final_score:.4f})")
 
         best_coords = zmatrix_to_cartesian(ring_closed_zmatrix)
         best_zmatrix = ring_closed_zmatrix
@@ -256,6 +257,7 @@ class RingClosureOptimizer:
                     current_zmatrix,
                     dof_indices=self.system.dof_indices,
                     max_iterations=zmatrix_iterations,
+                    gradient_tolerance=gradient_tolerance,
                     verbose=verbose
                 )
                 if info['success']:
@@ -279,14 +281,14 @@ class RingClosureOptimizer:
 
         results = {
             'initial_energy': initial_energy,
-            'initial_closure_score': initial_closure_score,
-            'final_closure_score': best_rc_score,
+            'initial_ring_closure_score': initial_ring_closure_score,
+            'final_ring_closure_score': best_rc_score,
             'final_zmatrix': best_zmatrix,
             'final_coords': best_coords,
             'final_energy': best_energy,
             'final_rc_score': best_rc_score,
             'final_energy_improvement': best_energy - initial_energy,
-            'final_rc_score_improvement': best_rc_score - initial_closure_score,
+            'final_rc_score_improvement': best_rc_score - initial_ring_closure_score,
             'final_time': diff_evo_time + pss_ref_time + zms_ref_time,
             'final_success': True
         }
@@ -373,14 +375,14 @@ class RingClosureOptimizer:
         # Evaluate initial energy at first smoothing value
         self.system.setSmoothingParameter(smoothing_values[0])
         initial_energy = self.system.evaluate_energy(initial_coords)
-        ring_closure_score = self.system.ring_closure_score_exponential(
+        initial_ring_closure_score = self.system.ring_closure_score_exponential(
                 initial_coords,
                 verbose=False
             )
         
         if verbose:
             print(f"Initial energy: {initial_energy:.4f} kcal/mol")
-            print(f"Initial ring closure score: {ring_closure_score:.4f}")
+            print(f"Initial ring closure score: {initial_ring_closure_score:.4f}")
             if len(smoothing_values) > 1:
                 print(f"Minimizing in {space_type} space with smoothing sequence: {smoothing_values}")
             else:
@@ -388,6 +390,7 @@ class RingClosureOptimizer:
         
         try:
             current_zmatrix = initial_zmatrix
+            current_energy = initial_energy
             all_opt_info = []
             
             # Perform sequence of minimizations with smoothed potential energy
@@ -408,6 +411,7 @@ class RingClosureOptimizer:
                     
                     if opt_info.get('success'):
                         current_zmatrix = refined_zmatrix
+                        current_energy = step_energy
                         all_opt_info.append(opt_info)
                     else:
                         if verbose:
@@ -429,6 +433,7 @@ class RingClosureOptimizer:
 
                     if opt_info.get('success'):
                         current_zmatrix = refined_zmatrix
+                        current_energy = step_energy
                         all_opt_info.append(opt_info)
                     else:
                         if verbose:
@@ -447,6 +452,7 @@ class RingClosureOptimizer:
                         current_zmatrix
                     )
                     current_zmatrix = refined_zmatrix
+                    current_energy = step_energy
                     opt_info = {}
                 
                 else:
@@ -454,25 +460,23 @@ class RingClosureOptimizer:
             
             # Final state after all smoothing steps
             minimized_zmatrix = current_zmatrix
+            minimized_energy = current_energy
             minimized_coords = zmatrix_to_cartesian(minimized_zmatrix)
             
-            # Evaluate final energy
-            self.system.setSmoothingParameter(0.0)  # Final evaluation at no smoothing
-            minimized_energy = self.system.evaluate_energy(minimized_coords)
-            
             # Calculate ring closure score
-            ring_closure_score = self.system.ring_closure_score_exponential(
+            final_ring_closure_score = self.system.ring_closure_score_exponential(
                 minimized_coords,
                 verbose=False
             )
             
             self.system.zmatrix = minimized_zmatrix
+
+            rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
             
             if verbose:
                 print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
                 print(f"Improvement:    {initial_energy - minimized_energy:.4f} kcal/mol")
-                print(f"Ring closure:   {ring_closure_score:.4f}")
-                rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
+                print(f"Ring closure:   {final_ring_closure_score:.4f}")
                 print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
                 print(f"RMSD angles: {rmsd_angles:.4f} deg")
                 print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
@@ -482,7 +486,8 @@ class RingClosureOptimizer:
                 'final_energy': minimized_energy,
                 'coordinates': minimized_coords,
                 'zmatrix': minimized_zmatrix,
-                'ring_closure_score': ring_closure_score,
+                'initial_ring_closure_score': initial_ring_closure_score,
+                'final_ring_closure_score': final_ring_closure_score,
                 'rmsd_bond_lengths': rmsd_bond_lengths,
                 'rmsd_angles': rmsd_angles,
                 'rmsd_dihedrals': rmsd_dihedrals,
@@ -500,8 +505,8 @@ class RingClosureOptimizer:
                 'final_energy': initial_energy,
                 'coordinates': initial_coords,
                 'zmatrix': initial_zmatrix,
-                'ring_closure_score': self.system.ring_closure_score_exponential(
-                    initial_coords, verbose=False),
+                'initial_ring_closure_score': initial_ring_closure_score,
+                'final_ring_closure_score': initial_ring_closure_score,
                 'rmsd_bond_lengths': 0.0,
                 'rmsd_angles': 0.0,
                 'rmsd_dihedrals': 0.0,
