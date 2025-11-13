@@ -6,14 +6,14 @@
 
 ## Overview
 
-The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between them. It build on an (OpenMM)[https://openmm.org/] molecular mechanics engine and (scipy)[https://scipy.org/] optimization algorithms. 
-The molecualr mechanics is based on simple force field definition that favors formation of bonds where no topological bond is originally defined, by introducing ring-closing (i.e., bond-forming) interactions and excluding inter atomic repulsion terms according expected presence of the to-be-formed bonds. The force field is rather simple and considers only forces meant to protect as much as possible the initial geometry, while allowing for minimal angle bending and even substantial bond torsion to access the ring-closing conformation and distribute strain over the ring-closing chain. Hence, the force field depends on atom types only for the definition of the non-bonded interactions, which are defined on a per-element basis to ensure that any set of atoms can be manipulated without requiring specific force field parameters.
+The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between them. It build on an (OpenMM)[https://openmm.org/] molecular mechanics engine and (scipy)[https://scipy.org/] optimization algorithms.
+The molecular mechanics is based on simple force field definition that favors formation of bonds where no topological bond is originally defined, by introducing ring-closing (i.e., bond-forming) interactions and excluding inter atomic repulsion terms according expected presence of the to-be-formed bonds. The force field is rather simple and considers only forces meant to protect as much as possible the initial geometry, while allowing for minimal angle bending and even substantial bond torsion to access the ring-closing conformation and distribute strain over the ring-closing chain. Hence, the force field depends on atom types only for the definition of the non-bonded interactions, which are defined on a per-element basis to ensure that any set of atoms can be manipulated without requiring specific force field parameters.
 With such force field allowing and favoring ring closure conformation, a conformational search can identify the conformation that bring the to-be-bonded atoms in a relative position compatible with definition of a formal bond.
 
 ## Features
 
 - ✅ Force Field protecting bond length and bond angles: the input geometry is taken as the equilibrium geometry and strong force constants act as protection of the initial geometry.
-- ✅ Fast exploration of torsional space with . 
+- ✅ Fast exploration of torsional space with .
 - ✅ Potential energy smoothing for global optimization in torsional space.
 - ✅ Final geometrical refinement in Cartesian or Z-Matrix space to adjust bond angles/lengths to the bond-forming/ring-closing conformation.
 - ✅ Socket TCP server to provide low-latency interface with any client application requesting the bond-formation/ring-closure service.
@@ -85,13 +85,13 @@ rc-optimizer \
 ```
 
 Available space types for minimization:
-- `torsional`: Optimize only dihedral angles.
-- `zmatrix`: Optimize bond lengths, angles, and dihedrals.
-- `Cartesian`: Optimize in Cartesian coordinate space.
+- `torsional`: changes only dihedral angles.
+- `zmatrix`: changes bond lengths, angles, and dihedrals, possibly manually selected.
+- `Cartesian`: changes Cartesian coordinate.
 
 ### 2. Server
 
-Start the server that will provide the ring-closing optimiization service:
+Start the server that will provide the ring-closing optimization service:
 ```bash
 rc-optimizer --server-start
 ```
