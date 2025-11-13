@@ -198,12 +198,14 @@ class RingClosureOptimizer:
             verbose=verbose)
         diff_evo_time = time.time() - diff_evo_time
         print(f"  Time: {diff_evo_time:.2f} seconds")
-        print(f"  Ring closure score change = {final_score - initial_ring_closure_score:.4f} (from {initial_ring_closure_score:.4f} to {final_score:.4f})")
 
         best_coords = zmatrix_to_cartesian(ring_closed_zmatrix)
         best_zmatrix = ring_closed_zmatrix
         best_energy = self.system.evaluate_energy(best_coords)
+        # Since the calculation of the score in the diff evo may change, calcualte the score independently from diff evo settings
         best_rc_score = self.system.ring_closure_score_exponential(best_coords)
+
+        print(f"  Ring closure score change = {best_rc_score - initial_ring_closure_score:.4f} (from {initial_ring_closure_score:.4f} to {best_rc_score:.4f})")
 
         # Select which torsions to refine: do we protect the critical torsions?
         non_rc_critical_rotatable_indices = [idx for idx in self.system.rotatable_indices if idx not in self.system.rc_critical_rotatable_indeces]
@@ -214,7 +216,7 @@ class RingClosureOptimizer:
 
         if enable_pssrot_refinement:
             if len(non_rc_critical_rotatable_indices) == 0:
-                print("Warning: No torsions to refine. Skipping torsional refinement.")
+                print("\nWarning: No torsions to refine. Skipping torsional refinement.")
             else:
                 print(f"\nApplying torsional refinement ({len(non_rc_critical_rotatable_indices)} torsions) with potential energy smoothing...")
 
@@ -245,7 +247,7 @@ class RingClosureOptimizer:
 
         if enable_zmatrix_refinement:
             if len(self.system.dof_indices) == 0:
-                print("Warning: No torsions to refine. Skipping Z-matrix refinement.")
+                print("\nWarning: No DOFs to refine. Skipping Z-matrix refinement.")
             else:
                 print(f"\nApplying Z-matrix refinement ({len(self.system.dof_indices)} DOFs) to top candidates...")
 
