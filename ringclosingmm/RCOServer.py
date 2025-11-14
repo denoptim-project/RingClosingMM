@@ -295,13 +295,13 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     for atom in zmatrix:
         atom_0based = atom.copy() 
         # Convert reference indices from 1-based to 0-based
-        atom_0based['id'] = atom_0based['id'] - 1
-        if 'bond_ref' in atom_0based:
-            atom_0based['bond_ref'] = atom_0based['bond_ref'] - 1
-        if 'angle_ref' in atom_0based:
-            atom_0based['angle_ref'] = atom_0based['angle_ref'] - 1
-        if 'dihedral_ref' in atom_0based:
-            atom_0based['dihedral_ref'] = atom_0based['dihedral_ref'] - 1
+        atom_0based[ZMatrix.FIELD_ID] = atom_0based[ZMatrix.FIELD_ID] - 1
+        if ZMatrix.FIELD_BOND_REF in atom_0based:
+            atom_0based[ZMatrix.FIELD_BOND_REF] = atom_0based[ZMatrix.FIELD_BOND_REF] - 1
+        if ZMatrix.FIELD_ANGLE_REF in atom_0based:
+            atom_0based[ZMatrix.FIELD_ANGLE_REF] = atom_0based[ZMatrix.FIELD_ANGLE_REF] - 1
+        if ZMatrix.FIELD_DIHEDRAL_REF in atom_0based:
+            atom_0based[ZMatrix.FIELD_DIHEDRAL_REF] = atom_0based[ZMatrix.FIELD_DIHEDRAL_REF] - 1
         zmatrix_0based.append(atom_0based)
 
     # List of atom indices that are bonded to each other and the bond type
@@ -400,12 +400,12 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         for atom in zmatrix_list:
             atom_1based = atom.copy()
             # Convert reference indices from 0-based to 1-based
-            if 'bond_ref' in atom_1based:
-                atom_1based['bond_ref'] = atom_1based['bond_ref'] + 1
-            if 'angle_ref' in atom_1based:
-                atom_1based['angle_ref'] = atom_1based['angle_ref'] + 1
-            if 'dihedral_ref' in atom_1based:
-                atom_1based['dihedral_ref'] = atom_1based['dihedral_ref'] + 1
+            if ZMatrix.FIELD_BOND_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_BOND_REF] = atom_1based[ZMatrix.FIELD_BOND_REF] + 1
+            if ZMatrix.FIELD_ANGLE_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_ANGLE_REF] = atom_1based[ZMatrix.FIELD_ANGLE_REF] + 1
+            if ZMatrix.FIELD_DIHEDRAL_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_DIHEDRAL_REF] = atom_1based[ZMatrix.FIELD_DIHEDRAL_REF] + 1
             zmatrix_1based.append(atom_1based)
         
         response = {
@@ -455,12 +455,12 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         for atom in zmatrix_list:
             atom_1based = atom.copy()
             # Convert reference indices from 0-based to 1-based
-            if 'bond_ref' in atom_1based:
-                atom_1based['bond_ref'] = atom_1based['bond_ref'] + 1
-            if 'angle_ref' in atom_1based:
-                atom_1based['angle_ref'] = atom_1based['angle_ref'] + 1
-            if 'dihedral_ref' in atom_1based:
-                atom_1based['dihedral_ref'] = atom_1based['dihedral_ref'] + 1
+            if ZMatrix.FIELD_BOND_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_BOND_REF] = atom_1based[ZMatrix.FIELD_BOND_REF] + 1
+            if ZMatrix.FIELD_ANGLE_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_ANGLE_REF] = atom_1based[ZMatrix.FIELD_ANGLE_REF] + 1
+            if ZMatrix.FIELD_DIHEDRAL_REF in atom_1based:
+                atom_1based[ZMatrix.FIELD_DIHEDRAL_REF] = atom_1based[ZMatrix.FIELD_DIHEDRAL_REF] + 1
             zmatrix_1based.append(atom_1based)
         
         # Compute Cartesian coordinates from the final Z-matrix to ensure consistency

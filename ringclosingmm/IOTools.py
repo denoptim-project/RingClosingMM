@@ -44,9 +44,9 @@ def read_int_file(pathname: str) -> ZMatrix:
         parts = lines[i].split()
         
         atom_data = {
-            'id': int(parts[0]) - 1,
-            'element': parts[1],
-            'atomic_num': int(parts[2])
+            ZMatrix.FIELD_ID: int(parts[0]) - 1,
+            ZMatrix.FIELD_ELEMENT: parts[1],
+            ZMatrix.FIELD_ATOMIC_NUM: int(parts[2])
         }
         
         atoms.append((parts[1], i - 1))
@@ -56,23 +56,23 @@ def read_int_file(pathname: str) -> ZMatrix:
         if len(parts) > 3:
             # Has bond reference (1-based in file, convert to 0-based)
             bond_ref_1based = int(parts[3])
-            atom_data['bond_ref'] = bond_ref_1based - 1  # Convert to 0-based
-            atom_data['bond_length'] = float(parts[4])
+            atom_data[ZMatrix.FIELD_BOND_REF] = bond_ref_1based - 1  # Convert to 0-based
+            atom_data[ZMatrix.FIELD_BOND_LENGTH] = float(parts[4])
             # Add bond (already 0-based: i-1 and bond_ref-1)
             bonds.append((i - 1, bond_ref_1based - 1, 1))
         
         if len(parts) > 5:
             # Has angle reference (1-based in file, convert to 0-based)
             angle_ref_1based = int(parts[5])
-            atom_data['angle_ref'] = angle_ref_1based - 1  # Convert to 0-based
-            atom_data['angle'] = float(parts[6])
+            atom_data[ZMatrix.FIELD_ANGLE_REF] = angle_ref_1based - 1  # Convert to 0-based
+            atom_data[ZMatrix.FIELD_ANGLE] = float(parts[6])
         
         if len(parts) > 7:
             # Has dihedral reference (1-based in file, convert to 0-based)
             dihedral_ref_1based = int(parts[7])
-            atom_data['dihedral_ref'] = dihedral_ref_1based - 1  # Convert to 0-based
-            atom_data['dihedral'] = float(parts[8])
-            atom_data['chirality'] = int(parts[9])
+            atom_data[ZMatrix.FIELD_DIHEDRAL_REF] = dihedral_ref_1based - 1  # Convert to 0-based
+            atom_data[ZMatrix.FIELD_DIHEDRAL] = float(parts[8])
+            atom_data[ZMatrix.FIELD_CHIRALITY] = int(parts[9])
         
         zmatrix.append(atom_data)
 
@@ -138,9 +138,9 @@ def write_zmatrix_file(zmatrix: ZMatrix, filepath: str) -> None:
 
     bonds_implicit_in_zmatrix = []
     for atom in zmatrix.atoms:
-        if atom.get('bond_ref') is not None:
-            atm1 = atom['id']
-            atm2 = atom['bond_ref']
+        if atom.get(ZMatrix.FIELD_BOND_REF) is not None:
+            atm1 = atom[ZMatrix.FIELD_ID]
+            atm2 = atom[ZMatrix.FIELD_BOND_REF]
             if atm1 < atm2:
                 bonds_implicit_in_zmatrix.append((atm1, atm2, 1))
             else:
@@ -167,31 +167,31 @@ def write_zmatrix_file(zmatrix: ZMatrix, filepath: str) -> None:
     with open(filepath, 'w') as f:
         f.write(f"{len(atoms_list)}\n")
         for i, atom in enumerate(atoms_list):
-            id_1based = atom['id'] + 1
+            id_1based = atom[ZMatrix.FIELD_ID] + 1
             if i == 0:
-                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}\n")
+                f.write(f"{id_1based:6d}  {atom[ZMatrix.FIELD_ELEMENT]:<5s}{atom[ZMatrix.FIELD_ATOMIC_NUM]:4d}\n")
             elif i == 1:
                 # Convert 0-based to 1-based for file format
-                bond_ref_1based = atom['bond_ref'] + 1
-                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
-                       f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}\n")
+                bond_ref_1based = atom[ZMatrix.FIELD_BOND_REF] + 1
+                f.write(f"{id_1based:6d}  {atom[ZMatrix.FIELD_ELEMENT]:<5s}{atom[ZMatrix.FIELD_ATOMIC_NUM]:4d}"
+                       f"{bond_ref_1based:6d}{atom[ZMatrix.FIELD_BOND_LENGTH]:12.6f}\n")
             elif i == 2:
                 # Convert 0-based to 1-based for file format
-                bond_ref_1based = atom['bond_ref'] + 1
-                angle_ref_1based = atom['angle_ref'] + 1
-                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
-                       f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}"
-                       f"{angle_ref_1based:6d}{atom['angle']:12.6f}\n")
+                bond_ref_1based = atom[ZMatrix.FIELD_BOND_REF] + 1
+                angle_ref_1based = atom[ZMatrix.FIELD_ANGLE_REF] + 1
+                f.write(f"{id_1based:6d}  {atom[ZMatrix.FIELD_ELEMENT]:<5s}{atom[ZMatrix.FIELD_ATOMIC_NUM]:4d}"
+                       f"{bond_ref_1based:6d}{atom[ZMatrix.FIELD_BOND_LENGTH]:12.6f}"
+                       f"{angle_ref_1based:6d}{atom[ZMatrix.FIELD_ANGLE]:12.6f}\n")
             else:
                 # Convert 0-based to 1-based for file format
-                bond_ref_1based = atom['bond_ref'] + 1
-                angle_ref_1based = atom['angle_ref'] + 1
-                dihedral_ref_1based = atom['dihedral_ref'] + 1
-                f.write(f"{id_1based:6d}  {atom['element']:<5s}{atom['atomic_num']:4d}"
-                       f"{bond_ref_1based:6d}{atom['bond_length']:12.6f}"
-                       f"{angle_ref_1based:6d}{atom['angle']:12.6f}"
-                       f"{dihedral_ref_1based:6d}{atom['dihedral']:12.6f}"
-                       f"{atom['chirality']:6d}\n")
+                bond_ref_1based = atom[ZMatrix.FIELD_BOND_REF] + 1
+                angle_ref_1based = atom[ZMatrix.FIELD_ANGLE_REF] + 1
+                dihedral_ref_1based = atom[ZMatrix.FIELD_DIHEDRAL_REF] + 1
+                f.write(f"{id_1based:6d}  {atom[ZMatrix.FIELD_ELEMENT]:<5s}{atom[ZMatrix.FIELD_ATOMIC_NUM]:4d}"
+                       f"{bond_ref_1based:6d}{atom[ZMatrix.FIELD_BOND_LENGTH]:12.6f}"
+                       f"{angle_ref_1based:6d}{atom[ZMatrix.FIELD_ANGLE]:12.6f}"
+                       f"{dihedral_ref_1based:6d}{atom[ZMatrix.FIELD_DIHEDRAL]:12.6f}"
+                       f"{atom[ZMatrix.FIELD_CHIRALITY]:6d}\n")
 
         f.write("\n")
         for bond in bonds_to_add:

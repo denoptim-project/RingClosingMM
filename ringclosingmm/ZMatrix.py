@@ -59,8 +59,23 @@ class ZMatrix:
     >>> zmat.to_list()  # Convert to List[Dict] for backward compatibility
     """
     
+    # Z-matrix field name constants
+    FIELD_ID = 'id'
+    FIELD_ELEMENT = 'element'
+    FIELD_ATOMIC_NUM = 'atomic_num'
+    FIELD_BOND_REF = 'bond_ref'
+    FIELD_BOND_LENGTH = 'bond_length'
+    FIELD_ANGLE_REF = 'angle_ref'
+    FIELD_ANGLE = 'angle'
+    FIELD_DIHEDRAL_REF = 'dihedral_ref'
+    FIELD_DIHEDRAL = 'dihedral'
+    FIELD_CHIRALITY = 'chirality'
+    
     # DOF names mapping: 0=bond_length, 1=angle, 2=dihedral
-    DOF_NAMES = ['bond_length', 'angle', 'dihedral']
+    DOF_NAMES = [FIELD_BOND_LENGTH, FIELD_ANGLE, FIELD_DIHEDRAL]
+    
+    # Reference field names (for validation)
+    REF_FIELDS = [FIELD_BOND_REF, FIELD_ANGLE_REF, FIELD_DIHEDRAL_REF]
     
     def __init__(self, atoms: List[Dict], bonds: List[Tuple[int, int, int]]):
         """
@@ -93,13 +108,13 @@ class ZMatrix:
         for i, atom in enumerate(self._atoms):
             if not isinstance(atom, dict):
                 raise ValueError(f"Atom {i} must be a dictionary")
-            if 'id' in atom and atom['id'] != i:
-                raise ValueError(f"Atom {i} has inconsistent id: {atom['id']} (expected {i})")
+            if ZMatrix.FIELD_ID in atom and atom[ZMatrix.FIELD_ID] != i:
+                raise ValueError(f"Atom {i} has inconsistent id: {atom[ZMatrix.FIELD_ID]} (expected {i})")
             # Ensure id is set correctly
-            atom['id'] = i
+            atom[ZMatrix.FIELD_ID] = i
             
             # Validate reference indices are 0-based and in range
-            for ref_key in ['bond_ref', 'angle_ref', 'dihedral_ref']:
+            for ref_key in ZMatrix.REF_FIELDS:
                 if ref_key in atom:
                     ref_idx = atom[ref_key]
                     if not isinstance(ref_idx, int):
@@ -150,7 +165,7 @@ class ZMatrix:
         if not isinstance(value, dict):
             raise ValueError("Value must be a dictionary")
         self._atoms[index] = copy.deepcopy(value)
-        self._atoms[index]['id'] = index  # Ensure id is correct
+        self._atoms[index][ZMatrix.FIELD_ID] = index  # Ensure id is correct
         self._validate()
     
     def __iter__(self):
@@ -315,7 +330,7 @@ class ZMatrix:
         List[str]
             List of element symbols for all atoms
         """
-        return [atom['element'] for atom in self._atoms]
+        return [atom[ZMatrix.FIELD_ELEMENT] for atom in self._atoms]
     
     def get_rotatable_indices(self) -> List[int]:
         """
@@ -332,7 +347,7 @@ class ZMatrix:
         rotatable_indices = []
         for i in range(3, len(self._atoms)):  # Only atoms 4+ have dihedrals
             atom = self._atoms[i]
-            if atom.get('chirality', 0) == 0:  # Only true dihedrals (not chirality-constrained)
+            if atom.get(ZMatrix.FIELD_CHIRALITY, 0) == 0:  # Only true dihedrals (not chirality-constrained)
                 rotatable_indices.append(i)
         return rotatable_indices
 

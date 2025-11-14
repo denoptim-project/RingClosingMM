@@ -115,9 +115,9 @@ class RingClosureOptimizer:
         rotatable_indices = []
         for i in range(3, len(zmatrix)):  # Only atoms 4+ have dihedrals
             atom = zmatrix[i]
-            if atom.get('chirality', 0) == 0:  # Only true dihedrals
-                bond_ref = atom['bond_ref']
-                angle_ref = atom['angle_ref']
+            if atom.get(ZMatrix.FIELD_CHIRALITY, 0) == 0:  # Only true dihedrals
+                bond_ref = atom[ZMatrix.FIELD_BOND_REF]
+                angle_ref = atom[ZMatrix.FIELD_ANGLE_REF]
                 # Check both orderings (bond_ref, angle_ref) and (angle_ref, bond_ref)
                 if ((bond_ref, angle_ref) in bonded_pairs or 
                     (angle_ref, bond_ref) in bonded_pairs):

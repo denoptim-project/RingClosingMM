@@ -175,18 +175,18 @@ def zmatrix_to_cartesian(zmatrix: ZMatrix) -> np.ndarray:
         return coords
     
     # Atom 2: place along +Z axis
-    coords[1] = [0.0, 0.0, atoms_list[1]['bond_length']]
+    coords[1] = [0.0, 0.0, atoms_list[1][ZMatrix.FIELD_BOND_LENGTH]]
     
     if num_atoms < 3:
         return coords
     
     # Atom 3: place in XZ plane
     atom3 = atoms_list[2]
-    ref_bond = atom3['bond_ref']  # Already 0-based internally
-    ref_angle = atom3['angle_ref']  # Already 0-based internally
+    ref_bond = atom3[ZMatrix.FIELD_BOND_REF]  # Already 0-based internally
+    ref_angle = atom3[ZMatrix.FIELD_ANGLE_REF]  # Already 0-based internally
     
-    bond_length = atom3['bond_length']
-    angle_deg = atom3['angle']
+    bond_length = atom3[ZMatrix.FIELD_BOND_LENGTH]
+    angle_deg = atom3[ZMatrix.FIELD_ANGLE]
     angle_rad = np.deg2rad(angle_deg)
     
     # Check for linearity in Z-matrix definition (angle = 0° or 180°)
@@ -226,15 +226,15 @@ def zmatrix_to_cartesian(zmatrix: ZMatrix) -> np.ndarray:
     # Atoms 4+
     for i in range(3, num_atoms):
         atom = atoms_list[i]
-        ia = atom['bond_ref']  # Already 0-based internally
-        ib = atom['angle_ref']  # Already 0-based internally
-        ic = atom['dihedral_ref']  # Already 0-based internally
+        ia = atom[ZMatrix.FIELD_BOND_REF]  # Already 0-based internally
+        ib = atom[ZMatrix.FIELD_ANGLE_REF]  # Already 0-based internally
+        ic = atom[ZMatrix.FIELD_DIHEDRAL_REF]  # Already 0-based internally
         
-        bond_length = atom['bond_length']
-        angle_rad = np.deg2rad(atom['angle'])
+        bond_length = atom[ZMatrix.FIELD_BOND_LENGTH]
+        angle_rad = np.deg2rad(atom[ZMatrix.FIELD_ANGLE])
         # Negate dihedral for XZ plane convention (opposite sign from XY plane)
-        dihedral_rad = np.deg2rad(-atom['dihedral'])
-        chiral = atom.get('chirality', 0)
+        dihedral_rad = np.deg2rad(-atom[ZMatrix.FIELD_DIHEDRAL])
+        chiral = atom.get(ZMatrix.FIELD_CHIRALITY, 0)
         
         sin1 = np.sin(angle_rad)
         cos1 = np.cos(angle_rad)
@@ -380,7 +380,7 @@ def apply_torsions(base_zmatrix: ZMatrix, rotatable_indices: List[int],
     """
     new_zmatrix = base_zmatrix.copy()
     for idx, new_dihedral in zip(rotatable_indices, torsion_values):
-        new_zmatrix[idx]['dihedral'] = new_dihedral
+        new_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = new_dihedral
     return new_zmatrix
 
 
@@ -406,9 +406,9 @@ def extract_torsions(coords: np.ndarray, zmatrix: ZMatrix,
     torsions = []
     for idx in rotatable_indices:
         atom = zmatrix[idx]
-        ia = atom['bond_ref']
-        ib = atom['angle_ref']
-        ic = atom['dihedral_ref']
+        ia = atom[ZMatrix.FIELD_BOND_REF]
+        ib = atom[ZMatrix.FIELD_ANGLE_REF]
+        ic = atom[ZMatrix.FIELD_DIHEDRAL_REF]
         i = idx
         
         dihedral = _calc_dihedral(coords[ic], coords[ib], coords[ia], coords[i])
@@ -444,22 +444,22 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
         atom = new_zmatrix[i]
         
         # Recalculate bond length
-        bond_ref_idx = atom['bond_ref']  # Already 0-based internally
-        atom['bond_length'] = _calc_distance(coords[bond_ref_idx], coords[i])
+        bond_ref_idx = atom[ZMatrix.FIELD_BOND_REF]  # Already 0-based internally
+        atom[ZMatrix.FIELD_BOND_LENGTH] = _calc_distance(coords[bond_ref_idx], coords[i])
         
         # Recalculate angle (if atom 2 or later)
         if i >= 2:
-            angle_ref_idx = atom['angle_ref']  # Already 0-based internally
-            atom['angle'] = _calc_angle(coords[angle_ref_idx], coords[bond_ref_idx], coords[i])
+            angle_ref_idx = atom[ZMatrix.FIELD_ANGLE_REF]  # Already 0-based internally
+            atom[ZMatrix.FIELD_ANGLE] = _calc_angle(coords[angle_ref_idx], coords[bond_ref_idx], coords[i])
         
         # Recalculate dihedral/chirality angle (if atom 3 or later)
         if i >= 3:
-            dihedral_ref_idx = atom['dihedral_ref']  # Already 0-based internally
-            chirality = atom.get('chirality', 0)
+            dihedral_ref_idx = atom[ZMatrix.FIELD_DIHEDRAL_REF]  # Already 0-based internally
+            chirality = atom.get(ZMatrix.FIELD_CHIRALITY, 0)
             
             if chirality == 0:
                 # True dihedral angle: i → bond_ref → angle_ref → dihedral_ref
-                atom['dihedral'] = _calc_dihedral(
+                atom[ZMatrix.FIELD_DIHEDRAL] = _calc_dihedral(
                     coords[i],
                     coords[bond_ref_idx],
                     coords[angle_ref_idx],
@@ -472,10 +472,10 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
                     coords[bond_ref_idx],
                     coords[dihedral_ref_idx]
                 )
-                atom['dihedral'] = bond_angle
+                atom[ZMatrix.FIELD_DIHEDRAL] = bond_angle
                 
                 # Compute chirality sign using the centralized function
-                atom['chirality'] = compute_chirality_sign(
+                atom[ZMatrix.FIELD_CHIRALITY] = compute_chirality_sign(
                     coords=coords,
                     atom_idx=i,
                     bond_ref_idx=bond_ref_idx,

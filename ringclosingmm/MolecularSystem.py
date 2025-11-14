@@ -268,7 +268,7 @@ class MolecularSystem:
         coords = zmatrix_to_cartesian(zmatrix) * 0.1 * unit.nanometer  # Angstroms to nm
         
         # Build topology from Z-matrix data
-        atoms_data = [(zmatrix[i]['element'], i) for i in range(len(zmatrix))]
+        atoms_data = [(zmatrix[i][ZMatrix.FIELD_ELEMENT], i) for i in range(len(zmatrix))]
 
         bonds_data = zmatrix.bonds
 
@@ -641,14 +641,14 @@ class MolecularSystem:
         for j, dof_index in enumerate(dof_indices):
             zmat_idx, dof_type = dof_index
             atom = zmatrix[zmat_idx]
-            atom_id = atom['id'] + 1
+            atom_id = atom[ZMatrix.FIELD_ID] + 1
             
             # Build atom reference list based on DOF type
-            ref_atoms = [atom.get('bond_ref', -1) + 1]
+            ref_atoms = [atom.get(ZMatrix.FIELD_BOND_REF, -1) + 1]
             if dof_type >= 1:
-                ref_atoms.append(atom.get('angle_ref', -1) + 1)
+                ref_atoms.append(atom.get(ZMatrix.FIELD_ANGLE_REF, -1) + 1)
             if dof_type == 2:
-                ref_atoms.append(atom.get('dihedral_ref', -1) + 1)
+                ref_atoms.append(atom.get(ZMatrix.FIELD_DIHEDRAL_REF, -1) + 1)
             
             # Format atom references
             ref_str = ' '.join(f"{ref:3d}" for ref in ref_atoms)
@@ -702,7 +702,7 @@ class MolecularSystem:
             Optimized Z-matrix, optimized energy (kcal/mol), and optimization info dict
         """
         # Extract initial torsion angles
-        initial_torsions = np.array([zmatrix[idx]['dihedral'] for idx in rotatable_indices])
+        initial_torsions = np.array([zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] for idx in rotatable_indices])
         
         # Clear trajectory file if provided
         if trajectory_file:
@@ -717,7 +717,7 @@ class MolecularSystem:
                 # Update zmatrix with new torsion values
                 updated_zmatrix = zmatrix.copy()
                 for j, idx in enumerate(rotatable_indices):
-                    updated_zmatrix[idx]['dihedral'] = torsions[j]
+                    updated_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = torsions[j]
                 
                 # Convert to Cartesian and evaluate energy
                 coords = zmatrix_to_cartesian(updated_zmatrix)
@@ -735,7 +735,7 @@ class MolecularSystem:
                     # Update zmatrix with current torsion values
                     current_zmatrix = zmatrix.copy()
                     for j, idx in enumerate(rotatable_indices):
-                        current_zmatrix[idx]['dihedral'] = xk[j]
+                        current_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = xk[j]
                     
                     # Convert to Cartesian
                     coords = zmatrix_to_cartesian(current_zmatrix)
@@ -796,7 +796,7 @@ class MolecularSystem:
             # Create optimized zmatrix
             optimized_zmatrix = zmatrix.copy()
             for j, idx in enumerate(rotatable_indices):
-                optimized_zmatrix[idx]['dihedral'] = result.x[j]
+                optimized_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = result.x[j]
             
             # Prepare info dict
             info = {
@@ -858,7 +858,7 @@ class MolecularSystem:
                 # Update zmatrix with new torsion values
                 updated_zmatrix = zmatrix.copy()
                 for j, idx in enumerate(rotatable_indices):
-                    updated_zmatrix[idx]['dihedral'] = torsions[j]
+                    updated_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = torsions[j]
                 coords = zmatrix_to_cartesian(updated_zmatrix)
                 # Negated because we want to maximize ring closure score
                 return -self.ring_closure_score_exponential(coords, ring_closure_tolerance, ring_closure_decay_rate)
@@ -871,7 +871,7 @@ class MolecularSystem:
             # scipy works on minimization, hence we use a negated ring closing score.
             return (intermediate_result.fun + 1.0) < 0.02 
 
-        initial_torsions = np.array([zmatrix[idx]['dihedral'] for idx in rotatable_indices])
+        initial_torsions = np.array([zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] for idx in rotatable_indices])
         bounds = [(-180.0, 180.0) for _ in range(len(initial_torsions))]
         initial_score = -objective(initial_torsions)
 
@@ -897,7 +897,7 @@ class MolecularSystem:
             # Create optimized zmatrix
             optimized_zmatrix = zmatrix.copy()
             for j, idx in enumerate(rotatable_indices):
-                optimized_zmatrix[idx]['dihedral'] = result.x[j]
+                optimized_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = result.x[j]
             info['final_score'] = final_score
             info['improvement'] = final_score - initial_score
             return optimized_zmatrix, final_score, info
@@ -1063,25 +1063,25 @@ class MolecularSystem:
         
         for atom1, atom2 in zip(zmatrix1, zmatrix2):
             # Bond lengths
-            if 'bond_length' in atom1 and 'bond_length' in atom2:
-                bond_diffs.append(atom1['bond_length'] - atom2['bond_length'])
+            if ZMatrix.FIELD_BOND_LENGTH in atom1 and ZMatrix.FIELD_BOND_LENGTH in atom2:
+                bond_diffs.append(atom1[ZMatrix.FIELD_BOND_LENGTH] - atom2[ZMatrix.FIELD_BOND_LENGTH])
             
             # Angles
-            if 'angle' in atom1 and 'angle' in atom2:
-                angle_diffs.append(atom1['angle'] - atom2['angle'])
+            if ZMatrix.FIELD_ANGLE in atom1 and ZMatrix.FIELD_ANGLE in atom2:
+                angle_diffs.append(atom1[ZMatrix.FIELD_ANGLE] - atom2[ZMatrix.FIELD_ANGLE])
             
             # Dihedrals or second angles (depending on chirality)
-            if 'dihedral' in atom1 and 'dihedral' in atom2:
-                chirality1 = atom1.get('chirality', 0)
-                chirality2 = atom2.get('chirality', 0)
+            if ZMatrix.FIELD_DIHEDRAL in atom1 and ZMatrix.FIELD_DIHEDRAL in atom2:
+                chirality1 = atom1.get(ZMatrix.FIELD_CHIRALITY, 0)
+                chirality2 = atom2.get(ZMatrix.FIELD_CHIRALITY, 0)
                 
                 # If chirality != 0, the 'dihedral' is actually a second angle
                 if chirality1 != 0 or chirality2 != 0:
                     # Treat as angle (no periodicity handling)
-                    angle_diffs.append(atom1['dihedral'] - atom2['dihedral'])
+                    angle_diffs.append(atom1[ZMatrix.FIELD_DIHEDRAL] - atom2[ZMatrix.FIELD_DIHEDRAL])
                 else:
                     # Treat as proper dihedral (handle periodicity: -180/+180 boundary)
-                    diff = atom1['dihedral'] - atom2['dihedral']
+                    diff = atom1[ZMatrix.FIELD_DIHEDRAL] - atom2[ZMatrix.FIELD_DIHEDRAL]
                     # Wrap to [-180, 180] range
                     while diff > 180.0:
                         diff -= 360.0
@@ -1130,7 +1130,7 @@ class MolecularSystem:
                 if i == 0:
                     continue
                 atom = zmatrix[i]
-                bond_ref = atom.get('bond_ref')
+                bond_ref = atom.get(ZMatrix.FIELD_BOND_REF)
                 if bond_ref is not None:
                     graph[i].append(bond_ref)
                     graph[bond_ref].append(i)
@@ -1246,10 +1246,10 @@ class MolecularSystem:
         for rot_idx in rotatable_indices:
             atom = zmatrix[rot_idx]
             atoms_in_rotatable_bond = [] 
-            if atom.get('bond_ref') is not None:
-                atoms_in_rotatable_bond.append(atom['bond_ref'])
-            if atom.get('angle_ref') is not None:
-                atoms_in_rotatable_bond.append(atom['angle_ref'])
+            if atom.get(ZMatrix.FIELD_BOND_REF) is not None:
+                atoms_in_rotatable_bond.append(atom[ZMatrix.FIELD_BOND_REF])
+            if atom.get(ZMatrix.FIELD_ANGLE_REF) is not None:
+                atoms_in_rotatable_bond.append(atom[ZMatrix.FIELD_ANGLE_REF])
             
             # Check if both atoms are on a critical path
             if all(atom_idx in rc_critical_atoms for atom_idx in atoms_in_rotatable_bond):
