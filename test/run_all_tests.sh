@@ -84,59 +84,29 @@ python -c "import numpy; import unittest; import openmm" 2>/dev/null || {
 }
 
 echo ""
-echo -e "${BLUE}=== Running Unit Tests ===${NC}"
+echo -e "${BLUE}=== Running Unit Tests with pytest ===${NC}"
 echo ""
 
-# Track results
-TOTAL_TESTS=0
-PASSED_TESTS=0
-FAILED_TESTS=0
-FAILED_FILES=()
+# Change to project root directory (parent of test directory)
+cd "$SCRIPT_DIR/.."
 
-# Run each test file
-for test_file in "${TEST_FILES[@]}"; do
-    if [ ! -f "$test_file" ]; then
-        echo -e "${YELLOW}Warning: Test file ${test_file} not found, skipping...${NC}"
-        continue
-    fi
-    
-    echo -e "${BLUE}Running: ${test_file}${NC}"
-    echo "----------------------------------------"
-    
-    # Run the test
-    if python "$test_file"; then
-        echo -e "${GREEN}✓ ${test_file} passed${NC}"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo -e "${RED}✗ ${test_file} failed${NC}"
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-        FAILED_FILES+=("$test_file")
-    fi
-    
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    echo ""
-done
-
-# Print summary
-echo -e "${BLUE}=== Test Summary ===${NC}"
-echo -e "Total test files: ${TOTAL_TESTS}"
-echo -e "${GREEN}Passed: ${PASSED_TESTS}${NC}"
-if [ $FAILED_TESTS -gt 0 ]; then
-    echo -e "${RED}Failed: ${FAILED_TESTS}${NC}"
-    echo -e "${RED}Failed files:${NC}"
-    for file in "${FAILED_FILES[@]}"; do
-        echo -e "  ${RED}- ${file}${NC}"
-    done
-else
-    echo -e "${GREEN}Failed: 0${NC}"
+# Check if pytest is available
+if ! python -m pytest --version &> /dev/null; then
+    echo -e "${RED}Error: pytest not found${NC}"
+    echo "Please install pytest: pip install pytest"
+    exit 1
 fi
-echo ""
 
-# Exit with appropriate code
-if [ $FAILED_TESTS -eq 0 ]; then
+# Run all tests with pytest (consistent with GitHub workflow)
+echo -e "${BLUE}Running pytest on test directory...${NC}"
+echo "----------------------------------------"
+
+if python -m pytest test/ -v --tb=short --color=yes; then
+    echo ""
     echo -e "${GREEN}=== All tests passed! ===${NC}"
     exit 0
 else
+    echo ""
     echo -e "${RED}=== Some tests failed ===${NC}"
     exit 1
 fi

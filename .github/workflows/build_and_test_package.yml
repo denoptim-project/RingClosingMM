@@ -63,7 +63,9 @@ jobs:
       shell: bash -l {0}
       run: |
         # pytest automatically discovers and runs unittest-based tests
-        pytest test/ -v --tb=short --color=yes --cov=ringclosingmm --cov-report=term --cov-report=xml
+        # Run from project root to match local test script behavior
+        # Use same test discovery as local script (unittest-based)
+        pytest test/ -v --tb=short --color=yes --cov=ringclosingmm --cov-report=term --cov-report=xml --ignore-glob="*__pycache__*"
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.10'
