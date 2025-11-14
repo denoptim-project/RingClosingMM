@@ -10,7 +10,7 @@ from os.path import basename
 import numpy as np
 from typing import List, Dict
 
-from .CoordinateConverter import zmatrix_to_cartesian
+from .CoordinateConverter import zmatrix_to_cartesian, generate_zmatrix
 from .ZMatrix import ZMatrix
 
 def read_int_file(pathname: str) -> ZMatrix:
@@ -227,6 +227,63 @@ def write_xyz_file(coords: np.ndarray, elements: List[str], filepath: str, comme
             f.write(f"{correctedElement:<4s} {coord[0]:12.6f} {coord[1]:12.6f} {coord[2]:12.6f}\n")
 
 
+def write_sdf_file(zmatrix: ZMatrix, filepath: str) -> None:
+    """
+    Write SDF file from Z-matrix.
+    
+    Converts Z-matrix to Cartesian coordinates and writes SDF format.
+    Includes all bonds: those implicit in Z-matrix structure plus explicit bonds.
+    
+    Parameters
+    ----------
+    zmatrix : ZMatrix
+        Z-matrix to save
+    filepath : str
+        Output file path
+    """
+    # Convert Z-matrix to Cartesian coordinates
+    coords = zmatrix_to_cartesian(zmatrix)
+    elements = zmatrix.get_elements()
+    
+    # Collect all bonds: implicit from Z-matrix structure + explicit bonds
+    all_bonds = []
+    bonds_set = set()
+    
+    # Add implicit bonds from Z-matrix structure (bond_ref relationships)
+    for i in range(1, len(zmatrix)):
+        atom = zmatrix[i]
+        if ZMatrix.FIELD_BOND_REF in atom:
+            bond_ref = atom[ZMatrix.FIELD_BOND_REF]
+            bond_key = (min(i, bond_ref), max(i, bond_ref))
+            if bond_key not in bonds_set:
+                all_bonds.append((i, bond_ref, 1))  # Default bond type 1
+                bonds_set.add(bond_key)
+    
+    # Add explicit bonds from zmatrix.bonds
+    for bond in zmatrix.bonds:
+        bond_key = (min(bond[0], bond[1]), max(bond[0], bond[1]))
+        if bond_key not in bonds_set:
+            all_bonds.append(bond)
+            bonds_set.add(bond_key)
+    
+    with open(filepath, 'w') as f:
+        f.write("from Z-Matrix\n")
+        f.write(" RingclosingMM\n")
+        f.write("\n")
+        f.write(f"{len(zmatrix):3d}{len(all_bonds):3d}  0  0  0  0  0  0  0  0  0  0999 V2000\n")
+        
+        # Write atoms with coordinates
+        for i, (element, coord) in enumerate(zip(elements, coords)):
+            f.write(f"{coord[0]:10.4f}{coord[1]:10.4f}{coord[2]:10.4f} {element:3s} 0  0  0  0  0  0  0  0  0  0  0  0\n")
+        
+        # Write bonds (1-based indices in SDF format)
+        for bond in all_bonds:
+            f.write(f"{bond[0]+1:3d}{bond[1]+1:3d}{bond[2]:3d}  0  0  0  0\n")
+        
+        f.write("M  END\n")
+        f.write("$$$$\n")
+
+
 def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> None:
     """
     Save structure to file.
@@ -240,19 +297,22 @@ def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> No
     energy : float
         Energy of the structure (default: None)
     """
-    atoms_list = zmatrix.to_list()
     filename_xyz = None;
     filename_int = None;
+    filename_sdf = None;
     if filepath.endswith('.xyz'):
         filename_xyz = filepath;
     elif filepath.endswith('.int'):
         filename_int = filepath;
+    elif filepath.endswith('.sdf'):
+        filename_sdf = filepath;
     else:
         if '.' in basename(filepath):
             raise ValueError(f"Unsupported file extension: {filepath}")
         else:
             filename_xyz = filepath + '.xyz';
             filename_int = filepath + '.int';
+            filename_sdf = filepath + '.sdf';
 
     if filename_xyz is not None:
         optimized_coords = zmatrix_to_cartesian(zmatrix)
@@ -262,3 +322,85 @@ def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> No
 
     if filename_int is not None:
         write_zmatrix_file(zmatrix, filename_int)
+
+    if filename_sdf is not None:
+        write_sdf_file(zmatrix, filename_sdf)
+
+
+def read_sdf_file(pathname: str) -> ZMatrix:
+    """
+    Read and parse SDF file, converting to Z-matrix (internal coordinates).
+    
+    This function reads an SDF file containing Cartesian coordinates and bond
+    connectivity, then converts it to return a Z-matrix representation.
+    
+    Parameters
+    ----------
+    pathname : str
+        Path to SDF file
+        
+    Returns
+    -------
+    ZMatrix
+        Z-matrix representation with 0-based indices
+        
+    Raises
+    ------
+    ValueError
+        If the SDF file format is invalid or conversion fails
+    """
+    with open(pathname, 'r') as f:
+        lines = [line.rstrip('\n\r') for line in f.readlines()]
+    
+    if len(lines) < 4:
+        raise ValueError(f"Invalid SDF file: too few lines in {pathname}")
+    
+    # Parse header
+    # Line 0: molecule name (ignored)
+    # Line 1: program info (ignored)
+    # Line 2: blank (ignored)
+    # Line 3: counts line
+    counts_line = lines[3]
+    num_atoms = int(counts_line[0:3].strip())
+    num_bonds = int(counts_line[3:6].strip())
+    
+    if num_atoms < 1:
+        raise ValueError(f"Invalid number of atoms in SDF file: {num_atoms}")
+    
+    # Parse atoms (lines 4 to 4+num_atoms-1)
+    atoms_data = []
+    
+    for i in range(num_atoms):
+        line = lines[4 + i]
+        x = float(line[0:10].strip())
+        y = float(line[10:20].strip())
+        z = float(line[20:30].strip())
+        element = line[30:33].strip()
+        
+        atoms_data.append({
+            'element': element,
+            'coords': np.array([x, y, z])
+        })
+    
+    # Parse bonds (lines after atoms until "M  END")
+    bonds = []
+    bond_start_line = 4 + num_atoms
+    for i in range(num_bonds):
+        if bond_start_line + i >= len(lines):
+            break
+        line = lines[bond_start_line + i]
+        if line.strip() == "M  END":
+            break
+        
+        # SDF bond format: "iii jjj ttt" (1-based indices)
+        atom1_1based = int(line[0:3].strip())
+        atom2_1based = int(line[3:6].strip())
+        bond_type = int(line[6:9].strip())
+        
+        # Convert to 0-based
+        bonds.append((atom1_1based - 1, atom2_1based - 1, bond_type))
+    
+    # Convert to Z-matrix using CoordinateConverter
+    zmatrix_obj = generate_zmatrix(atoms_data, bonds)
+    
+    return zmatrix_obj

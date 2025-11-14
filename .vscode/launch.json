@@ -5,7 +5,7 @@
             "name": "Python: tRu",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "-i", "tRu.int",
                 "-r", "122", "118", "3", "8", "8", "118", "11", "68", "10", "13", "26", "28", "76", "78", "127", "184", "192", "194", "126", "129", "142", "144",
@@ -15,16 +15,13 @@
             ],
             "console": "integratedTerminal",
             "cwd": "/tmp/pssrot2",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "justMyCode": false
         },
         {
             "name": "Python: cyclic test",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "-i", "test.int",
                 "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
@@ -33,31 +30,41 @@
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: SDF cyclic test",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "test2.sdf",
+                "-r", "2", "3", "3", "7", "7", "10", "10", "12", "10", "13",
+                "-c", "3", "18", "6", "13",
+                "-o", "test2_opt.sdf"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/cyclic_bond_formation",
             "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
         },
         {
             "name": "Python: startserver",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "--server-start"
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/server_usage",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "justMyCode": false
         },
         {
             "name": "Python: acyclic test",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "-i", "test.int",
                 "-c", "5", "14", "6", "13",
@@ -73,16 +80,13 @@
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/acyclic_bond_formation",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "justMyCode": false
         },
         {
             "name": "Python: policyclic_bond_formation test",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "-i", "test.int",
                 "-r", "1", "3", "3", "5", "5", "7", "11", "13", "17", "6",
@@ -91,28 +95,62 @@
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/policyclic_bond_formation",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "justMyCode": false
         },
         {
             "name": "Python: All Coordinate Conversion Tests",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test/test_coordinate_conversion.py",
+            "module": "pytest",
+            "args": [
+                "test/test_coordinate_conversion.py",
+                "-v"
+            ],
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/test",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: All IOTools Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_iotools.py",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: TestIOToolsSDF Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_iotools.py::TestIOToolsSDF",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Run rc-optimizer",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
         },
         {
             "name": "Python: c4",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ringclosingmm/__main__.py",
+            "module": "ringclosingmm",
             "args": [
                 "-i", "c4.int",
                 "-c", "1", "11", "2", "14",
@@ -122,9 +160,6 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/strained_ring_closure",
             "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}/ringclosingmm"
-            }
         }
     ]
 }

@@ -16,7 +16,7 @@ from .RingClosureOptimizer import RingClosureOptimizer
 from .MolecularSystem import MolecularSystem
 from .CoordinateConverter import CoordinateConverter
 from . import IOTools
-from .IOTools import read_int_file, write_zmatrix_file, write_xyz_file, save_structure_to_file
+from .IOTools import read_int_file, read_sdf_file, write_zmatrix_file, write_xyz_file, save_structure_to_file
 from .ZMatrix import ZMatrix
 
 # Provide convenient aliases
@@ -29,6 +29,7 @@ __all__ = [
     'CoordinateConverter',
     'IOTools',
     'read_int_file',
+    'read_sdf_file',
     'write_zmatrix_file',
     'write_xyz_file',
     'save_structure_to_file',

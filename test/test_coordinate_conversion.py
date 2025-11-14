@@ -19,9 +19,16 @@ from ringclosingmm.CoordinateConverter import (
     cartesian_to_zmatrix,
     apply_torsions,
     extract_torsions,
+    generate_zmatrix,
     _calc_distance,
     _calc_angle,
-    _calc_dihedral
+    _calc_dihedral,
+    _get_atomic_number,
+    _get_first_ref_atom_id,
+    _get_second_ref_atom_id,
+    _get_third_ref_atom_id,
+    _count_predefined_neighbours,
+    _is_torsion_used
 )
 from ringclosingmm import ZMatrix
 
@@ -694,6 +701,301 @@ class TestTorsionExtraction(unittest.TestCase):
         np.testing.assert_array_almost_equal(
             new_torsions, extracted_torsions, decimal=3
         )
+
+
+class TestGenerateZMatrix(unittest.TestCase):
+    """Test generate_zmatrix function."""
+    
+    def test_generate_zmatrix_single_atom(self):
+        """Test generating Z-matrix from single atom."""
+        atoms = [{'element': 'H', 'coords': np.array([0.0, 0.0, 0.0])}]
+        bonds = []
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        self.assertEqual(len(zmat), 1)
+        self.assertEqual(zmat[0][ZMatrix.FIELD_ELEMENT], 'H')
+        self.assertEqual(zmat[0][ZMatrix.FIELD_ATOMIC_NUM], 1)
+        self.assertEqual(len(zmat.bonds), 0)
+    
+    def test_generate_zmatrix_two_atoms(self):
+        """Test generating Z-matrix from two atoms."""
+        atoms = [
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 1.0])}
+        ]
+        bonds = [(0, 1, 1)]
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        self.assertEqual(len(zmat), 2)
+        self.assertEqual(zmat[0][ZMatrix.FIELD_ELEMENT], 'H')
+        # Atom 1 should have bond_ref to atom 0
+        self.assertEqual(zmat[1][ZMatrix.FIELD_BOND_REF], 0)
+        self.assertAlmostEqual(zmat[1][ZMatrix.FIELD_BOND_LENGTH], 1.0, places=6)
+        # Bond should be marked as visited (not in bonds_to_add)
+        self.assertEqual(len(zmat.bonds), 0)  # All bonds were used in Z-matrix construction
+    
+    def test_generate_zmatrix_three_atoms(self):
+        """Test generating Z-matrix from three atoms."""
+        atoms = [
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 1.0])},
+            {'element': 'H', 'coords': np.array([1.0, 0.0, 1.0])}
+        ]
+        bonds = [(0, 1, 1), (1, 2, 1)]
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        self.assertEqual(len(zmat), 3)
+        # Atom 2 should have bond_ref and angle_ref
+        self.assertEqual(zmat[2][ZMatrix.FIELD_BOND_REF], 1)
+        self.assertIn(ZMatrix.FIELD_ANGLE_REF, zmat[2])
+        self.assertAlmostEqual(zmat[2][ZMatrix.FIELD_ANGLE], 90.0, places=2)
+    
+    def test_generate_zmatrix_four_atoms_with_dihedral(self):
+        """Test generating Z-matrix from four atoms with dihedral."""
+        atoms = [
+            {'element': 'C', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([1.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([1.5, 1.0, 0.0])},
+            {'element': 'C', 'coords': np.array([2.5, 1.0, 1.0])}
+        ]
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        self.assertEqual(len(zmat), 4)
+        # Atom 3 should have dihedral
+        self.assertIn(ZMatrix.FIELD_DIHEDRAL_REF, zmat[3])
+        self.assertIn(ZMatrix.FIELD_DIHEDRAL, zmat[3])
+        self.assertEqual(zmat[3][ZMatrix.FIELD_CHIRALITY], 0)  # True dihedral
+    
+    def test_generate_zmatrix_with_unused_bonds(self):
+        """Test that unused bonds are added to bonds list."""
+        atoms = [
+            {'element': 'C', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([1.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([2.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([1.0, 1.0, 0.0])}
+        ]
+        # Create a ring: 0-1-2-3-0 (but Z-matrix will only use tree structure)
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 0, 1)]  # Last bond closes ring
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        # At least one bond should be in bonds_to_add (the one not used in Z-matrix tree)
+        # The exact bond depends on the Z-matrix construction order
+        self.assertGreaterEqual(len(zmat.bonds), 0)
+        # Verify that all input bonds are either used in Z-matrix or in bonds list
+        all_bonds = set()
+        # Add bonds from Z-matrix construction (bond_ref relationships)
+        for i in range(1, len(zmat)):
+            if ZMatrix.FIELD_BOND_REF in zmat[i]:
+                bond_ref = zmat[i][ZMatrix.FIELD_BOND_REF]
+                all_bonds.add((min(i, bond_ref), max(i, bond_ref)))
+        # Add bonds from bonds list
+        for a1, a2, _ in zmat.bonds:
+            all_bonds.add((min(a1, a2), max(a1, a2)))
+        # All input bonds should be accounted for
+        input_bond_keys = {(min(a1, a2), max(a1, a2)) for a1, a2, _ in bonds}
+        self.assertEqual(all_bonds, input_bond_keys)
+    
+    def test_generate_zmatrix_atomic_numbers(self):
+        """Test that atomic numbers are correctly assigned."""
+        atoms = [
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'C', 'coords': np.array([1.0, 0.0, 0.0])},
+            {'element': 'N', 'coords': np.array([2.0, 0.0, 0.0])},
+            {'element': 'O', 'coords': np.array([3.0, 0.0, 0.0])}
+        ]
+        bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        self.assertEqual(zmat[0][ZMatrix.FIELD_ATOMIC_NUM], 1)  # H
+        self.assertEqual(zmat[1][ZMatrix.FIELD_ATOMIC_NUM], 6)  # C
+        self.assertEqual(zmat[2][ZMatrix.FIELD_ATOMIC_NUM], 7)  # N
+        self.assertEqual(zmat[3][ZMatrix.FIELD_ATOMIC_NUM], 8)  # O
+    
+    def test_generate_zmatrix_disconnected_atom(self):
+        """Test handling of atom not directly bonded to previous atoms."""
+        atoms = [
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 0.0])},
+            {'element': 'H', 'coords': np.array([0.0, 0.0, 1.0])},
+            {'element': 'H', 'coords': np.array([1.0, 0.0, 1.0])},
+            {'element': 'B', 'coords': np.array([2.0, 0.0, 0.0])}  # Not directly bonded to 0, 1, or 2
+        ]
+        bonds = [(0, 1, 1), (1, 2, 1), (3, 2, 1)]  # B is only bonded to atom 2
+        
+        zmat = generate_zmatrix(atoms, bonds)
+        
+        # Atom 3 (B) should use closest atom as reference (atom 2)
+        self.assertEqual(zmat[3][ZMatrix.FIELD_BOND_REF], 2)
+        self.assertAlmostEqual(zmat[3][ZMatrix.FIELD_BOND_LENGTH], 1.414, places=2)  # sqrt(2)
+    
+    def test_generate_zmatrix_empty_atoms(self):
+        """Test that empty atoms list raises error."""
+        atoms = []
+        bonds = []
+        
+        with self.assertRaises(ValueError):
+            generate_zmatrix(atoms, bonds)
+
+
+class TestGenerateZMatrixHelpers(unittest.TestCase):
+    """Test helper functions for generate_zmatrix."""
+    
+    def test_get_atomic_number(self):
+        """Test getting atomic number from element symbol."""
+        self.assertEqual(_get_atomic_number('H'), 1)
+        self.assertEqual(_get_atomic_number('C'), 6)
+        self.assertEqual(_get_atomic_number('N'), 7)
+        self.assertEqual(_get_atomic_number('O'), 8)
+        self.assertEqual(_get_atomic_number('B'), 5)
+    
+    def test_get_atomic_number_unknown_element(self):
+        """Test that unknown elements default to 1 (H)."""
+        # This should not raise an error, but return 1
+        result = _get_atomic_number('Xx')  # Non-existent element
+        self.assertEqual(result, 1)
+    
+    def test_get_first_ref_atom_id_bonded(self):
+        """Test getting first reference atom when bonded neighbor exists."""
+        graph = {0: [], 1: [0], 2: [1], 3: [2, 1]}
+        coords = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0], [1, 1, 0]])
+        
+        # Atom 1 should reference atom 0
+        self.assertEqual(_get_first_ref_atom_id(1, graph, coords), 0)
+        # Atom 2 should reference atom 1
+        self.assertEqual(_get_first_ref_atom_id(2, graph, coords), 1)
+        # Atom 3 should reference atom 1 (smallest index)
+        self.assertEqual(_get_first_ref_atom_id(3, graph, coords), 1)
+    
+    def test_get_first_ref_atom_id_no_bond(self):
+        """Test getting first reference atom when no bonded neighbor (uses closest)."""
+        graph = {0: [], 1: [0], 2: [1], 3: []}  # Atom 3 not bonded
+        coords = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0], [0.5, 0.5, 0]])  # Atom 3 closest to atom 0
+        
+        # Atom 3 should use closest atom (atom 0)
+        self.assertEqual(_get_first_ref_atom_id(3, graph, coords), 0)
+    
+    def test_get_first_ref_atom_id_no_candidates(self):
+        """Test that error is raised when no reference atom found."""
+        graph = {0: []}  # Only one atom
+        coords = np.array([[0, 0, 0]])
+        
+        with self.assertRaises(ValueError):
+            _get_first_ref_atom_id(0, graph, coords)  # First atom has no reference
+    
+    def test_get_second_ref_atom_id(self):
+        """Test getting second reference atom."""
+        graph = {0: [], 1: [0], 2: [1, 0], 3: [2, 1]}
+        
+        # Atom 2: first_ref=1, should find atom 0 (connected to 1, smallest index)
+        self.assertEqual(_get_second_ref_atom_id(2, 1, graph), 0)
+        # Atom 3: first_ref=2, should find atom 0 (connected to 2, not 3, smallest index)
+        self.assertEqual(_get_second_ref_atom_id(3, 2, graph), 0)
+    
+    def test_get_second_ref_atom_id_no_candidates(self):
+        """Test that error is raised when no second reference atom found."""
+        # Create a case where first_ref has no neighbors with index < atom_idx
+        graph = {0: [], 1: [], 2: [1]}  # Atom 1 has no neighbors, atom 2 connected to 1
+        
+        with self.assertRaises(ValueError):
+            _get_second_ref_atom_id(2, 1, graph)  # No neighbors of atom 1 with index < 2
+    
+    def test_count_predefined_neighbours(self):
+        """Test counting predefined neighbors."""
+        graph = {0: [], 1: [0, 2], 2: [1, 3], 3: [2]}
+        
+        # For atom_idx=3, ref_atom=2: neighbors are [1, 3], but only 1 < 3
+        self.assertEqual(_count_predefined_neighbours(3, 2, graph), 1)
+        # For atom_idx=4, ref_atom=2: neighbors are [1, 3], both < 4
+        self.assertEqual(_count_predefined_neighbours(4, 2, graph), 2)
+    
+    def test_is_torsion_used(self):
+        """Test checking if torsion is already used."""
+        zmatrix_atoms = [
+            {ZMatrix.FIELD_ID: 0},
+            {ZMatrix.FIELD_ID: 1},
+            {ZMatrix.FIELD_ID: 2},
+            {ZMatrix.FIELD_ID: 3, ZMatrix.FIELD_ANGLE_REF: 1, ZMatrix.FIELD_DIHEDRAL_REF: 0},
+            {ZMatrix.FIELD_ID: 4, ZMatrix.FIELD_ANGLE_REF: 2, ZMatrix.FIELD_DIHEDRAL_REF: 1}
+        ]
+        
+        # Torsion (1, 0) is used by atom 3
+        self.assertTrue(_is_torsion_used(1, 0, zmatrix_atoms))
+        # Torsion (2, 1) is used by atom 4
+        self.assertTrue(_is_torsion_used(2, 1, zmatrix_atoms))
+        # Torsion (0, 2) is not used
+        self.assertFalse(_is_torsion_used(0, 2, zmatrix_atoms))
+    
+    def test_get_third_ref_atom_id_dihedral_case(self):
+        """Test getting third reference atom for dihedral case."""
+        graph = {0: [], 1: [0], 2: [1, 0], 3: [2, 1], 4: [3, 2]}
+        coords = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.5, 1.0, 0.0],
+            [2.5, 1.0, 0.0],
+            [3.0, 2.0, 0.0]
+        ])
+        zmatrix_atoms = [
+            {ZMatrix.FIELD_ID: 0},
+            {ZMatrix.FIELD_ID: 1, ZMatrix.FIELD_BOND_REF: 0},
+            {ZMatrix.FIELD_ID: 2, ZMatrix.FIELD_BOND_REF: 1, ZMatrix.FIELD_ANGLE_REF: 0},
+            {ZMatrix.FIELD_ID: 3, ZMatrix.FIELD_BOND_REF: 2, ZMatrix.FIELD_ANGLE_REF: 1}
+        ]
+        
+        # For atom 4: first_ref=3, second_ref=2
+        # Should look for neighbors of second_ref (2) that are not 4 or 3
+        # Neighbors of 2 are [1, 0], both are valid, function returns smallest (0)
+        third_ref, chirality = _get_third_ref_atom_id(4, 3, 2, graph, coords, zmatrix_atoms)
+        self.assertEqual(third_ref, 0)  # Function returns smallest index
+        self.assertEqual(chirality, 0)  # Dihedral case
+    
+    def test_get_third_ref_atom_id_chirality_case(self):
+        """Test getting third reference atom for chirality (second angle) case."""
+        # Create a case where second_ref has only 1 predefined neighbor
+        # Use a graph where first_ref has a valid neighbor that's not excluded
+        graph = {0: [], 1: [0], 2: [1], 3: [1, 0], 4: [3, 1]}  # Atom 3 has neighbors 1 and 0
+        # Adjust coordinates so angle between 0-3-1 is > 1.0 degrees
+        coords = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.5, 1.0, 0.0],
+            [1.0, 1.0, 0.0],  # Move atom 3 so angle 0-3-1 is ~90 degrees
+            [2.5, 1.0, 0.0]
+        ])
+        zmatrix_atoms = [
+            {ZMatrix.FIELD_ID: 0},
+            {ZMatrix.FIELD_ID: 1, ZMatrix.FIELD_BOND_REF: 0},
+            {ZMatrix.FIELD_ID: 2, ZMatrix.FIELD_BOND_REF: 1, ZMatrix.FIELD_ANGLE_REF: 0},
+            {ZMatrix.FIELD_ID: 3, ZMatrix.FIELD_BOND_REF: 1, ZMatrix.FIELD_ANGLE_REF: 0}
+        ]
+        
+        # For atom 4: first_ref=3, second_ref=1
+        # second_ref (1) has only 1 predefined neighbor (0), so use chirality case
+        # Look for neighbors of first_ref (3) that are not 4, 1, or 2
+        # Neighbors of 3 are [1, 0], but 1 is excluded, so should return 0
+        # Angle between 0-3-1 should be > 1.0 degrees (now ~90 degrees)
+        third_ref, chirality = _get_third_ref_atom_id(4, 3, 1, graph, coords, zmatrix_atoms)
+        self.assertEqual(third_ref, 0)  # Should be 0 (neighbor of first_ref=3, not excluded, angle > 1.0)
+        self.assertIn(chirality, [1, -1])  # Should be non-zero (chirality case)
+    
+    def test_get_third_ref_atom_id_no_candidates(self):
+        """Test that error is raised when no third reference atom found."""
+        graph = {0: [], 1: [0], 2: [1]}  # Only 3 atoms, no candidate for third ref
+        coords = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0]])
+        zmatrix_atoms = [
+            {ZMatrix.FIELD_ID: 0},
+            {ZMatrix.FIELD_ID: 1, ZMatrix.FIELD_BOND_REF: 0},
+            {ZMatrix.FIELD_ID: 2, ZMatrix.FIELD_BOND_REF: 1, ZMatrix.FIELD_ANGLE_REF: 0}
+        ]
+        
+        with self.assertRaises(ValueError):
+            _get_third_ref_atom_id(3, 2, 1, graph, coords, zmatrix_atoms)
 
 
 def run_tests(verbosity=2):

@@ -18,7 +18,7 @@ import openmm.unit as unit
 from openmm.app import Element, Simulation, Topology
 
 # Package imports
-from .IOTools import read_int_file, write_xyz_file
+from .IOTools import read_int_file, read_sdf_file, write_xyz_file
 from .ZMatrix import ZMatrix
 from .RingClosingForceField import (
     create_simulation_from_system,
@@ -226,10 +226,12 @@ class MolecularSystem:
             Initialized molecular system with Z-matrix in 0-based indexing
         """
         # Read structure data
-        if not structure_file.endswith('.int'):
-            raise ValueError("Only .int files containing Z-matrix data are supported as input files.")
-        
-        zmatrix = read_int_file(structure_file)
+        if structure_file.endswith('.int'):
+            zmatrix = read_int_file(structure_file)
+        elif structure_file.endswith('.sdf'):
+            zmatrix = read_sdf_file(structure_file)
+        else:
+            raise ValueError("Only .int and .sdf files are supported as input files.")
         
         if not isinstance(zmatrix, ZMatrix):
             raise TypeError(f"Expected ZMatrix instance, got {type(zmatrix)}")

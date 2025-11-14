@@ -21,20 +21,30 @@ Main Functions:
     cartesian_to_zmatrix: Convert Cartesian coordinates to Z-matrix
     apply_torsions: Modify torsional angles in Z-matrix
     extract_torsions: Extract specific torsional angles from Cartesian coordinates
+    generate_zmatrix: Generate Z-matrix from Cartesian coordinates and bond connectivity
     
 Helper Functions:
     compute_chirality_sign: Determine chirality sign from Cartesian coordinates
     _calc_distance: Calculate distance between two points
     _calc_angle: Calculate angle between three points
     _calc_dihedral: Calculate dihedral angle between four points (atan2 method)
+    _get_atomic_number: Get atomic number from element symbol
+    _get_first_ref_atom_id: Get first reference atom for Z-matrix construction
+    _get_second_ref_atom_id: Get second reference atom for Z-matrix construction
+    _get_third_ref_atom_id: Get third reference atom and determine chirality
+    _count_predefined_neighbours: Count predefined neighbors of a reference atom
+    _is_torsion_used: Check if a torsion is already used in Z-matrix
     
 Backward Compatibility:
     CoordinateConverter: Wrapper class for backward compatibility (deprecated)
 """
 
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Tuple, Set, Optional
+from collections import defaultdict
 import copy
+
+from openmm.app import Element
 
 from .ZMatrix import ZMatrix
 
@@ -491,7 +501,7 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
 # =============================================================================
 # Backward Compatibility Class
 # =============================================================================
-
+#TODO remove
 class CoordinateConverter:
     """
     Backward compatibility wrapper for coordinate conversion functions.
@@ -523,4 +533,355 @@ class CoordinateConverter:
     def extract_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
         """Extract Z-matrix (delegates to cartesian_to_zmatrix)."""
         return cartesian_to_zmatrix(coords, zmatrix)
+
+
+# =============================================================================
+# Z-Matrix Generation from Cartesian Coordinates
+# =============================================================================
+
+def _get_atomic_number(element_symbol: str) -> int:
+    """
+    Get atomic number from element symbol.
+    
+    Parameters
+    ----------
+    element_symbol : str
+        Element symbol (e.g., 'H', 'C', 'N')
+        
+    Returns
+    -------
+    int
+        Atomic number
+    """
+    try:
+        elem = Element.getBySymbol(element_symbol)
+        return elem.atomic_number
+    except KeyError:
+        # For unknown elements, default to 1 (H)
+        return 1
+
+
+def _get_first_ref_atom_id(atom_idx: int, graph: Dict[int, List[int]], 
+                           coords: Optional[np.ndarray] = None) -> int:
+    """
+    Get first reference atom ID for Z-matrix construction.
+    
+    Finds a connected atom with index < atom_idx (previously defined atom).
+    If no bonded neighbor exists, uses the closest previously processed atom by distance.
+    
+    Parameters
+    ----------
+    atom_idx : int
+        Current atom index (0-based)
+    graph : Dict[int, List[int]]
+        Bond connectivity graph (adjacency list, 0-based indices)
+    coords : Optional[np.ndarray]
+        Nx3 array of Cartesian coordinates (used if no bonded neighbor found)
+        
+    Returns
+    -------
+    int
+        Reference atom index (0-based)
+    """
+    candidates = []
+    if atom_idx in graph:
+        for nbr in graph[atom_idx]:
+            if nbr < atom_idx:
+                candidates.append(nbr)
+    
+    if candidates:
+        # Sort to get consistent ordering (smallest index first)
+        candidates.sort()
+        return candidates[0]
+    
+    # No bonded neighbor found - use closest previously processed atom by distance
+    if coords is not None:
+        min_dist = float('inf')
+        closest_idx = -1
+        for i in range(atom_idx):
+            dist = _calc_distance(coords[atom_idx], coords[i])
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = i
+        if closest_idx >= 0:
+            return closest_idx
+    
+    raise ValueError(f"No reference atom found for atom {atom_idx}")
+
+
+def _get_second_ref_atom_id(atom_idx: int, first_ref: int, graph: Dict[int, List[int]]) -> int:
+    """
+    Get second reference atom ID for Z-matrix construction.
+    
+    Finds a connected atom to first_ref with index < atom_idx and != atom_idx.
+    
+    Parameters
+    ----------
+    atom_idx : int
+        Current atom index (0-based)
+    first_ref : int
+        First reference atom index (0-based)
+    graph : Dict[int, List[int]]
+        Bond connectivity graph (adjacency list, 0-based indices)
+        
+    Returns
+    -------
+    int
+        Second reference atom index (0-based)
+    """
+    candidates = []
+    if first_ref in graph:
+        for nbr in graph[first_ref]:
+            if nbr < atom_idx and nbr != atom_idx:
+                candidates.append(nbr)
+    
+    if not candidates:
+        raise ValueError(f"No second reference atom found for atom {atom_idx} (first_ref={first_ref})")
+    
+    # Sort to get consistent ordering (smallest index first)
+    candidates.sort()
+    return candidates[0]
+
+
+def _count_predefined_neighbours(atom_idx: int, ref_atom: int, graph: Dict[int, List[int]]) -> int:
+    """
+    Count neighbors of ref_atom that have index < atom_idx.
+    
+    Parameters
+    ----------
+    atom_idx : int
+        Current atom index (0-based)
+    ref_atom : int
+        Reference atom index (0-based)
+    graph : Dict[int, List[int]]
+        Bond connectivity graph (adjacency list, 0-based indices)
+        
+    Returns
+    -------
+    int
+        Number of predefined neighbors
+    """
+    count = 0
+    if ref_atom in graph:
+        for nbr in graph[ref_atom]:
+            if nbr < atom_idx:
+                count += 1
+    return count
+
+
+def _is_torsion_used(second_ref: int, third_ref: int, zmatrix_atoms: List[Dict]) -> bool:
+    """
+    Check if a torsion (second_ref, third_ref) is already used in the Z-matrix.
+    
+    Parameters
+    ----------
+    second_ref : int
+        Second reference atom index (0-based)
+    third_ref : int
+        Third reference atom index (0-based)
+    zmatrix_atoms : List[Dict]
+        List of Z-matrix atoms already constructed
+        
+    Returns
+    -------
+    bool
+        True if torsion is already used
+    """
+    for atom in zmatrix_atoms:
+        if (atom.get(ZMatrix.FIELD_BOND_REF) == second_ref and 
+            atom.get(ZMatrix.FIELD_ANGLE_REF) == third_ref):
+            return True
+        if (atom.get(ZMatrix.FIELD_BOND_REF) == third_ref and 
+            atom.get(ZMatrix.FIELD_ANGLE_REF) == second_ref):
+            return True
+    return False
+
+
+def _get_third_ref_atom_id(atom_idx: int, first_ref: int, second_ref: int, 
+                           graph: Dict[int, List[int]], coords: np.ndarray,
+                           zmatrix_atoms: List[Dict]) -> Tuple[int, int]:
+    """
+    Get third reference atom ID for Z-matrix construction.
+    
+    Determines if we need a dihedral (chirality=0) or second angle (chirality=1/-1).
+    
+    Parameters
+    ----------
+    atom_idx : int
+        Current atom index (0-based)
+    first_ref : int
+        First reference atom index (0-based)
+    second_ref : int
+        Second reference atom index (0-based)
+    graph : Dict[int, List[int]]
+        Bond connectivity graph (adjacency list, 0-based indices)
+    coords : np.ndarray
+        Nx3 array of Cartesian coordinates
+    zmatrix_atoms : List[Dict]
+        List of Z-matrix atoms already constructed
+        
+    Returns
+    -------
+    Tuple[int, int]
+        (third_ref_index, chirality_flag) where:
+        - third_ref_index: Third reference atom index (0-based)
+        - chirality_flag: 0 for dihedral, 1/-1 for second angle
+    """
+    # Check if we need a second angle (chirality case)
+    use_second_angle = (_is_torsion_used(second_ref, first_ref, zmatrix_atoms) or
+                       _count_predefined_neighbours(atom_idx, second_ref, graph) == 1)
+    
+    candidates = []
+    
+    if use_second_angle:
+        # Look for neighbors of first_ref (not atom_idx, not second_ref)
+        chirality_flag = 1  # Will be adjusted based on sign
+        if first_ref in graph:
+            for nbr in graph[first_ref]:
+                if nbr < atom_idx and nbr != atom_idx and nbr != second_ref:
+                    # Check angle between nbr-first_ref-second_ref to avoid collinearity
+                    angle = _calc_angle(coords[nbr], coords[first_ref], coords[second_ref])
+                    if angle > 1.0:  # Not collinear
+                        candidates.append(nbr)
+    else:
+        # Look for neighbors of second_ref (not atom_idx, not first_ref)
+        chirality_flag = 0
+        if second_ref in graph:
+            for nbr in graph[second_ref]:
+                if nbr < atom_idx and nbr != atom_idx and nbr != first_ref:
+                    candidates.append(nbr)
+    
+    if not candidates:
+        raise ValueError(f"Unable to make internal coordinates for atom {atom_idx}. "
+                        f"Consider using dummy atoms.")
+    
+    # Sort to get consistent ordering (smallest index first)
+    candidates.sort()
+    third_ref = candidates[0]
+    
+    # If using second angle, determine chirality sign
+    if use_second_angle:
+        # Calculate dihedral to determine sign
+        dihedral = _calc_dihedral(
+            coords[atom_idx],
+            coords[first_ref],
+            coords[second_ref],
+            coords[third_ref]
+        )
+        if dihedral > 0.0:
+            chirality_flag = -1
+        else:
+            chirality_flag = 1
+    
+    return third_ref, chirality_flag
+
+
+def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, int, int]]) -> ZMatrix:
+    """
+    Generate Z-matrix from Cartesian coordinates and bond connectivity.
+    
+    This function converts Cartesian coordinates to Z-matrix format following the given bond connectivity. The atom type map uses atomic numbers: each element
+    symbol maps to its atomic number as the atom type identifier.
+    
+    Parameters
+    ----------
+    atoms : List[Dict[str, np.ndarray]]
+        List of atom dictionaries, each containing:
+        - 'element': element symbol (str)
+        - 'coords': 3D coordinates (np.ndarray)
+    bonds : List[Tuple[int, int, int]]
+        List of bonds as (atom1_idx, atom2_idx, bond_type) tuples (0-based indices)
+        
+    Returns
+    -------
+    ZMatrix
+        Z-matrix representation with 0-based indices
+        
+    Raises
+    ------
+    ValueError
+        If conversion fails (e.g., disconnected atoms, invalid geometry)
+    """
+    num_atoms = len(atoms)
+    if num_atoms < 1:
+        raise ValueError("At least one atom is required")
+    
+    # Extract coordinates and build atom type map
+    coords = []
+    atom_type_map = {}  # element -> atomic number
+    
+    for atom in atoms:
+        coords.append(atom['coords'])
+        element = atom['element']
+        if element not in atom_type_map:
+            atom_type_map[element] = _get_atomic_number(element)
+    
+    coords = np.array(coords)
+    
+    # Build bond connectivity graph (adjacency list, 0-based)
+    graph = defaultdict(list)
+    visited_bonds = set()  # Track bonds used in Z-matrix construction
+    
+    for atom1, atom2, bond_type in bonds:
+        graph[atom1].append(atom2)
+        graph[atom2].append(atom1)
+    
+    # Convert to Z-matrix
+    zmatrix_atoms = []
+    
+    for i in range(num_atoms):
+        atom_data = {
+            ZMatrix.FIELD_ID: i,
+            ZMatrix.FIELD_ELEMENT: atoms[i]['element'],
+            ZMatrix.FIELD_ATOMIC_NUM: atom_type_map[atoms[i]['element']]
+        }
+        
+        i2 = 0
+        i3 = 0
+        i4 = 0
+        chirality = 0
+        bond_length = 0.0
+        angle = 0.0
+        dihedral = 0.0
+        
+        # Define bond length (for atoms 1+)
+        if i > 0:
+            i2 = _get_first_ref_atom_id(i, graph, coords)
+            bond_length = _calc_distance(coords[i], coords[i2])
+            atom_data[ZMatrix.FIELD_BOND_REF] = i2
+            atom_data[ZMatrix.FIELD_BOND_LENGTH] = bond_length
+            # Mark bond as visited only if it's an actual bond
+            bond_key = (min(i, i2), max(i, i2))
+            if bond_key in [(min(a1, a2), max(a1, a2)) for a1, a2, _ in bonds]:
+                visited_bonds.add(bond_key)
+        
+        # Define bond angle (for atoms 2+)
+        if i > 1:
+            i3 = _get_second_ref_atom_id(i, i2, graph)
+            angle = _calc_angle(coords[i], coords[i2], coords[i3])
+            atom_data[ZMatrix.FIELD_ANGLE_REF] = i3
+            atom_data[ZMatrix.FIELD_ANGLE] = angle
+        
+        # Define dihedral or second angle (for atoms 3+)
+        if i > 2:
+            i4, chirality = _get_third_ref_atom_id(i, i2, i3, graph, coords, zmatrix_atoms)
+            atom_data[ZMatrix.FIELD_DIHEDRAL_REF] = i4
+            
+            if chirality != 0:
+                # Second angle case
+                dihedral = _calc_angle(coords[i], coords[i2], coords[i4])
+                atom_data[ZMatrix.FIELD_DIHEDRAL] = dihedral
+                atom_data[ZMatrix.FIELD_CHIRALITY] = chirality
+            else:
+                # True dihedral case
+                dihedral = _calc_dihedral(coords[i], coords[i2], coords[i3], coords[i4])
+                atom_data[ZMatrix.FIELD_DIHEDRAL] = dihedral
+                atom_data[ZMatrix.FIELD_CHIRALITY] = 0
+        
+        zmatrix_atoms.append(atom_data)
+    
+    # Create ZMatrix instance
+    zmatrix_obj = ZMatrix(zmatrix_atoms, bonds)
+    
+    return zmatrix_obj
 
