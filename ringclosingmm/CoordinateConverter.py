@@ -820,7 +820,6 @@ def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, 
     
     # Build bond connectivity graph (adjacency list, 0-based)
     graph = defaultdict(list)
-    visited_bonds = set()  # Track bonds used in Z-matrix construction
     
     for atom1, atom2, bond_type in bonds:
         graph[atom1].append(atom2)
@@ -850,10 +849,6 @@ def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, 
             bond_length = _calc_distance(coords[i], coords[i2])
             atom_data[ZMatrix.FIELD_BOND_REF] = i2
             atom_data[ZMatrix.FIELD_BOND_LENGTH] = bond_length
-            # Mark bond as visited only if it's an actual bond
-            bond_key = (min(i, i2), max(i, i2))
-            if bond_key in [(min(a1, a2), max(a1, a2)) for a1, a2, _ in bonds]:
-                visited_bonds.add(bond_key)
         
         # Define bond angle (for atoms 2+)
         if i > 1:
@@ -880,7 +875,7 @@ def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, 
         
         zmatrix_atoms.append(atom_data)
     
-    # Create ZMatrix instance
+    # Create ZMatrix instance with all bonds (preserve complete connectivity)
     zmatrix_obj = ZMatrix(zmatrix_atoms, bonds)
     
     return zmatrix_obj
