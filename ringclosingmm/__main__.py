@@ -21,12 +21,13 @@ import argparse
 import sys
 import numpy as np
 from pathlib import Path
+from typing import Optional
 
 from . import IOTools
 
 # Custom formatter that removes "(default: False)" from boolean flags
 class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    def _get_help_string(self, action):
+    def _get_help_string(self, action: argparse.Action) -> Optional[str]:
         help_str = super()._get_help_string(action)
         # Remove "(default: False)" from help text
         if help_str and "(default: False)" in help_str:
@@ -48,7 +49,7 @@ DEFAULT_GRADIENT_TOLERANCE = 0.01
 DEFAULT_FORCEFIELD = str(Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml')
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         description='Ring Closure Optimization using Hybrid Genetic Algorithm with OpenMM',
@@ -183,7 +184,7 @@ def parse_arguments():
     return args
 
 
-def main():
+def main() -> int:
     """Main execution function."""
     args = parse_arguments()
     

@@ -13,7 +13,7 @@ from typing import List, Dict
 from .CoordinateConverter import zmatrix_to_cartesian
 from .ZMatrix import ZMatrix
 
-def read_int_file(pathname):
+def read_int_file(pathname: str) -> ZMatrix:
     """
     Read and parse INT file data in Z-matrix (internal coordinates) format.
     

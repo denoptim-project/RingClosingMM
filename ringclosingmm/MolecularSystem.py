@@ -33,7 +33,8 @@ from .CoordinateConverter import (
 from scipy.optimize import OptimizeResult, differential_evolution, minimize
 
 
-def build_topology_from_data(atoms_data, bonds_data):
+def build_topology_from_data(atoms_data: List[Tuple[str, int]], 
+                             bonds_data: List[Tuple[int, int, int]]) -> Topology:
     """
     Build OpenMM Topology from parsed atom and bond data.
     

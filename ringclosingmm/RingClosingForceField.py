@@ -9,6 +9,7 @@ from openmm.app.forcefield import parsers
 from collections import defaultdict
 import math
 import numpy as np
+from typing import Any, List, Optional, Tuple
 
 
 # Conventions: names of energy terms
@@ -25,7 +26,7 @@ verbose = False
 # Utility Methods
 # =============================================================================
 
-def getDistance(p1, p2):
+def getDistance(p1: Any, p2: Any) -> float:
     """Calculate the distance between two points in 3D space.
     Both parameters are expected to be lists with three floats."""
     d = 0.0
@@ -33,12 +34,12 @@ def getDistance(p1, p2):
     return d
 
 
-def getUnitVector(vector):
+def getUnitVector(vector: np.ndarray) -> np.ndarray:
     """Gets the unit vector for the given vector."""
     return vector / np.linalg.norm(vector)
 
 
-def getAngle(p0, p1, p2):
+def getAngle(p0: Any, p1: Any, p2: Any) -> float:
     """Calculates the angle in radians between the vectors 1-0 and 1-2 as
     defined by the given points in 3d space."""
     v1 = np.array(p0._value) - np.array(p1._value)
@@ -446,7 +447,7 @@ class RingClosingForceGenerator():
 parsers['RingClosingForce'] = RingClosingForceGenerator.parseElement
 
 
-def setGlobalParameterToAllForces(system, paramID, value):
+def setGlobalParameterToAllForces(system: mm.System, paramID: str, value: float) -> None:
     """Change the value of the global parameter in the definition of all forces.
     Parameters
     ----------
@@ -531,7 +532,7 @@ def create_simulation(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
     return simulation
 
 
-def create_simulation_from_system(topo, system, positions, stepLength=0.0002):
+def create_simulation_from_system(topo: Any, system: mm.System, positions: Any, stepLength: float = 0.0002) -> Simulation:
     """Build a Simulation object for the system defined in a given system and positions.
     Parameters
     ----------
@@ -549,8 +550,9 @@ def create_simulation_from_system(topo, system, positions, stepLength=0.0002):
     return simulation   
 
 
-def create_system(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
-                      scalingNonBonded=None, scalingRCP=None):
+def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: str, 
+                  positions: Any, smoothing: float = 0.0,
+                  scalingNonBonded: Optional[float] = None, scalingRCP: Optional[float] = None) -> mm.System:
     """Build a System object for the system defined in a given topology, and RCP terms
     using the force field definition taken from a file. Optionally, one can
     control smoothing of and scaling of the main potential energy terms.

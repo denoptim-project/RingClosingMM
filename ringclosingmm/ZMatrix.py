@@ -82,7 +82,7 @@ class ZMatrix:
         self._bonds = copy.deepcopy(bonds)
         self._validate()
     
-    def _validate(self):
+    def _validate(self) -> None:
         """Validate Z-matrix data integrity."""
         if not isinstance(self._atoms, list):
             raise ValueError("atoms must be a list")

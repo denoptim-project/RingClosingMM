@@ -204,7 +204,7 @@ def start(host: Union[str, Tuple[str, int]] = 'localhost', port: int = 0) -> Tup
 class OptimizationRequestHandler(socketserver.StreamRequestHandler):
     """Request handler for Ring Closure Optimizer requests."""
     
-    def handle(self):
+    def handle(self) -> None:
         try:
             # Read message from socket (UTF-8)
             message = self.rfile.read().decode('utf8')
