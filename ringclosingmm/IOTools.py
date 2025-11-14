@@ -10,13 +10,8 @@ from os.path import basename
 import numpy as np
 from typing import List, Dict
 
-# Dual import handling for package and direct script use
-try:
-    from .CoordinateConverter import zmatrix_to_cartesian
-    from .ZMatrix import ZMatrix
-except ImportError:
-    from CoordinateConverter import zmatrix_to_cartesian
-    from ZMatrix import ZMatrix
+from .CoordinateConverter import zmatrix_to_cartesian
+from .ZMatrix import ZMatrix
 
 def read_int_file(pathname):
     """

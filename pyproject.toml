@@ -68,15 +68,15 @@ Documentation = "https://github.com/your-username/RingClosingMM/blob/main/README
 "Bug Tracker" = "https://github.com/your-username/RingClosingMM/issues"
 
 [project.scripts]
-rc-optimizer = "src.__main__:main"
+rc-optimizer = "ringclosingmm.__main__:main"
 
 [tool.setuptools]
 # Package discovery
-packages = ["src"]
+packages = ["ringclosingmm"]
 
 [tool.setuptools.package-data]
 # Include data files with the package
-src = ["../data/*.xml"]
+ringclosingmm = ["../data/*.xml"]
 
 [tool.pytest.ini_options]
 # pytest configuration (can be here or in pytest.ini)
@@ -104,7 +104,7 @@ exclude = [".git", "__pycache__", "build", "dist", ".eggs"]
 
 [tool.coverage.run]
 # Coverage configuration
-source = ["src"]
+source = ["ringclosingmm"]
 omit = ["test/*", "setup.py"]
 
 [tool.coverage.report]

@@ -11,7 +11,7 @@ function ensure_file_exists() {
     fi
 }
 
-python ../../src/__main__.py -i c4.int -c 1 11 2 14 -o c4_min > c4_min.log 2>&1
+rc-optimizer -i c4.int -c 1 11 2 14 -o c4_min > c4_min.log 2>&1
 
 ensure_file_exists c4_min.xyz
 ensure_file_exists c4_min.int
@@ -30,7 +30,7 @@ fi
 
 echo "Distorted c4 chain closure completed successfully"
 
-python ../../src/__main__.py -i c5.int -c 1 6 2 7 -o c5_min > c5_min.log 2>&1
+rc-optimizer -i c5.int -c 1 6 2 7 -o c5_min > c5_min.log 2>&1
 
 ensure_file_exists c5_min.xyz
 ensure_file_exists c5_min.int
@@ -49,7 +49,7 @@ fi
 
 echo "Distorted c5 chain closure completed successfully"
 
-python ../../src/__main__.py -i distorted_complex.int -r 1 2 5 31 31 32 32 35 35 40 35 41 32 36 32 37 -c 7 39 77 35 -o distorted_complex_min  > distorted_complex_min.log 2>&1
+rc-optimizer -i distorted_complex.int -r 1 2 5 31 31 32 32 35 35 40 35 41 32 36 32 37 -c 7 39 77 35 -o distorted_complex_min  > distorted_complex_min.log 2>&1
 
 ensure_file_exists distorted_complex_min.xyz
 ensure_file_exists distorted_complex_min.int

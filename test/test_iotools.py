@@ -12,11 +12,11 @@ import os
 import tempfile
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add parent directory to path for package imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from IOTools import read_int_file, write_zmatrix_file, write_xyz_file
-from ZMatrix import ZMatrix
+from ringclosingmm import IOTools, ZMatrix
+from ringclosingmm.IOTools import read_int_file, write_zmatrix_file, write_xyz_file
 
 
 class TestIOToolsFileIO(unittest.TestCase):

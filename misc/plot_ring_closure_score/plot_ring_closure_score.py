@@ -7,16 +7,11 @@ the distance between the two atoms in an RCP term.
 """
 
 import argparse
-import sys
-from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Add src directory to Python path
-src_path = Path(__file__).resolve().parent.parent.parent / 'src'
-sys.path.insert(0, str(src_path))
-
-from MolecularSystem import MolecularSystem
+# Package imports (assumes package is installed)
+from ringclosingmm import MolecularSystem
 
 
 def calculate_score_for_distance(distance: float, tolerance: float, decay_rate: float) -> float:

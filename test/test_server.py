@@ -14,13 +14,13 @@ import threading
 import queue
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add parent directory to path for package imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from RCOServer import start, stop
-import RCOServer as rco_server
+from ringclosingmm import RCOServer, ZMatrix
+from ringclosingmm.RCOServer import start, stop
+import ringclosingmm.RCOServer as rco_server
 import socketserver
-from ZMatrix import ZMatrix
 
 
 def start_server_in_thread(result_queue, host='localhost', port=0):
