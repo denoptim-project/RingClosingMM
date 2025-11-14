@@ -11,10 +11,10 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add parent directory to path for package imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from CoordinateConverter import (
+from ringclosingmm.CoordinateConverter import (
     zmatrix_to_cartesian,
     cartesian_to_zmatrix,
     apply_torsions,
@@ -23,7 +23,7 @@ from CoordinateConverter import (
     _calc_angle,
     _calc_dihedral
 )
-from ZMatrix import ZMatrix
+from ringclosingmm import ZMatrix
 
 
 class TestGeometryCalculations(unittest.TestCase):

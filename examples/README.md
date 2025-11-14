@@ -1,10 +1,11 @@
 # RingClosureOptimizer Python API Examples
 
-This directory contains example scripts demonstrating how to use the RingClosureOptimizer module programmatically.
+This directory contains example demonstrating how to use the RingClosureOptimizer module programmatically.
 
-### Run All Examples
-All examples include a `run.sh` script that calls the main entry point as `python ../../src/__main__.py` just to by-pass the need for installation of the module. One the module is installed any example could be run just using the `rc-optimizer` command without the need to call the the main entry point explicitly.
-All examples include a minimal evaluation of the outcome meant to verify the expected behaviour. To run all the examples do the following:
+All examples include a `run.sh` script that uses the `rc-optimizer` command. The package must be installed (either via `pip install -e .` for development or `pip install ringclosingmm` from PyPI) for the `rc-optimizer` command to be available.
+
+Each `run.sh` includes a minimal evaluation of the outcome meant to verify the expected behaviour. To run all the examples do the following:
+
 ```bash
 cd examples
 ./run_all_examples.sh
@@ -19,10 +20,13 @@ cd examples
 > 0-based indexing is expected for any data living within the Python interpreter, while the content of the input files is expected to use 1-based indexing.
 
 ```python
-import sys
-sys.path.insert(0, '../src')
+# Once installed, simply use:
+from ringclosingmm import RingClosureOptimizer
 
-from RingClosureOptimizer import RingClosureOptimizer
+# Or for development (before installation):
+# import sys
+# sys.path.insert(0, '../ringclosingmm')
+# from RingClosureOptimizer import RingClosureOptimizer
 
 # rotatable_bonds and rcp_terms are now direct lists of tuples (0-based indices)
 optimizer = RingClosureOptimizer.from_files(

@@ -3,22 +3,12 @@
 import time
 from typing import List, Tuple, Dict, Optional, Any, Union
 
-try:
-    # Relative imports for package use
-    from .CoordinateConverter import (
-        zmatrix_to_cartesian,
-        CoordinateConverter
-    )
-    from .MolecularSystem import MolecularSystem
-    from .ZMatrix import ZMatrix
-except ImportError:
-    # Absolute imports for direct script use
-    from CoordinateConverter import (
-        zmatrix_to_cartesian,
-        CoordinateConverter
-    )
-    from MolecularSystem import MolecularSystem
-    from ZMatrix import ZMatrix
+from .CoordinateConverter import (
+    zmatrix_to_cartesian,
+    CoordinateConverter
+)
+from .MolecularSystem import MolecularSystem
+from .ZMatrix import ZMatrix
 
 class RingClosureOptimizer:
     """

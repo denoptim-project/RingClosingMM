@@ -36,11 +36,7 @@ import numpy as np
 from typing import List, Dict
 import copy
 
-# Dual import handling for package and direct script use
-try:
-    from .ZMatrix import ZMatrix
-except ImportError:
-    from ZMatrix import ZMatrix
+from .ZMatrix import ZMatrix
 
 
 # =============================================================================

@@ -10,11 +10,10 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add parent directory to path for package imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from RingClosureOptimizer import RingClosureOptimizer
-from MolecularSystem import MolecularSystem
+from ringclosingmm import RingClosureOptimizer, MolecularSystem
 
 
 class TestRingClosureOptimizerUtilities(unittest.TestCase):

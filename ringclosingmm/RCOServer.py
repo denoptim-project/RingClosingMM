@@ -26,16 +26,10 @@ import logging
 # Note: Using pathlib for resource access, which works in both development and installed packages
 
 # Import RingClosureOptimizer and dependencies
-try:
-    from .MolecularSystem import MolecularSystem
-    from .RingClosureOptimizer import RingClosureOptimizer
-    from .CoordinateConverter import zmatrix_to_cartesian
-    from .ZMatrix import ZMatrix
-except ImportError:
-    from MolecularSystem import MolecularSystem
-    from RingClosureOptimizer import RingClosureOptimizer
-    from CoordinateConverter import zmatrix_to_cartesian
-    from ZMatrix import ZMatrix
+from .MolecularSystem import MolecularSystem
+from .RingClosureOptimizer import RingClosureOptimizer
+from .CoordinateConverter import zmatrix_to_cartesian
+from .ZMatrix import ZMatrix
 
 MY_NAME = "rc-optimizer-server"
 

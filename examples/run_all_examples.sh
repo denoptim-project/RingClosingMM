@@ -18,7 +18,7 @@ cd "$SCRIPT_DIR"
 ENV_NAME="rco_devel"
 ENV_FILE="../environment.yml"
 
-# Example files and directories to run (excluding plot_energy_terms and api_usage_example.py)
+# Example files and directories to run
 EXAMPLES=(
     "acyclic_bond_formation"
     "cyclic_bond_formation"
@@ -26,6 +26,7 @@ EXAMPLES=(
     "simple_minimization"
     "strained_ring_closure"
     "server_usage"
+    "api_usage"
 )
 
 echo -e "${GREEN}=== Running All Examples ===${NC}"

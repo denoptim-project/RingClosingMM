@@ -11,10 +11,10 @@ Example usage:
     rc-optimizer -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
     
     # As a Python module
-    python -m src -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
+    python -m ringclosingmm -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
     
     # Direct script execution
-    python src/__main__.py -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
+    python ringclosingmm/__main__.py -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
 """
 
 import argparse
@@ -22,7 +22,7 @@ import sys
 import numpy as np
 from pathlib import Path
 
-from src import IOTools
+from . import IOTools
 
 # Custom formatter that removes "(default: False)" from boolean flags
 class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
@@ -33,13 +33,8 @@ class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
             help_str = help_str.replace(" (default: False)", "")
         return help_str
 
-# Handle both module and script execution
-try:
-    from .RingClosureOptimizer import RingClosureOptimizer
-    from .RCOServer import start, stop, status
-except ImportError:
-    from RingClosureOptimizer import RingClosureOptimizer
-    from RCOServer import start, stop, status
+from .RingClosureOptimizer import RingClosureOptimizer
+from .RCOServer import start, stop, status
 
 
 # Default configuration values

@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 # Add src to path
-src_path = Path(__file__).resolve().parent.parent / 'src'
-sys.path.insert(0, str(src_path))
+ringclosingmm_path = Path(__file__).resolve().parent.parent / 'src'
+sys.path.insert(0, str(ringclosingmm_path))
 
 from RCOServer import start, stop
 

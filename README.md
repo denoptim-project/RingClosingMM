@@ -1,6 +1,6 @@
 # Ring Closure Optimizer
 
-[![Build and Test](https://github.com/your-username/RingClosingMM/actions/workflows/build_and_test_package.yml/badge.svg)](https://github.com/your-username/RingClosingMM/actions/workflows/build_and_test_package.yml)
+[![Build and Test](https://github.com/denoptim-project/RingClosingMM/actions/workflows/build_and_test_package.yml/badge.svg)](https://github.com/denoptim-project/RingClosingMM/actions/workflows/build_and_test_package.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
@@ -18,7 +18,7 @@ The conformational search implements a divide and conquer strategy:
 - ✅ Geometry-protective force field: bond lengths and angles in the input geometry are taken as the equilibrium value coupled with strong force constants for stretching and bending.
 - ✅ Potential energy smoothing for global optimization in Z-matrix and Cartesian space.
 - ✅ Energy minimization in Z-matrix space with selection of the degrees of freedom to vary and of their bounds.
-- ✅ Socket TCP server to provide low-latency interface with any client application requesting the bond-formation/ring-closure service.
+- ✅ Socket TCP server to provide low-latency interface with any client application requesting a bond-formation/ring-closure service.
 
 ## Installation
 
@@ -47,7 +47,7 @@ conda activate rco_devel
 # Package is automatically installed in development mode
 
 # Option 2: Using pip only
-pip install -e .[dev]  # Installs with development dependencies
+pip install -e .  # Installs with development dependencies
 ```
 
 After installation, you can use `rc-optimizer` from anywhere!
@@ -56,6 +56,10 @@ After installation, you can use `rc-optimizer` from anywhere!
 
 
 ## Quick Start
+
+> [!WARNING]
+> 1-based indexing is expected for any input to the command line interface or the socket server interface. This allows to use input files generated with [Tinker](https://dasher.wustl.edu/tinker/).
+> Internally, 0-based indexing is used according to Python convention, hence 0-based indexing is expected for input to the API, but not for input files read-in by any API method. 
 
 ### 1. Command Line
 
@@ -122,7 +126,15 @@ echo  <path_to_json_file> | nc localhost <port>
 ### 3. Python API
 
 ```python
-from RingClosureOptimizer import RingClosureOptimizer
+from ringclosingmm import RingClosureOptimizer, IOTools, ZMatrix
+
+# Or use the shorter alias:
+from ringclosingmm import RCOptimizer, ZMatrix
+
+# Or import specific functions/classes:
+# from ringclosingmm.RingClosureOptimizer import RingClosureOptimizer
+# from ringclosingmm.IOTools import read_int_file, write_zmatrix_file
+# from ringclosingmm.ZMatrix import ZMatrix
 
 # Create optimizer
 optimizer = RingClosureOptimizer.from_files(
@@ -134,14 +146,21 @@ optimizer = RingClosureOptimizer.from_files(
 
 # Run optimization
 result = optimizer.optimize(
-    ...
+    enable_pssrot_refinement=True,
+    enable_zmatrix_refinement=True,
+    verbose=True
 )
 
-# Save results to file
-optimizer.save_optimized_structure('optimized.xyz')
-
-# Or further process the numerical results
+# Access results
 print(f"Final energy: {result['final_energy']:.2f} kcal/mol")
+print(f"Ring closure score: {result['final_ring_closure_score']:.4f}")
+
+# Save results to file
+IOTools.save_structure_to_file('optimized.xyz', result['final_zmatrix'], result['final_energy'])
+
+# Or read/write Z-matrix files
+zmatrix = IOTools.read_int_file('molecule.int')
+IOTools.write_zmatrix_file(zmatrix, 'output.int')
 ```
 
 

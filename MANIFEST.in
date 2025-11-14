@@ -13,6 +13,6 @@ global-exclude *.pyo
 global-exclude __pycache__
 global-exclude .DS_Store
 global-exclude *.so
-prune src/__pycache__
+prune ringclosingmm/__pycache__
 prune test/__pycache__
 

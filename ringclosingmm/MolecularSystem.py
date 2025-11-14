@@ -17,36 +17,18 @@ import copy
 import openmm.unit as unit
 from openmm.app import Element, Simulation, Topology
 
-# Dual import handling for package and direct script use
-try:
-    from .IOTools import read_int_file, write_xyz_file
-    from .ZMatrix import ZMatrix
-except ImportError:
-    from IOTools import read_int_file, write_xyz_file
-    from ZMatrix import ZMatrix
-
-try:
-    # Relative imports for package use
-    from .RingClosingForceField import (
-        create_simulation_from_system,
-        create_system,
-        setGlobalParameterToAllForces
-    )
-    from .CoordinateConverter import (
-        zmatrix_to_cartesian,
-        _calc_distance
-    )
-except ImportError:
-    # Absolute imports for direct script use
-    from RingClosingForceField import (
-        create_simulation_from_system,
-        create_system,
-        setGlobalParameterToAllForces
-    )
-    from CoordinateConverter import (
-        zmatrix_to_cartesian,
-        _calc_distance
-    )
+# Package imports
+from .IOTools import read_int_file, write_xyz_file
+from .ZMatrix import ZMatrix
+from .RingClosingForceField import (
+    create_simulation_from_system,
+    create_system,
+    setGlobalParameterToAllForces
+)
+from .CoordinateConverter import (
+    zmatrix_to_cartesian,
+    _calc_distance
+)
 
 from scipy.optimize import OptimizeResult, differential_evolution, minimize
 

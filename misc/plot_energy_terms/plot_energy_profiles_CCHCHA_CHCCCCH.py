@@ -2,17 +2,8 @@
 # This is code made to understand if we can get overlap between the two RCAs
 #
 
-import subprocess
-import sys
-from pathlib import Path
-
-# Add src directory to Python path
-src_path = Path(__file__).resolve().parent.parent.parent / 'src'
-sys.path.insert(0, str(src_path))
-
-from RingClosingForceField import (
-    create_simulation
-)
+# Package imports (assumes package is installed)
+from ringclosingmm.RingClosingForceField import create_simulation
 
 import openmm.unit as unit
 import openmm
