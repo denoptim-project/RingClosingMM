@@ -6,16 +6,18 @@
 
 ## Overview
 
-The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between them. It build on an (OpenMM)[https://openmm.org/] molecular mechanics engine and (scipy)[https://scipy.org/] optimization algorithms.
-The molecular mechanics is based on simple force field definition that favors formation of bonds where no topological bond is originally defined, by introducing ring-closing (i.e., bond-forming) interactions and excluding inter atomic repulsion terms according expected presence of the to-be-formed bonds. The force field is rather simple and considers only forces meant to protect as much as possible the initial geometry, while allowing for minimal angle bending and even substantial bond torsion to access the ring-closing conformation and distribute strain over the ring-closing chain. Hence, the force field depends on atom types only for the definition of the non-bonded interactions, which are defined on a per-element basis to ensure that any set of atoms can be manipulated without requiring specific force field parameters.
-With such force field allowing and favoring ring closure conformation, a conformational search can identify the conformation that bring the to-be-bonded atoms in a relative position compatible with definition of a formal bond.
+The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between them. It builds on an [OpenMM](https://openmm.org/) molecular mechanics engine and [scipy](https://scipy.org/) optimizers.
+The molecular mechanics is based on force field definition designed for potential energy smoothing algorithms and that includes a ring-closing (i.e., bond-forming) attractive interaction operating over specific atom pairs (i.e., the ring-closing potential terms, RCP terms). Moreover, the inter atomic repulsion terms involving such pairs of to-be-bonded atoms are excluded as if those atoms were bonded, thus allowing those atoms to come close enough to define a bond between them. Other force field components introduce forces meant to protect as much as possible the initial geometry, while allowing for the minimal geometrical adaptation (some bond bending, and substantial bond torsion) that might be needed to access the ring-closing conformation and distribute the resulting strain over the formed ring. To retain generality, the force field uses the Universal Force Field parameters for the non-bonded interactions and fixed force constant for bond length and angle protection. Hence, the force field is not parametrized to reproduce any expected output, but only to exclude atom clashes while searching for ring-closing conformations.
+The conformational search implements a divide and conquer strategy:
+1. identify the torsions along the ring-closing chain that allow to bring the to-be-bonded atoms in the most suitable relative position to define the new bond,
+2. remove strain by adapting any torsional degree of freedom other than those determining the ring-closing conformations,
+3. refine the ring-closing conformations by tuning torsions and bond angles involved in the newly formed ring.
 
 ## Features
 
-- ✅ Force Field protecting bond length and bond angles: the input geometry is taken as the equilibrium geometry and strong force constants act as protection of the initial geometry.
-- ✅ Fast exploration of torsional space with .
-- ✅ Potential energy smoothing for global optimization in torsional space.
-- ✅ Final geometrical refinement in Cartesian or Z-Matrix space to adjust bond angles/lengths to the bond-forming/ring-closing conformation.
+- ✅ Geometry-protective force field: bond lengths and angles in the input geometry are taken as the equilibrium value coupled with strong force constants for stretching and bending.
+- ✅ Potential energy smoothing for global optimization in Z-matrix and Cartesian space.
+- ✅ Energy minimization in Z-matrix space with selection of the degrees of freedom to vary and of their bounds.
 - ✅ Socket TCP server to provide low-latency interface with any client application requesting the bond-formation/ring-closure service.
 
 ## Installation
