@@ -175,8 +175,16 @@ class RingClosureOptimizer:
         -------
         Dict[str, Any]
             Optimization results including:
-            - 'initial_closure_score': Initial ring closure score
-            - 'final_closure_score': Final ring closure score  
+            - 'initial_energy': Energy before optimization (kcal/mol)
+            - 'final_energy': Energy after optimization (kcal/mol)
+            - 'initial_ring_closure_score': Initial ring closure score
+            - 'final_ring_closure_score': Final ring closure score
+            - 'final_coords': Final Cartesian coordinates (numpy array)
+            - 'final_zmatrix': Final Z-matrix (ZMatrix instance)
+            - 'rmsd_bond_lengths': RMSD of bond lengths from initial structure
+            - 'rmsd_angles': RMSD of angles from initial structure
+            - 'rmsd_dihedrals': RMSD of dihedrals from initial structure
+            - 'success': True if optimization was successful
         """
         # Set default smoothing sequence if not provided
         if smoothing_sequence is None:
@@ -209,10 +217,6 @@ class RingClosureOptimizer:
 
         # Select which torsions to refine: do we protect the critical torsions?
         non_rc_critical_rotatable_indices = [idx for idx in self.system.rotatable_indices if idx not in self.system.rc_critical_rotatable_indeces]
-
-        # Initialize timing variables
-        pss_ref_time = 0.0
-        zms_ref_time = 0.0
 
         if enable_pssrot_refinement:
             if len(non_rc_critical_rotatable_indices) == 0:
@@ -281,21 +285,19 @@ class RingClosureOptimizer:
         print(f"RMSD angles: {rmsd_angles:.4f} deg")
         print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
 
-        results = {
+        return {
             'initial_energy': initial_energy,
             'initial_ring_closure_score': initial_ring_closure_score,
-            'final_ring_closure_score': best_rc_score,
-            'final_zmatrix': best_zmatrix,
-            'final_coords': best_coords,
             'final_energy': best_energy,
-            'final_rc_score': best_rc_score,
-            'final_energy_improvement': best_energy - initial_energy,
-            'final_rc_score_improvement': best_rc_score - initial_ring_closure_score,
-            'time': diff_evo_time + pss_ref_time + zms_ref_time,
+            'final_ring_closure_score': best_rc_score,
+            'final_coords': best_coords,
+            'final_zmatrix': best_zmatrix,
+            'rmsd_bond_lengths': rmsd_bond_lengths,
+            'rmsd_angles': rmsd_angles,
+            'rmsd_dihedrals': rmsd_dihedrals,
             'success': True
         }
-        
-        return results
+
         
     def minimize(self, max_iterations: int = 500,
                  smoothing: Optional[Union[float, List[float]]] = None,
@@ -335,17 +337,14 @@ class RingClosureOptimizer:
             Dictionary containing:
             - 'initial_energy': Energy before minimization (kcal/mol)
             - 'final_energy': Energy after minimization (kcal/mol)
-            - 'coordinates': Minimized Cartesian coordinates (numpy array)
-            - 'zmatrix': Minimized Z-matrix (ZMatrix instance)
-            - 'ring_closure_score': Ring closure score after minimization
+            - 'initial_ring_closure_score': Ring closure score before minimization
+            - 'final_ring_closure_score': Ring closure score after minimization
+            - 'final_coords': Minimized Cartesian coordinates (numpy array)
+            - 'final_zmatrix': Minimized Z-matrix (ZMatrix instance)
             - 'rmsd_bond_lengths': RMSD of bond lengths after minimization
             - 'rmsd_angles': RMSD of angles after minimization
             - 'rmsd_dihedrals': RMSD of dihedrals after minimization
-            - 'minimization_type': 'cartesian' or 'torsional' or 'zmatrix'
-            - 'optimization_info': Additional optimization info (for torsional minimization)
-            - 'smoothing_sequence': List of smoothing values used
             - 'success': True if minimization was successful, False otherwise
-            - 'error': Error message if minimization failed
         
         Example
         -------
@@ -390,59 +389,58 @@ class RingClosureOptimizer:
             else:
                 print(f"Minimizing in {space_type} space with {max_iterations} max iterations (smoothing={smoothing_values[0]:.2f})...")
         
-        try:
-            current_zmatrix = initial_zmatrix
-            current_energy = initial_energy
-            all_opt_info = []
+        current_zmatrix = initial_zmatrix
+        current_energy = initial_energy
+        all_opt_info = []
+        
+        # Perform sequence of minimizations with smoothed potential energy
+        for step, smoothing_val in enumerate(smoothing_values):
+            self.system.setSmoothingParameter(smoothing_val)
             
-            # Perform sequence of minimizations with smoothed potential energy
-            for step, smoothing_val in enumerate(smoothing_values):
-                self.system.setSmoothingParameter(smoothing_val)
+            if verbose and len(smoothing_values) > 1:
+                print(f"Step {step+1}/{len(smoothing_values)}: smoothing={smoothing_val:.2f}")
+            
+            opt_info = {'success': False, 'message': 'Minimization step failed'}
+            if space_type == 'torsional':
+                # Perform torsional minimization
+                refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_torsional_space(
+                    current_zmatrix,
+                    self.system.rotatable_indices,
+                    max_iterations=max_iterations,
+                    verbose=verbose
+                )
                 
-                if verbose and len(smoothing_values) > 1:
-                    print(f"Step {step+1}/{len(smoothing_values)}: smoothing={smoothing_val:.2f}")
-                
-                if space_type == 'torsional':
-                    # Perform torsional minimization
-                    refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_torsional_space(
-                        current_zmatrix,
-                        self.system.rotatable_indices,
-                        max_iterations=max_iterations,
-                        verbose=verbose
-                    )
-                    
-                    if opt_info.get('success'):
-                        current_zmatrix = refined_zmatrix
-                        current_energy = step_energy
-                        all_opt_info.append(opt_info)
-                    else:
-                        if verbose:
-                            print(f"  Warning: Minimization step failed, continuing with previous structure")
-                        
-                elif space_type == 'zmatrix':
-                    # Perform Z-matrix minimization
-                    init_time = time.time()
-                    refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_zmatrix_space(
-                        current_zmatrix,
-                        self.system.dof_indices,
-                        dof_bounds_per_type = zmatrix_dof_bounds_per_type,
-                        max_iterations=max_iterations,
-                        gradient_tolerance=gradient_tolerance,
-                        verbose=verbose
-                    )
-                    time_taken = time.time() - init_time
-                    print(f"\nTime taken for Z-matrix minimization: {time_taken:.2f} seconds")
+                if opt_info.get('success'):
+                    current_zmatrix = refined_zmatrix
+                    current_energy = step_energy
+                else:
+                    if verbose:
+                        print(f"  Warning: Minimization step failed, continuing with previous structure")
 
-                    if opt_info.get('success'):
-                        current_zmatrix = refined_zmatrix
-                        current_energy = step_energy
-                        all_opt_info.append(opt_info)
-                    else:
-                        if verbose:
-                            print(f"  Warning: Minimization step failed, continuing with previous structure")
-                        
-                elif space_type == 'Cartesian':
-                    # Work in Cartesian space, even though results are in Z-matrix space
+            elif space_type == 'zmatrix':
+                # Perform Z-matrix minimization
+                init_time = time.time()
+                refined_zmatrix, step_energy, opt_info = self.system.minimize_energy_in_zmatrix_space(
+                    current_zmatrix,
+                    self.system.dof_indices,
+                    dof_bounds_per_type = zmatrix_dof_bounds_per_type,
+                    max_iterations=max_iterations,
+                    gradient_tolerance=gradient_tolerance,
+                    verbose=verbose
+                )
+                time_taken = time.time() - init_time
+                print(f"\nTime taken for Z-matrix minimization: {time_taken:.2f} seconds")
+
+                if opt_info.get('success'):
+                    current_zmatrix = refined_zmatrix
+                    current_energy = step_energy
+                else:
+                    if verbose:
+                        print(f"  Warning: Minimization step failed, continuing with previous structure")
+                    
+            elif space_type == 'Cartesian':
+                # Work in Cartesian space, even though results are in Z-matrix space
+                try:
                     minimized_coords, step_energy = self.system.minimize_energy(
                         current_zmatrix,
                         max_iterations=max_iterations
@@ -455,67 +453,47 @@ class RingClosureOptimizer:
                     )
                     current_zmatrix = refined_zmatrix
                     current_energy = step_energy
-                    opt_info = {}
-                
-                else:
-                    raise ValueError(f"Invalid space type: {space_type}")
-            
-            # Final state after all smoothing steps
-            minimized_zmatrix = current_zmatrix
-            minimized_energy = current_energy
-            minimized_coords = zmatrix_to_cartesian(minimized_zmatrix)
-            
-            # Calculate ring closure score
-            final_ring_closure_score = self.system.ring_closure_score_exponential(
-                minimized_coords,
-                verbose=False
-            )
-            
-            self.system.zmatrix = minimized_zmatrix
+                    opt_info = {'success': True}
+                except Exception as e:
+                    if verbose:
+                        print(f"  Warning: Minimization step failed: {e}, continuing with previous structure")
+            else:
+                raise ValueError(f"Invalid space type: {space_type}")
+        
+            all_opt_info.append(opt_info)   
 
-            rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
-            
-            if verbose:
-                print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
-                print(f"Improvement:    {initial_energy - minimized_energy:.4f} kcal/mol")
-                print(f"Ring closure:   {final_ring_closure_score:.4f}")
-                print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
-                print(f"RMSD angles: {rmsd_angles:.4f} deg")
-                print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
+        # Final state after all smoothing steps
+        minimized_zmatrix = current_zmatrix
+        minimized_energy = current_energy
+        minimized_coords = zmatrix_to_cartesian(minimized_zmatrix)
+        
+        # Calculate ring closure score
+        final_ring_closure_score = self.system.ring_closure_score_exponential(
+            minimized_coords,
+            verbose=False
+        )
+        
+        self.system.zmatrix = minimized_zmatrix
 
-            return {
-                'initial_energy': initial_energy,
-                'final_energy': minimized_energy,
-                'coordinates': minimized_coords,
-                'zmatrix': minimized_zmatrix,
-                'initial_ring_closure_score': initial_ring_closure_score,
-                'final_ring_closure_score': final_ring_closure_score,
-                'rmsd_bond_lengths': rmsd_bond_lengths,
-                'rmsd_angles': rmsd_angles,
-                'rmsd_dihedrals': rmsd_dihedrals,
-                'minimization_type': space_type,
-                'optimization_info': all_opt_info,
-                'smoothing_sequence': smoothing_values,
-                'success': True
-            }
-            
-        except Exception as e:
-            if verbose:
-                print(f"Error during minimization: {e}")
-            return {
-                'initial_energy': initial_energy,
-                'final_energy': initial_energy,
-                'coordinates': initial_coords,
-                'zmatrix': initial_zmatrix,
-                'initial_ring_closure_score': initial_ring_closure_score,
-                'final_ring_closure_score': initial_ring_closure_score,
-                'rmsd_bond_lengths': 0.0,
-                'rmsd_angles': 0.0,
-                'rmsd_dihedrals': 0.0,
-                'minimization_type': space_type,
-                'optimization_info': {},
-                'smoothing_sequence': smoothing_values,
-                'success': False,
-                'error': str(e)
-            }
+        rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
+        
+        if verbose:
+            print(f"\nFinal energy:   {minimized_energy:.4f} kcal/mol")
+            print(f"Improvement:    {initial_energy - minimized_energy:.4f} kcal/mol")
+            print(f"Ring closure:   {final_ring_closure_score:.4f}")
+            print(f"RMSD bond lengths: {rmsd_bond_lengths:.4f} Å")
+            print(f"RMSD angles: {rmsd_angles:.4f} deg")
+            print(f"RMSD dihedrals: {rmsd_dihedrals:.4f} deg")
 
+        return {
+            'initial_energy': initial_energy,
+            'initial_ring_closure_score': initial_ring_closure_score,
+            'final_energy': minimized_energy,
+            'final_ring_closure_score': final_ring_closure_score,
+            'final_coords': minimized_coords,
+            'final_zmatrix': minimized_zmatrix,
+            'rmsd_bond_lengths': rmsd_bond_lengths,
+            'rmsd_angles': rmsd_angles,
+            'rmsd_dihedrals': rmsd_dihedrals,
+            'success': all_opt_info[-1].get('success', False)
+        }

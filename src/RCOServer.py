@@ -391,7 +391,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         best_zmatrix = result['final_zmatrix']
         best_coords = zmatrix_to_cartesian(best_zmatrix)
         final_energy = result['final_energy']
-        final_rcscore = result['final_closure_score']
+        final_rcscore = result['final_ring_closure_score']
         if isinstance(final_rcscore, (list, tuple)):
             final_rcscore = max(final_rcscore) if final_rcscore else 0.0
         
@@ -421,7 +421,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             "Cartesian_coordinates": best_coords.tolist(),
             "zmatrix": zmatrix_1based,
             "METADATA": {
-                "initial_closure_score": result.get('initial_closure_score', 0.0),
+                "initial_closure_score": result.get('initial_ring_closure_score', 0.0),
                 "final_closure_score": final_rcscore,
                 "generations": result.get('generations', 0)
             }
@@ -451,7 +451,7 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         
         # Convert Z-matrix back to 1-based for JSON response
         zmatrix_1based = []
-        zmatrix_internal = result['zmatrix']
+        zmatrix_internal = result['final_zmatrix']
         # Convert ZMatrix to list if needed
         if isinstance(zmatrix_internal, ZMatrix):
             zmatrix_list = zmatrix_internal.to_list()

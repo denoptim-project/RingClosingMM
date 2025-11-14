@@ -260,7 +260,7 @@ def main():
             traceback.print_exc()
             return 1
     
-    # PArse definition of degrees of freedom from list of integers (1-based) to list of tuples (0-based)
+    # Parse definition of degrees of freedom from list of integers (1-based) to list of tuples (0-based)
     dof_indices = None
     if args.dof_indices:
         dof_indices = [(args.dof_indices[i] - 1, args.dof_indices[i+1] - 1) 
@@ -338,7 +338,7 @@ def main():
                     verbose=verbose
                 )
 
-            IOTools.save_structure_to_file(args.output, result['zmatrix'], result['final_energy'])
+            IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
     
         else:
             result = optimizer.optimize(

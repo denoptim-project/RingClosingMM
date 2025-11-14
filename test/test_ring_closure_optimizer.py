@@ -118,9 +118,14 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         
         self.assertIn('initial_energy', result)
         self.assertIn('final_energy', result)
-        self.assertIn('coordinates', result)
-        self.assertIn('minimization_type', result)
-        self.assertEqual(result['minimization_type'], 'Cartesian')
+        self.assertIn('initial_ring_closure_score', result)
+        self.assertIn('final_ring_closure_score', result)
+        self.assertIn('final_coords', result)
+        self.assertIn('final_zmatrix', result)
+        self.assertIn('rmsd_bond_lengths', result)
+        self.assertIn('rmsd_angles', result)
+        self.assertIn('rmsd_dihedrals', result)
+        self.assertIn('success', result)
         
         # Energy should decrease or stay same
         self.assertLessEqual(result['final_energy'], result['initial_energy'])
@@ -150,9 +155,14 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         
         self.assertIn('initial_energy', result)
         self.assertIn('final_energy', result)
-        self.assertIn('minimization_type', result)
-        self.assertEqual(result['minimization_type'], 'torsional')
-        self.assertIn('optimization_info', result)
+        self.assertIn('initial_ring_closure_score', result)
+        self.assertIn('final_ring_closure_score', result)
+        self.assertIn('final_coords', result)
+        self.assertIn('final_zmatrix', result)
+        self.assertIn('rmsd_bond_lengths', result)
+        self.assertIn('rmsd_angles', result)
+        self.assertIn('rmsd_dihedrals', result)
+        self.assertIn('success', result)
     
     def test_minimize_zmatrix(self):
         """Test Z-matrix space minimization."""
@@ -182,9 +192,14 @@ class TestRingClosureOptimizerMinimize(unittest.TestCase):
         
         self.assertIn('initial_energy', result)
         self.assertIn('final_energy', result)
-        self.assertIn('minimization_type', result)
-        self.assertEqual(result['minimization_type'], 'zmatrix')
-        self.assertIn('optimization_info', result)
+        self.assertIn('initial_ring_closure_score', result)
+        self.assertIn('final_ring_closure_score', result)
+        self.assertIn('final_coords', result)
+        self.assertIn('final_zmatrix', result)
+        self.assertIn('rmsd_bond_lengths', result)
+        self.assertIn('rmsd_angles', result)
+        self.assertIn('rmsd_dihedrals', result)
+        self.assertIn('success', result)
         
         # Energy should decrease or stay same
         self.assertLessEqual(result['final_energy'], result['initial_energy'])
@@ -221,10 +236,16 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             verbose=False
         )
         
+        self.assertIn('initial_energy', result)
+        self.assertIn('final_energy', result)
         self.assertIn('initial_ring_closure_score', result)
         self.assertIn('final_ring_closure_score', result)
+        self.assertIn('final_coords', result)
         self.assertIn('final_zmatrix', result)
-        self.assertIn('final_energy', result)
+        self.assertIn('rmsd_bond_lengths', result)
+        self.assertIn('rmsd_angles', result)
+        self.assertIn('rmsd_dihedrals', result)
+        self.assertIn('success', result)
         self.assertTrue(result['success'])
     
     def test_optimize_with_refinement(self):
@@ -251,59 +272,17 @@ class TestRingClosureOptimizerOptimize(unittest.TestCase):
             verbose=False
         )
         
+        self.assertIn('initial_energy', result)
+        self.assertIn('final_energy', result)
         self.assertIn('initial_ring_closure_score', result)
         self.assertIn('final_ring_closure_score', result)
+        self.assertIn('final_coords', result)
         self.assertIn('final_zmatrix', result)
-        self.assertIn('final_energy', result)
-        self.assertTrue(result['success'])
-    
-    def test_minimize_with_smoothing_sequence(self):
-        """Test minimization with smoothing sequence."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        optimizer = RingClosureOptimizer.from_files(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rotatable_bonds=None,
-            rcp_terms=None
-        )
-        
-        if len(optimizer.system.rotatable_indices) == 0:
-            self.skipTest("No rotatable indices")
-        
-        result = optimizer.minimize(
-            max_iterations=5,
-            smoothing=[10.0, 5.0, 0.0],
-            space_type='torsional',
-            verbose=False
-        )
-        
-        self.assertIn('smoothing_sequence', result)
-        self.assertEqual(result['smoothing_sequence'], [10.0, 5.0, 0.0])
+        self.assertIn('rmsd_bond_lengths', result)
+        self.assertIn('rmsd_angles', result)
+        self.assertIn('rmsd_dihedrals', result)
         self.assertIn('success', result)
-    
-    def test_minimize_with_single_smoothing(self):
-        """Test minimization with single smoothing value."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
-            self.skipTest("Required test files not found")
-        
-        optimizer = RingClosureOptimizer.from_files(
-            str(self.test_int_file),
-            str(self.forcefield_file),
-            rotatable_bonds=None,
-            rcp_terms=None
-        )
-        
-        result = optimizer.minimize(
-            max_iterations=5,
-            smoothing=5.0,
-            space_type='Cartesian',
-            verbose=False
-        )
-        
-        self.assertIn('smoothing_sequence', result)
-        self.assertEqual(result['smoothing_sequence'], [5.0])
+        self.assertTrue(result['success'])
 
 
 def run_tests(verbosity=2):
