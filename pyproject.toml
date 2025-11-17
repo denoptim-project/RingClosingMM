@@ -7,7 +7,7 @@ name = "ringclosingmm"
 version = "1.0.0"
 description = "Ring closing molecular modeling using an OpenMM engine"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+license = {text = "AGPL-3.0-or-later"}
 authors = [
     {name = "Marco Foscato", email = "marco.foscato@uib.no"}
 ]
@@ -28,7 +28,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPL-3.0+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",

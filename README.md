@@ -2,7 +2,7 @@
 
 [![Build and Test](https://github.com/denoptim-project/RingClosingMM/actions/workflows/build_and_test_package.yml/badge.svg)](https://github.com/denoptim-project/RingClosingMM/actions/workflows/build_and_test_package.yml)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 ## Overview
 
@@ -158,7 +158,7 @@ Contributions are welcome! Please:
 
 ## License
 
-The present project is distributed under the GLU AGPLv3 license. See [LICENSE](LICENSE) file.
+The present project is distributed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later). See [LICENSE](LICENSE) file.
 
 ## Acknowledgments
 
