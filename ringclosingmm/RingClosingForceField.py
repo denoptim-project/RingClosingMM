@@ -9,7 +9,7 @@ from openmm.app.forcefield import parsers
 from collections import defaultdict
 import math
 import numpy as np
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 # Conventions: names of energy terms
@@ -37,6 +37,124 @@ def getDistance(p1: Any, p2: Any) -> float:
 def getUnitVector(vector: np.ndarray) -> np.ndarray:
     """Gets the unit vector for the given vector."""
     return vector / np.linalg.norm(vector)
+
+
+def _get_atoms_at_distances(atom_idx: int, neighbors: Dict[int, Set[int]]) -> Tuple[Set[int], Set[int], Set[int], Set[int]]:
+    """
+    Get sets of atoms at distances 0, 1, 2, and 3 from a given atom.
+    
+    This function computes the atoms at different distances in the molecular graph:
+    - atoms_a (distance 0): the atom itself
+    - atoms_b (distance 1): direct neighbors
+    - atoms_c (distance 2): neighbors of neighbors, excluding distance 0 atoms
+    - atoms_d (distance 3): neighbors of distance 2 atoms, excluding distance 1 atoms
+    
+    Parameters
+    ----------
+    atom_idx : int
+        The starting atom index
+    neighbors : Dict[int, Set[int]]
+        Dictionary mapping atom indices to sets of their bonded neighbors
+        
+    Returns
+    -------
+    Tuple[Set[int], Set[int], Set[int], Set[int]]
+        Tuple of (atoms_a, atoms_b, atoms_c, atoms_d) sets
+    """
+    atoms_a = {atom_idx}
+    atoms_b = set(neighbors[atom_idx])
+    atoms_c = set()
+    atoms_d = set()
+    
+    # Distance 2: neighbors of distance 1 atoms, excluding distance 0
+    for atm_b in atoms_b:
+        for atm_c in neighbors[atm_b]:
+            if atm_c not in atoms_a:
+                atoms_c.add(atm_c)
+    
+    # Distance 3: neighbors of distance 2 atoms, excluding distance 1
+    for atm_c in atoms_c:
+        for atm_d in neighbors[atm_c]:
+            if atm_d not in atoms_b:
+                atoms_d.add(atm_d)
+    
+    return atoms_a, atoms_b, atoms_c, atoms_d
+
+
+def _get_atoms_in_1_2_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+    """
+    Get the atoms in 1-2 relation between p1 and p2.
+    """
+    atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
+    atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
+    
+    atoms_in_1_2_relation = set()
+    for atm_a1 in atoms_a1:
+        for atm_b2 in atoms_b2:
+            atoms_in_1_2_relation.add((min(atm_a1, atm_b2), max(atm_a1, atm_b2)))
+    
+    for atm_a2 in atoms_a2:
+        for atm_b1 in atoms_b1:
+            atoms_in_1_2_relation.add((min(atm_a2, atm_b1), max(atm_a2, atm_b1)))
+    
+    return atoms_in_1_2_relation
+
+
+def _get_atoms_in_1_3_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+    """
+    Get the atoms in 1-3 relation between p1 and p2.
+    """
+    atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
+    atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
+    
+    atoms_in_1_3_relation = set()
+    for atm_a1 in atoms_a1:
+        for atm_c2 in atoms_c2:
+            atoms_in_1_3_relation.add((min(atm_a1, atm_c2), max(atm_a1, atm_c2)))
+    
+    for atm_b1 in atoms_b1:
+        for atm_b2 in atoms_b2:
+            atoms_in_1_3_relation.add((min(atm_b1, atm_b2), max(atm_b1, atm_b2)))
+
+    for atm_a2 in atoms_a2:
+        for atm_c1 in atoms_c1:
+            atoms_in_1_3_relation.add((min(atm_a2, atm_c1), max(atm_a2, atm_c1)))
+    
+    for atm_b2 in atoms_b2:
+        for atm_b1 in atoms_b1:
+            atoms_in_1_3_relation.add((min(atm_b2, atm_b1), max(atm_b2, atm_b1)))
+    
+    return atoms_in_1_3_relation
+
+def _get_atoms_in_1_4_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+    """
+    Get the atoms in 1-4 relation between p1 and p2.
+    """
+    atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
+    atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
+    
+    atoms_in_1_4_relation = set()
+    for atm_a1 in atoms_a1:
+        for atm_d2 in atoms_d2:
+            atoms_in_1_4_relation.add((min(atm_a1, atm_d2), max(atm_a1, atm_d2)))
+    
+    for atm_b1 in atoms_b1:
+        for atm_c2 in atoms_c2:
+            atoms_in_1_4_relation.add((min(atm_b1, atm_c2), max(atm_b1, atm_c2)))
+    
+    for atm_c1 in atoms_c1:
+        for atm_d2 in atoms_d2:
+            atoms_in_1_4_relation.add((min(atm_c1, atm_d2), max(atm_c1, atm_d2)))
+
+    for atm_a2 in atoms_a2:
+        for atm_d1 in atoms_d1:
+            atoms_in_1_4_relation.add((min(atm_a2, atm_d1), max(atm_a2, atm_d1)))
+    
+    for atm_b2 in atoms_b2:
+        for atm_c1 in atoms_c1:
+            atoms_in_1_4_relation.add((min(atm_b2, atm_c1), max(atm_b2, atm_c1)))
+
+    return atoms_in_1_4_relation
 
 
 def getAngle(p0: Any, p1: Any, p2: Any) -> float:
@@ -241,108 +359,31 @@ class HeadTailNonbondedGenerator():
                 return True
             return False
         
-        #TODO: this is repeated below: male it a function to get the list of atoms in 1-2,1-3, and 1-4
-
         # Build a dictionary of bonded neighbors for each atom
         neighbors = defaultdict(set)
         for bond in data.bonds:
             neighbors[bond.atom1].add(bond.atom2)
             neighbors[bond.atom2].add(bond.atom1)
 
-        counter = 0
         for idx, pair in enumerate(rcpterms):
             p1 = int(pair[0])
             p2 = int(pair[1])
 
             # Ignore the RCP pair itself (1-1 relation): do nothing for (p1,p2) and (p2,p1)
 
-            # Labels consider the chain a-b-c-d where both p1 and p2 are the respective position 'a'
-            atoms_a1 = set([p1])
-            atoms_b1 = set(neighbors[p1])
-            atoms_c1 = set()
-            atoms_d1 = set()
-            for atm_b1 in atoms_b1:
-                for atm_c1 in neighbors[atm_b1]:
-                    if atm_c1 not in atoms_a1:
-                        atoms_c1.add(atm_c1)
-            for atm_c1 in atoms_c1:
-                for atm_d1 in neighbors[atm_c1]:
-                    if atm_d1 not in atoms_b1:
-                        atoms_d1.add(atm_d1)
-
-            atoms_a2 = set([p2])
-            atoms_b2 = set(neighbors[p2])
-            atoms_c2 = set()
-            atoms_d2 = set()
-            for atm_b in atoms_b2:
-                for atm_c in neighbors[atm_b]:
-                    if atm_c not in atoms_a2:
-                        atoms_c2.add(atm_c)
-            for atm_c2 in atoms_c2:
-                for atm_d2 in neighbors[atm_c2]:
-                    if atm_d2 not in atoms_b2:
-                        atoms_d2.add(atm_d2)
-
-            for atm_a1 in atoms_a1:
-                for atm_b2 in atoms_b2:
-                    if addForceOnce(atm_a1, atm_b2, 2.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_b2} (1-2 relation)')
-                for atm_c2 in atoms_c2:
-                    if addForceOnce(atm_a1, atm_c2, 3.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_c2} (1-3 relation)')
-                for atm_d2 in atoms_d2:
-                    if addForceOnce(atm_a1, atm_d2, 4.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a1} - {atm_d2} (1-4 relation)')
-
-            for atm_b1 in atoms_b1:
-                for atm_b2 in atoms_b2:
-                    if addForceOnce(atm_b1, atm_b2, 3.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_b1} - {atm_b2} (1-3 relation)')
-                for atm_c2 in atoms_c2:
-                    if addForceOnce(atm_b1, atm_c2, 4.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_b1} - {atm_c2} (1-4 relation)')
-
-            for atm_a2 in atoms_a2:
-                for atm_b1 in atoms_b1:
-                    if addForceOnce(atm_a2, atm_b1, 2.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_b1} (1-2 relation)')
-                for atm_c1 in atoms_c1:
-                    if addForceOnce(atm_a2, atm_c1, 3.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_c1} (1-3 relation)')
-                for atm_d1 in atoms_d1:
-                    if addForceOnce(atm_a2, atm_d1, 4.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_a2} - {atm_d1} (1-4 relation)')
-
-            for atm_b2 in atoms_b2:
-                for atm_b1 in atoms_b1:
-                    if addForceOnce(atm_b2, atm_b1, 3.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_b2} - {atm_b1} (1-3 relation)')
-                for atm_c1 in atoms_c1:
-                    if addForceOnce(atm_b2, atm_c1, 4.0):
-                        counter += 1
-                        if verbose:
-                            print(f'    Also H-T nonbonded term: {atm_b2} - {atm_c1} (1-4 relation)')
-            
-        print(f'Added {counter} H-T nonbonded terms')
-
+            for pair in _get_atoms_in_1_2_relation(p1, p2, neighbors):
+                if addForceOnce(pair[0], pair[1], 2.0):
+                    if verbose:
+                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-2 relation)')
+            for pair in _get_atoms_in_1_3_relation(p1, p2, neighbors):
+                if addForceOnce(pair[0], pair[1], 3.0):
+                    if verbose:
+                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-3 relation)')
+            for pair in _get_atoms_in_1_4_relation(p1, p2, neighbors):
+                if addForceOnce(pair[0], pair[1], 4.0):
+                    if verbose:
+                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-4 relation)')
+                        
         sys.addForce(force)
 
     def postprocessSystem(self, sys, data, args):
@@ -666,7 +707,7 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                 nbForce.addExclusion(pair[0], pair[1])
                 return True
             return False
-        
+    
         if verbose:
             print(f'Adding exclusions to {trackedForceTypes[0]} for {len(rcpterms)} RCP terms')
         
@@ -679,90 +720,18 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                 if verbose:
                     print(f'  RCP term {idx}: excluding vdW between particles {p1} - {p2}')
 
-            # Labels consider the chain a-b-c-d where both p1 and p2 are the respective position 'a'
-            atoms_a1 = set([p1])
-            atoms_b1 = set(neighbors[p1])
-            atoms_c1 = set()
-            atoms_d1 = set()
-            for atm_b1 in atoms_b1:
-                for atm_c1 in neighbors[atm_b1]:
-                    if atm_c1 not in atoms_a1:
-                        atoms_c1.add(atm_c1)
-            for atm_c1 in atoms_c1:
-                for atm_d1 in neighbors[atm_c1]:
-                    if atm_d1 not in atoms_b1:
-                        atoms_d1.add(atm_d1)
-
-            atoms_a2 = set([p2])
-            atoms_b2 = set(neighbors[p2])
-            atoms_c2 = set()
-            atoms_d2 = set()
-            for atm_b in atoms_b2:
-                for atm_c in neighbors[atm_b]:
-                    if atm_c not in atoms_a2:
-                        atoms_c2.add(atm_c)
-            for atm_c2 in atoms_c2:
-                for atm_d2 in neighbors[atm_c2]:
-                    if atm_d2 not in atoms_b2:
-                        atoms_d2.add(atm_d2)
-
-            if verbose:
-                print(f'atoms_a1: {atoms_a1}')
-                print(f'atoms_b1: {atoms_b1}')
-                print(f'atoms_c1: {atoms_c1}')
-                print(f'atoms_d1: {atoms_d1}')
-                print(f'atoms_a2: {atoms_a2}')
-                print(f'atoms_b2: {atoms_b2}')
-                print(f'atoms_c2: {atoms_c2}')
-                print(f'atoms_d2: {atoms_d2}')
-
-            for atm_a1 in atoms_a1:
-                for atm_b2 in atoms_b2:
-                    if add_exclusion_once(atm_a1, atm_b2):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a1} - {atm_b2} (1-2 relation)')
-                for atm_c2 in atoms_c2:
-                    if add_exclusion_once(atm_a1, atm_c2):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a1} - {atm_c2} (1-3 relation)')
-                for atm_d2 in atoms_d2:
-                    if add_exclusion_once(atm_a1, atm_d2):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a1} - {atm_d2} (1-4 relation)')
-            
-            for atm_b1 in atoms_b1:
-                for atm_b2 in atoms_b2:
-                    if add_exclusion_once(atm_b1, atm_b2):
-                        if verbose:
-                            print(f'    Also excluding: {atm_b1} - {atm_b2} (1-3 relation)')
-                for atm_c2 in atoms_c2:
-                    if add_exclusion_once(atm_b1, atm_c2):
-                        if verbose:
-                            print(f'    Also excluding: {atm_b1} - {atm_c2} (1-4 relation)')
-            
-            for atm_a2 in atoms_a2:
-                for atm_b1 in atoms_b1:
-                    if add_exclusion_once(atm_a2, atm_b1):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a2} - {atm_b1} (1-2 relation)')
-                for atm_c1 in atoms_c1:
-                    if add_exclusion_once(atm_a2, atm_c1):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a2} - {atm_c1} (1-3 relation)')
-                for atm_d1 in atoms_d1:
-                    if add_exclusion_once(atm_a2, atm_d1):
-                        if verbose:
-                            print(f'    Also excluding: {atm_a2} - {atm_d1} (1-4 relation)')
-
-            for atm_b2 in atoms_b2:
-                for atm_b1 in atoms_b1:
-                    if add_exclusion_once(atm_b2, atm_b1):
-                        if verbose:
-                            print(f'    Also excluding: {atm_b2} - {atm_b1} (1-3 relation)')
-                for atm_c1 in atoms_c1:
-                    if add_exclusion_once(atm_b2, atm_c1):
-                        if verbose:
-                            print(f'    Also excluding: {atm_b2} - {atm_c1} (1-4 relation)')
+            for pair in _get_atoms_in_1_2_relation(p1, p2, neighbors):
+                if add_exclusion_once(pair[0], pair[1]):
+                    if verbose:
+                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-2 relation)')
+            for pair in _get_atoms_in_1_3_relation(p1, p2, neighbors):
+                if add_exclusion_once(pair[0], pair[1]):
+                    if verbose:
+                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-3 relation)')
+            for pair in _get_atoms_in_1_4_relation(p1, p2, neighbors):
+                if add_exclusion_once(pair[0], pair[1]):
+                    if verbose:
+                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-4 relation)')
         
         if verbose:
             print(f'Total of {len(exclusions_added)} unique exclusions added for RCP terms')
