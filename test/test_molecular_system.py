@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ringclosingmm import MolecularSystem, ZMatrix
-from ringclosingmm.CoordinateConverter import zmatrix_to_cartesian
+from ringclosingmm.CoordinateConversion import zmatrix_to_cartesian
 
 
 class TestMolecularSystemCreation(unittest.TestCase):

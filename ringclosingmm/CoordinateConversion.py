@@ -35,8 +35,6 @@ Helper Functions:
     _count_predefined_neighbours: Count predefined neighbors of a reference atom
     _is_torsion_used: Check if a torsion is already used in Z-matrix
     
-Backward Compatibility:
-    CoordinateConverter: Wrapper class for backward compatibility (deprecated)
 """
 
 import numpy as np
@@ -496,43 +494,6 @@ def cartesian_to_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
         # No need to reassign since we're modifying the dict in place
     
     return new_zmatrix
-
-
-# =============================================================================
-# Backward Compatibility Class
-# =============================================================================
-#TODO remove
-class CoordinateConverter:
-    """
-    Backward compatibility wrapper for coordinate conversion functions.
-    
-    This class provides the same interface as before, but now delegates to
-    module-level functions. All methods are static.
-    
-    .. deprecated::
-        Use module-level functions directly instead:
-        - `zmatrix_to_cartesian()`
-        - `cartesian_to_zmatrix()`
-        - `apply_torsions()`
-        - `extract_torsions()`
-    """
-    
-    @staticmethod
-    def apply_torsions(base_zmatrix: ZMatrix, rotatable_indices: List[int],
-                      torsion_values: np.ndarray) -> ZMatrix:
-        """Apply torsions (delegates to module function)."""
-        return apply_torsions(base_zmatrix, rotatable_indices, torsion_values)
-    
-    @staticmethod
-    def extract_torsions(coords: np.ndarray, zmatrix: ZMatrix,
-                        rotatable_indices: List[int]) -> np.ndarray:
-        """Extract torsions (delegates to module function)."""
-        return extract_torsions(coords, zmatrix, rotatable_indices)
-    
-    @staticmethod
-    def extract_zmatrix(coords: np.ndarray, zmatrix: ZMatrix) -> ZMatrix:
-        """Extract Z-matrix (delegates to cartesian_to_zmatrix)."""
-        return cartesian_to_zmatrix(coords, zmatrix)
 
 
 # =============================================================================

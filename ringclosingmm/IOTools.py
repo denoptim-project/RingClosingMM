@@ -10,7 +10,7 @@ from os.path import basename
 import numpy as np
 from typing import List, Dict
 
-from .CoordinateConverter import zmatrix_to_cartesian, generate_zmatrix
+from .CoordinateConversion import zmatrix_to_cartesian, generate_zmatrix
 from .ZMatrix import ZMatrix
 
 def read_int_file(pathname: str) -> ZMatrix:
@@ -400,7 +400,7 @@ def read_sdf_file(pathname: str) -> ZMatrix:
         # Convert to 0-based
         bonds.append((atom1_1based - 1, atom2_1based - 1, bond_type))
     
-    # Convert to Z-matrix using CoordinateConverter
+    # Convert to Z-matrix using CoordinateConversion
     zmatrix_obj = generate_zmatrix(atoms_data, bonds)
     
     return zmatrix_obj

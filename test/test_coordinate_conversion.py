@@ -14,7 +14,7 @@ from pathlib import Path
 # Add parent directory to path for package imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ringclosingmm.CoordinateConverter import (
+from ringclosingmm.CoordinateConversion import (
     zmatrix_to_cartesian,
     cartesian_to_zmatrix,
     apply_torsions,

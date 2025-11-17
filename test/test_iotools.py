@@ -623,7 +623,7 @@ $$$$
         if not self.test_sdf_file.exists():
             self.skipTest(f"Test SDF file not found: {self.test_sdf_file}")
         
-        from ringclosingmm.CoordinateConverter import zmatrix_to_cartesian
+        from ringclosingmm.CoordinateConversion import zmatrix_to_cartesian
         
         zmat = read_sdf_file(str(self.test_sdf_file))
         

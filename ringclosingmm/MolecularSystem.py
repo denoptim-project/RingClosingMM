@@ -25,7 +25,7 @@ from .RingClosingForceField import (
     create_system,
     setGlobalParameterToAllForces
 )
-from .CoordinateConverter import (
+from .CoordinateConversion import (
     zmatrix_to_cartesian,
     _calc_distance
 )

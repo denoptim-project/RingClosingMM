@@ -8,13 +8,9 @@ This script demonstrates how to send requests to the ring closure optimizer serv
 import socket
 import json
 import sys
-from pathlib import Path
 
-# Add src to path
-ringclosingmm_path = Path(__file__).resolve().parent.parent / 'src'
-sys.path.insert(0, str(ringclosingmm_path))
-
-from CoordinateConverter import zmatrix_to_cartesian
+# Package should be installed, no need to modify sys.path
+from ringclosingmm.CoordinateConversion import zmatrix_to_cartesian
 
 
 def send_request(request: dict, host: str = 'localhost', port: int = 8080) -> dict:

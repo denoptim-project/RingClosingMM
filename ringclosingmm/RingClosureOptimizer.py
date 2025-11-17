@@ -3,9 +3,9 @@
 import time
 from typing import List, Tuple, Dict, Optional, Any, Union
 
-from .CoordinateConverter import (
+from .CoordinateConversion import (
     zmatrix_to_cartesian,
-    CoordinateConverter
+    cartesian_to_zmatrix
 )
 from .MolecularSystem import MolecularSystem
 from .ZMatrix import ZMatrix
@@ -43,7 +43,6 @@ class RingClosureOptimizer:
         self.system = molecular_system
         # Set rotatable indices on the system (this computes rc_critical_rotatable_indeces and dof_indices)
         self.system.set_rotatable_indices(rotatable_indices)
-        self.converter = CoordinateConverter()
     
     @classmethod
     def from_files(cls, structure_file: str, forcefield_file: str,
@@ -437,7 +436,7 @@ class RingClosureOptimizer:
                     )
                     
                     # Extract refined Z-matrix from minimized coordinates
-                    refined_zmatrix = self.converter.extract_zmatrix(
+                    refined_zmatrix = cartesian_to_zmatrix(
                         minimized_coords,
                         current_zmatrix
                     )

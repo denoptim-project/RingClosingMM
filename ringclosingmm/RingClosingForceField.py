@@ -566,10 +566,6 @@ def create_simulation(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
     if positions is not None:
         simulation.context.setPositions(positions)
 
-    # Store information in simulation object
-    #TODO: move to system
-    simulation.rcpterms = rcpterms
-
     return simulation
 
 

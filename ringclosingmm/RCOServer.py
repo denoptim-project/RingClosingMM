@@ -28,7 +28,7 @@ import logging
 # Import RingClosureOptimizer and dependencies
 from .MolecularSystem import MolecularSystem
 from .RingClosureOptimizer import RingClosureOptimizer
-from .CoordinateConverter import zmatrix_to_cartesian
+from .CoordinateConversion import zmatrix_to_cartesian
 from .ZMatrix import ZMatrix
 
 MY_NAME = "rc-optimizer-server"
