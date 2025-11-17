@@ -36,23 +36,7 @@ Next, see below for a (quick start)[#quick-start] guide.
 
 ### Development Mode
 
-```bash
-# Clone the repository
-git clone <repository-url> <folder-name>
-cd <folder-name>
-
-# Option 1: Using conda (recommended for OpenMM)
-conda env create -f environment.yml
-conda activate rco_devel
-# Package is automatically installed in development mode
-
-# Option 2: Using pip only
-pip install -e .  # Installs with development dependencies
-```
-
-After installation, you can use `rc-optimizer` from anywhere!
-
-**Note**: All package configuration is in `pyproject.toml`.
+See the dedicated [development guide](DEVEL_GUIDE.md).
 
 
 ## Quick Start

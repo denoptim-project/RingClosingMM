@@ -1,28 +1,26 @@
-{% set name = "ringclosingmm" %}
-{% set version = "1.0.0" %}
 
 package:
-  name: {{ name|lower }}
-  version: {{ version }}
+  name: ringclosingmm
+  version: {{ environ.get('RINGCLOSINGMM_VERSION', '') }}
 
 source:
   # For local testing, use path
-  # path: ..
+  path: ..
   
   # For conda-forge, use PyPI or GitHub release
-  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  # url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
   # sha256: REPLACE_WITH_ACTUAL_SHA256
   
   # Or use GitHub release:
-  # url: https://github.com/your-username/RingClosingMM/archive/v{{ version }}.tar.gz
+  # url: https://github.com/denoptim-project/RingClosingMM/archive/v{{ version }}.tar.gz
   # sha256: REPLACE_WITH_ACTUAL_SHA256
 
 build:
   number: 0
-  skip: true  # [py<38]
+  noarch: python
   script: {{ PYTHON }} -m pip install . -vv
   entry_points:
-    - rc-optimizer = src.__main__:main
+    - rc-optimizer = ringclosingmm.__main__:main
 
 requirements:
   host:
@@ -39,27 +37,26 @@ requirements:
 
 test:
   imports:
-    - src
+    - ringclosingmm
   commands:
     - rc-optimizer --help
   requires:
     - pytest >=6.0
 
 about:
-  home: https://github.com/your-username/RingClosingMM
-  license: GPL-3.0-or-later
-  license_family: GPL
+  home: https://github.com/denoptim-project/RingClosingMM
+  license: AGPL-3.0
   license_file: LICENSE
   summary: Ring closing molecular modeling using an OpenMM engine
   description: |
-    The Ring Closure Optimizer is a molecular modeling tool for identifying 
-    ring-closing conformations. It uses OpenMM with a custom force field that 
-    favors bond formation, combined with a hybrid genetic algorithm for efficient 
-    conformational search in torsional space.
-  doc_url: https://github.com/your-username/RingClosingMM/blob/main/README.md
-  dev_url: https://github.com/your-username/RingClosingMM
+    The RingClosingMM is a molecular modeling tool for identifying 
+    ring-closing conformations. It uses OpenMM engine and SciPy optimizers 
+    combined with a special force field that favors ring-closing bond 
+    formation.
+  doc_url: https://github.com/denoptim-project/RingClosingMM/blob/main/README.md
+  dev_url: https://github.com/denoptim-project/RingClosingMM
 
 extra:
   recipe-maintainers:
-    - your-github-username
+    - marco-foscato
 

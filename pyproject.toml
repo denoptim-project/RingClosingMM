@@ -18,7 +18,7 @@ keywords = [
     "conformational-search",
     "torsional-optimization", 
     "potential-energy-smoothing",
-    "genetic-algorithm",
+    "z-matrix",
     "openmm",
     "chemistry",
     "molecular-modeling"

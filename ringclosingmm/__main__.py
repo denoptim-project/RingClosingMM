@@ -52,7 +52,7 @@ DEFAULT_FORCEFIELD = str(Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml
 def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Ring Closure Optimization using Hybrid Genetic Algorithm with OpenMM',
+        description='Ring Closing Molecular Modeling using OpenMM',
         formatter_class=CustomHelpFormatter,
         epilog='For more information, see RingClosureOptimizer module documentation.'
     )
@@ -60,7 +60,7 @@ def parse_arguments() -> argparse.Namespace:
     # Required arguments (conditionally required - not needed for server operations)
     required = parser.add_argument_group('Required Arguments')
     required.add_argument('-i', '--input',
-                         help='Input structure file (.int format with Z-matrix). '
+                         help='Input structure file (.int format with Z-matrix, or .sdf format). '
                               'Required unless using server operations (--server-start, --server-stop, --server-status)')
     required.add_argument('-r', '--rot-bonds', required=False, nargs='+', type=int,
                          help='Rotatable bonds as space-separated pairs of atom indices (1-based). '
