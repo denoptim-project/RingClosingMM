@@ -52,7 +52,7 @@ jobs:
         pip install -e .
     
     - name: Install dependencies (Windows)
-      shell: cmd
+      shell: bash -l {0}
       if: matrix.os == 'windows-latest'
       run: |
         conda info
@@ -71,7 +71,7 @@ jobs:
         python -c "import scipy; print(f'SciPy version: {scipy.__version__}')"
     
     - name: Display installed packages (Windows)
-      shell: cmd
+      shell: bash -l {0}
       if: matrix.os == 'windows-latest'
       run: |
         conda list
@@ -89,7 +89,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=.git,__pycache__,build,dist,.eggs
     
     - name: Lint with flake8 (Windows)
-      shell: cmd
+      shell: bash -l {0}
       if: matrix.os == 'windows-latest'
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=.git,__pycache__,build,dist,.eggs
@@ -105,7 +105,7 @@ jobs:
         pytest test/ -v --tb=short --color=yes --cov=ringclosingmm --cov-report=term --cov-report=xml --ignore-glob="*__pycache__*"
     
     - name: Test with pytest (Windows)
-      shell: cmd
+      shell: bash -l {0}
       if: matrix.os == 'windows-latest'
       run: |
         pytest test/ -v --tb=short --color=yes --cov=ringclosingmm --cov-report=term --cov-report=xml --ignore-glob="*__pycache__*"
