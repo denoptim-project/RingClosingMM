@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between them. It builds on an [OpenMM](https://openmm.org/) molecular mechanics engine and [scipy](https://scipy.org/) optimizers.
+The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between selected atoms. It builds on an [OpenMM](https://openmm.org/) molecular mechanics engine and [scipy](https://scipy.org/) optimizers.
 The molecular mechanics is based on force field definition designed for potential energy smoothing algorithms and that includes a ring-closing (i.e., bond-forming) attractive interaction operating over specific atom pairs (i.e., the ring-closing potential terms, RCP terms). Moreover, the inter atomic repulsion terms involving such pairs of to-be-bonded atoms are excluded as if those atoms were bonded, thus allowing those atoms to come close enough to define a bond between them. Other force field components introduce forces meant to protect as much as possible the initial geometry, while allowing for the minimal geometrical adaptation (some bond bending, and substantial bond torsion) that might be needed to access the ring-closing conformation and distribute the resulting strain over the formed ring. To retain generality, the force field uses the Universal Force Field parameters for the non-bonded interactions and fixed force constant for bond length and angle protection. Hence, the force field is not parametrized to reproduce any expected output, but only to exclude atom clashes while searching for ring-closing conformations.
 The conformational search implements a divide and conquer strategy:
 1. identify the torsions along the ring-closing chain that allow to bring the to-be-bonded atoms in the most suitable relative position to define the new bond,
@@ -15,7 +15,7 @@ The conformational search implements a divide and conquer strategy:
 
 ## Features
 
-- ✅ Geometry-protective force field: bond lengths and angles in the input geometry are taken as the equilibrium value coupled with strong force constants for stretching and bending.
+- ✅ Geometry-protective force field: bond lengths and angles in the input geometry are taken as the equilibrium values coupled with strong force constants for stretching and bending.
 - ✅ Potential energy smoothing for global optimization in Z-matrix and Cartesian space.
 - ✅ Energy minimization in Z-matrix space with selection of the degrees of freedom to vary and of their bounds.
 - ✅ Socket TCP server to provide low-latency interface with any client application requesting a bond-formation/ring-closure service.
@@ -58,8 +58,8 @@ After installation, you can use `rc-optimizer` from anywhere!
 ## Quick Start
 
 > [!WARNING]
-> 1-based indexing is expected for any input to the command line interface or the socket server interface. This allows to use input files generated with [Tinker](https://dasher.wustl.edu/tinker/).
-> Internally, 0-based indexing is used according to Python convention, hence 0-based indexing is expected for input to the API, but not for input files read-in by any API method. 
+> 1-based indexing is expected for any input to the command line interface or the socket server interface.
+> Internally, 0-based indexing is used according to Python convention, hence 0-based indexing is expected for input to the API, but not for input files read-in by any API method.
 
 ### 1. Command Line
 
@@ -68,10 +68,19 @@ After installation you can run this to get help
 rc-optimizer -h
 ```
 
-Here, is an example of an actual command for optimising a ring-closing conformation:
+Here, is an example of an actual command for optimising a ring-closing conformation using as input file a Z-matrix *int* file in [Tinker](https://dasher.wustl.edu/tinker/) format:
 ```bash
 rc-optimizer \
     -i zmatrix.int \
+    -r 1 2 3 4 \
+    -c 4 5 6 7 \
+    -o optimized.xyz \
+    --verbose
+```
+The Z-matrix *int* file allows precise control over which internal coordinates to work with. Alternatively, the input can be given as [MDL SDF](https://en.wikipedia.org/wiki/Chemical_table_file) file, which is internally converted into a Z-matrix by following the connectivity of the system. However, this conversion is not guaranteed to choose the best set of internal coordinates. Yet, if you expect the atom list and the connectivity defined in an *SDF* file to lead to a suitable Z-matrix, the *SDF* file can be used as input instead on the *int*:
+```bash
+rc-optimizer \
+    -i zmatrix.sdf \
     -r 1 2 3 4 \
     -c 4 5 6 7 \
     -o optimized.xyz \
@@ -117,7 +126,7 @@ For example, here is the content of a JSON file defining the request:
   "torsional": false
 }
 ```
-that can be set from a terminal as follows:
+The JSON file can be sent to the server from a terminal as follows:
 ```bash
 echo  <path_to_json_file> | nc localhost <port>
 ```
@@ -127,14 +136,6 @@ echo  <path_to_json_file> | nc localhost <port>
 
 ```python
 from ringclosingmm import RingClosureOptimizer, IOTools, ZMatrix
-
-# Or use the shorter alias:
-from ringclosingmm import RCOptimizer, ZMatrix
-
-# Or import specific functions/classes:
-# from ringclosingmm.RingClosureOptimizer import RingClosureOptimizer
-# from ringclosingmm.IOTools import read_int_file, write_zmatrix_file
-# from ringclosingmm.ZMatrix import ZMatrix
 
 # Create optimizer
 optimizer = RingClosureOptimizer.from_files(
@@ -163,7 +164,6 @@ zmatrix = IOTools.read_int_file('molecule.int')
 IOTools.write_zmatrix_file(zmatrix, 'output.int')
 ```
 
-
 ## Contributing
 
 Contributions are welcome! Please:
@@ -171,6 +171,10 @@ Contributions are welcome! Please:
 2. Create a feature branch
 3. Make your changes with tests
 4. Submit a pull request
+
+## License
+
+The present project is distributed under the GLU AGPLv3 license. See [LICENSE](LICENSE) file.
 
 ## Acknowledgments
 
