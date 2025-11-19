@@ -59,7 +59,7 @@ def read_int_file(pathname: str) -> ZMatrix:
             atom_data[ZMatrix.FIELD_BOND_REF] = bond_ref_1based - 1  # Convert to 0-based
             atom_data[ZMatrix.FIELD_BOND_LENGTH] = float(parts[4])
             # Add bond (already 0-based: i-1 and bond_ref-1)
-            bonds.append((i - 1, bond_ref_1based - 1, 1))
+            bonds.append((i - 1, bond_ref_1based - 1))
         
         if len(parts) > 5:
             # Has angle reference (1-based in file, convert to 0-based)
@@ -92,7 +92,7 @@ def read_int_file(pathname: str) -> ZMatrix:
             go_on = False
         else:
             parts = line.split()
-            bonds.append((int(parts[0]) - 1, int(parts[1]) - 1, 1))
+            bonds.append((int(parts[0]) - 1, int(parts[1]) - 1))
     
     # then, those to be removed
     go_on = True
@@ -109,7 +109,7 @@ def read_int_file(pathname: str) -> ZMatrix:
             atom1 = int(parts[0]) - 1
             atom2 = int(parts[1]) - 1
             # Remove bond (check both directions)
-            bonds = [(a1, a2, bt) for a1, a2, bt in bonds 
+            bonds = [(a1, a2) for a1, a2 in bonds 
                     if not ((a1 == atom1 and a2 == atom2) or (a1 == atom2 and a2 == atom1))]
 
     # Create ZMatrix instance
@@ -142,17 +142,17 @@ def write_zmatrix_file(zmatrix: ZMatrix, filepath: str) -> None:
             atm1 = atom[ZMatrix.FIELD_ID]
             atm2 = atom[ZMatrix.FIELD_BOND_REF]
             if atm1 < atm2:
-                bonds_implicit_in_zmatrix.append((atm1, atm2, 1))
+                bonds_implicit_in_zmatrix.append((atm1, atm2))
             else:
-                bonds_implicit_in_zmatrix.append((atm2, atm1, 1))
+                bonds_implicit_in_zmatrix.append((atm2, atm1))
 
-    bonds_declared_sorted = [(min(bond[0], bond[1]), max(bond[0], bond[1]), bond[2]) for bond in zmatrix.bonds]
+    bonds_declared_sorted = [(min(bond[0], bond[1]), max(bond[0], bond[1])) for bond in zmatrix.bonds]
 
     bonds_to_add = []
     for bond in zmatrix.bonds:
         atm1 = bond[0]
         atm2 = bond[1]
-        sorted_bond = (min(atm1, atm2), max(atm1, atm2), 1)
+        sorted_bond = (min(atm1, atm2), max(atm1, atm2))
         if sorted_bond not in bonds_implicit_in_zmatrix:
             bonds_to_add.append(sorted_bond)
     
@@ -160,7 +160,7 @@ def write_zmatrix_file(zmatrix: ZMatrix, filepath: str) -> None:
     for bond in bonds_implicit_in_zmatrix:
         atm1 = bond[0]
         atm2 = bond[1]
-        sorted_bond = (min(atm1, atm2), max(atm1, atm2), 1)
+        sorted_bond = (min(atm1, atm2), max(atm1, atm2))
         if sorted_bond not in bonds_declared_sorted:
             bonds_to_remove.append(sorted_bond)
 
@@ -256,7 +256,7 @@ def write_sdf_file(zmatrix: ZMatrix, filepath: str) -> None:
             bond_ref = atom[ZMatrix.FIELD_BOND_REF]
             bond_key = (min(i, bond_ref), max(i, bond_ref))
             if bond_key not in bonds_set:
-                all_bonds.append((i, bond_ref, 1))  # Default bond type 1
+                all_bonds.append((i, bond_ref))  # Default bond type 1
                 bonds_set.add(bond_key)
     
     # Add explicit bonds from zmatrix.bonds
@@ -278,7 +278,7 @@ def write_sdf_file(zmatrix: ZMatrix, filepath: str) -> None:
         
         # Write bonds (1-based indices in SDF format)
         for bond in all_bonds:
-            f.write(f"{bond[0]+1:3d}{bond[1]+1:3d}{bond[2]:3d}  0  0  0  0\n")
+            f.write(f"{bond[0]+1:3d}{bond[1]+1:3d}  1  0  0  0  0\n")
         
         f.write("M  END\n")
         f.write("$$$$\n")
@@ -395,10 +395,9 @@ def read_sdf_file(pathname: str) -> ZMatrix:
         # SDF bond format: "iii jjj ttt" (1-based indices)
         atom1_1based = int(line[0:3].strip())
         atom2_1based = int(line[3:6].strip())
-        bond_type = int(line[6:9].strip())
         
         # Convert to 0-based
-        bonds.append((atom1_1based - 1, atom2_1based - 1, bond_type))
+        bonds.append((atom1_1based - 1, atom2_1based - 1))
     
     # Convert to Z-matrix using CoordinateConversion
     zmatrix_obj = generate_zmatrix(atoms_data, bonds)

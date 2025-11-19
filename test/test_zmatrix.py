@@ -35,9 +35,9 @@ class TestZMatrixInitialization(unittest.TestCase):
              'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
         self.valid_bonds = [
-            (0, 1, 1),
-            (1, 2, 1),
-            (2, 3, 1),
+            (0, 1),
+            (1, 2),
+            (2, 3),
         ]
     
     def test_valid_initialization(self):
@@ -52,7 +52,7 @@ class TestZMatrixInitialization(unittest.TestCase):
             {'element': 'C', 'atomic_num': 6},
             {'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5}
         ]
-        zmat = ZMatrix(atoms_no_id, [(0, 1, 1)])
+        zmat = ZMatrix(atoms_no_id, [(0, 1)])
         self.assertEqual(zmat[0]['id'], 0)
         self.assertEqual(zmat[1]['id'], 1)
     
@@ -63,7 +63,7 @@ class TestZMatrixInitialization(unittest.TestCase):
             {'id': 10, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5}
         ]
         with self.assertRaises(ValueError) as cm:
-            ZMatrix(atoms_wrong_id, [(0, 1, 1)])
+            ZMatrix(atoms_wrong_id, [(0, 1)])
         self.assertIn("inconsistent id", str(cm.exception))
     
     def test_empty_zmatrix(self):
@@ -105,7 +105,7 @@ class TestZMatrixInitialization(unittest.TestCase):
             {'element': 'C', 'bond_ref': 10, 'bond_length': 1.5}  # Out of range
         ]
         with self.assertRaises(ValueError) as cm:
-            ZMatrix(atoms, [(0, 1, 1)])
+            ZMatrix(atoms, [(0, 1)])
         self.assertIn("out of range", str(cm.exception))
     
     def test_angle_ref_out_of_range(self):
@@ -117,13 +117,13 @@ class TestZMatrixInitialization(unittest.TestCase):
              'angle_ref': 10, 'angle': 109.5}  # Out of range
         ]
         with self.assertRaises(ValueError) as cm:
-            ZMatrix(atoms, [(0, 1, 1), (1, 2, 1)])
+            ZMatrix(atoms, [(0, 1), (1, 2)])
         self.assertIn("out of range", str(cm.exception))
     
     def test_bond_index_out_of_range(self):
         """Test that bond atom indices must be in valid range."""
         atoms = [{'element': 'C'}, {'element': 'C'}]
-        bonds = [(0, 10, 1)]  # Out of range
+        bonds = [(0, 10)]  # Out of range
         with self.assertRaises(ValueError) as cm:
             ZMatrix(atoms, bonds)
         self.assertIn("out of range", str(cm.exception))
@@ -149,7 +149,7 @@ class TestZMatrixListInterface(unittest.TestCase):
             {'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
             {'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.1}
         ]
-        self.bonds = [(0, 1, 1), (1, 2, 1)]
+        self.bonds = [(0, 1), (1, 2)]
         self.zmat = ZMatrix(self.atoms, self.bonds)
     
     def test_len(self):
@@ -219,7 +219,7 @@ class TestZMatrixProperties(unittest.TestCase):
             {'element': 'C', 'atomic_num': 6},
             {'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5}
         ]
-        self.bonds = [(0, 1, 1)]
+        self.bonds = [(0, 1)]
         self.zmat = ZMatrix(self.atoms, self.bonds)
     
     def test_atoms_property_returns_copy(self):
@@ -232,7 +232,7 @@ class TestZMatrixProperties(unittest.TestCase):
     def test_bonds_property_returns_copy(self):
         """Test that bonds property returns a copy."""
         bonds_copy = self.zmat.bonds
-        bonds_copy.append((1, 2, 1))
+        bonds_copy.append((1, 2))
         # Original should not be modified
         self.assertEqual(len(self.zmat.bonds), 1)
 
@@ -253,7 +253,7 @@ class TestZMatrixMethods(unittest.TestCase):
              'angle_ref': 1, 'angle': 109.5,
              'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        self.bonds = [(0, 1, 1), (1, 2, 1), (2, 3, 1)]
+        self.bonds = [(0, 1), (1, 2), (2, 3)]
         self.zmat = ZMatrix(self.atoms, self.bonds)
     
     def test_get_atom_valid(self):
@@ -279,12 +279,12 @@ class TestZMatrixMethods(unittest.TestCase):
         """Test get_bonds method."""
         bonds = self.zmat.get_bonds()
         self.assertEqual(len(bonds), 3)
-        self.assertEqual(bonds[0], (0, 1, 1))
+        self.assertEqual(bonds[0], (0, 1))
     
     def test_get_bonds_returns_copy(self):
         """Test that get_bonds returns a copy."""
         bonds = self.zmat.get_bonds()
-        bonds.append((3, 4, 1))
+        bonds.append((3, 4))
         # Original should not be modified
         self.assertEqual(len(self.zmat.get_bonds()), 3)
     
@@ -408,7 +408,7 @@ class TestZMatrixMethods(unittest.TestCase):
              'angle_ref': 1, 'angle': 109.5,
              'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 1}  # Not rotatable
         ]
-        zmat = ZMatrix(atoms_with_chirality, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmat = ZMatrix(atoms_with_chirality, [(0, 1), (1, 2), (2, 3)])
         rotatable = zmat.get_rotatable_indices()
         # Atom 3 has chirality != 0, so it's not rotatable
         self.assertEqual(rotatable, [])
@@ -439,7 +439,7 @@ class TestZMatrixEdgeCases(unittest.TestCase):
             {'element': 'C', 'bond_ref': 0, 'bond_length': 1.5},
             {'element': 'C', 'bond_ref': 1, 'bond_length': 1.5}  # No angle
         ]
-        zmat = ZMatrix(atoms, [(0, 1, 1), (1, 2, 1)])
+        zmat = ZMatrix(atoms, [(0, 1), (1, 2)])
         self.assertEqual(len(zmat), 3)
         # Should not raise error when accessing missing field
         self.assertNotIn('angle', zmat[2])
@@ -450,7 +450,7 @@ class TestZMatrixEdgeCases(unittest.TestCase):
             {'element': 'C'},
             {'element': 'C', 'bond_ref': 0, 'bond_length': 1.5}
         ]
-        bonds = [(0, 1, 1), (1, 0, 1)]  # Same bond twice
+        bonds = [(0, 1), (1, 0)]  # Same bond twice
         zmat = ZMatrix(atoms, bonds)
         self.assertEqual(len(zmat.bonds), 2)
     
@@ -464,7 +464,7 @@ class TestZMatrixEdgeCases(unittest.TestCase):
             {'element': 'C'},
             {'element': 'C', 'bond_ref': 0, 'bond_length': 1.5}
         ]
-        zmat = ZMatrix(atoms, [(0, 1, 1)])
+        zmat = ZMatrix(atoms, [(0, 1)])
         # Should be able to access fields like a dict
         self.assertEqual(zmat[1]['bond_length'], 1.5)
         # Should be able to modify fields

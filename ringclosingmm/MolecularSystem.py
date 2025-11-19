@@ -34,7 +34,7 @@ from scipy.optimize import OptimizeResult, differential_evolution, minimize
 
 
 def build_topology_from_data(atoms_data: List[Tuple[str, int]], 
-                             bonds_data: List[Tuple[int, int, int]]) -> Topology:
+                             bonds_data: List[Tuple[int, int]]) -> Topology:
     """
     Build OpenMM Topology from parsed atom and bond data.
     
@@ -43,7 +43,7 @@ def build_topology_from_data(atoms_data: List[Tuple[str, int]],
     atoms_data : list of tuples
         List of (element_symbol, atom_index) tuples
     bonds_data : list of tuples
-        List of (atom1_idx, atom2_idx, bond_type) tuples
+        List of (atom1_idx, atom2_idx) tuples
     
     Returns
     -------
@@ -68,8 +68,8 @@ def build_topology_from_data(atoms_data: List[Tuple[str, int]],
         atoms.append(atom)
     
     # Add bonds to topology
-    for atom1_idx, atom2_idx, bond_type in bonds_data:
-        topo.addBond(atoms[atom1_idx], atoms[atom2_idx], bond_type)
+    for atom1_idx, atom2_idx in bonds_data:
+        topo.addBond(atoms[atom1_idx], atoms[atom2_idx])
     
     return topo
     

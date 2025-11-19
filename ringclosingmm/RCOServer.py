@@ -312,12 +312,12 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         
         zmatrix_0based.append(atom_0based)
 
-    # List of atom indices that are bonded to each other and the bond type
+    # List of atom indices that are bonded to each other
     # This is needed because the Z-matrix does not imply bond definition
     bonds_data = request.get('bonds_data') # 1-based indexing
     if not bonds_data:
         raise ValueError("Missing required field: bonds_data")
-    bonds_data = [(a-1, b-1, c) for a, b, c in bonds_data] # 0-based indexing
+    bonds_data = [(a-1, b-1) for a, b in bonds_data] # 0-based indexing
 
     # Convert to ZMatrix immediately - this is the only boundary where we convert List[Dict] to ZMatrix
     zmatrix = ZMatrix(zmatrix_0based, bonds_data)

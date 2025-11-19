@@ -15,7 +15,7 @@ The Z-matrix format is similar to the Tinker format:
     - Bond: bond length in Angstroms
     - Angle: bond angle in degrees
     - All indices are 0-based internally
-    - ctopological connections (i.e., bonds) may differ from the distances specified in the Z-matrix, so bonds are also specified as (atom1_idx, atom2_idx, bond_type) tuples (0-based indices)
+    - ctopological connections (i.e., bonds) may differ from the distances specified in the Z-matrix, so bonds are also specified as (atom1_idx, atom2_idx) tuples (0-based indices)
 
 Classes:
     ZMatrix: Encapsulates Z-matrix atoms and bond connectivity
@@ -46,8 +46,8 @@ class ZMatrix:
         - 'dihedral_ref': reference atom for dihedral (0-based, optional)
         - 'dihedral': dihedral angle in degrees (optional)
         - 'chirality': 0 for true dihedral, +1/-1 for chiral angle (optional)
-    bonds : List[Tuple[int, int, int]]
-        List of bonds as (atom1_idx, atom2_idx, bond_type) tuples (0-based indices)
+    bonds : List[Tuple[int, int]]
+        List of bonds as (atom1_idx, atom2_idx) tuples (0-based indices)
     
     Examples
     --------
@@ -77,7 +77,7 @@ class ZMatrix:
     # Reference field names (for validation)
     REF_FIELDS = [FIELD_BOND_REF, FIELD_ANGLE_REF, FIELD_DIHEDRAL_REF]
     
-    def __init__(self, atoms: List[Dict], bonds: List[Tuple[int, int, int]]):
+    def __init__(self, atoms: List[Dict], bonds: List[Tuple[int, int]]):
         """
         Initialize Z-matrix from atoms and bonds.
         
@@ -85,8 +85,8 @@ class ZMatrix:
         ----------
         atoms : List[Dict]
             List of atom dictionaries with Z-matrix data (0-based indices)
-        bonds : List[Tuple[int, int, int]]
-            List of bonds as (atom1_idx, atom2_idx, bond_type) tuples (0-based indices)
+        bonds : List[Tuple[int, int]]
+            List of bonds as (atom1_idx, atom2_idx) tuples (0-based indices)
         
         Raises
         ------
@@ -123,7 +123,7 @@ class ZMatrix:
                         raise ValueError(f"Atom {i} {ref_key} index {ref_idx} out of range [0, {len(self._atoms)-1}]")
         
         # Validate bond indices are 0-based and in range
-        for bond_idx, (atom1, atom2, bond_type) in enumerate(self._bonds):
+        for bond_idx, (atom1, atom2) in enumerate(self._bonds):
             if not isinstance(atom1, int) or not isinstance(atom2, int):
                 raise ValueError(f"Bond {bond_idx} atom indices must be integers")
             if atom1 < 0 or atom1 >= len(self._atoms):
@@ -182,7 +182,7 @@ class ZMatrix:
         return copy.deepcopy(self._atoms)
     
     @property
-    def bonds(self) -> List[Tuple[int, int, int]]:
+    def bonds(self) -> List[Tuple[int, int]]:
         """Get list of bonds (returns copy)."""
         return copy.deepcopy(self._bonds)
     
@@ -204,13 +204,13 @@ class ZMatrix:
             raise IndexError(f"Atom index {index} out of range [0, {len(self._atoms)-1}]")
         return copy.deepcopy(self._atoms[index])
     
-    def get_bonds(self) -> List[Tuple[int, int, int]]:
+    def get_bonds(self) -> List[Tuple[int, int]]:
         """
         Get bonds (returns copy).
         
         Returns
         -------
-        List[Tuple[int, int, int]]
+        List[Tuple[int, int]]
             Copy of bonds list
         """
         return copy.deepcopy(self._bonds)
@@ -303,7 +303,7 @@ class ZMatrix:
         return copy.deepcopy(self._atoms)
     
     @classmethod
-    def from_list(cls, atoms: List[Dict], bonds: List[Tuple[int, int, int]]) -> 'ZMatrix':
+    def from_list(cls, atoms: List[Dict], bonds: List[Tuple[int, int]]) -> 'ZMatrix':
         """
         Create ZMatrix from List[Dict] format.
         
@@ -311,7 +311,7 @@ class ZMatrix:
         ----------
         atoms : List[Dict]
             List of atom dictionaries
-        bonds : List[Tuple[int, int, int]]
+        bonds : List[Tuple[int, int]]
             List of bonds
         
         Returns

@@ -17,7 +17,7 @@ from pathlib import Path
 # Add parent directory to path for package imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ringclosingmm import RCOServer, ZMatrix
+from ringclosingmm import ZMatrix
 from ringclosingmm.RCOServer import start, stop
 import ringclosingmm.RCOServer as rco_server
 import socketserver
@@ -69,11 +69,11 @@ class TestServerMinimize(unittest.TestCase):
         # RCP terms: 1-based atom indices (atom 1 to atom 3, atom 2 to atom 4)
         self.rcp_terms = [(1, 3), (2, 4)]
 
-        # bonds_data: 1-based atom indices with bond type
-        # (atom1, atom2, bond_type)
+        # bonds_data: 1-based atom indices
+        # (atom1, atom2)
         self.bonds_data = [
-            (1, 2, 1),  # bond between atoms 1 and 2
-            (3, 4, 1)   # bond between atoms 3 and 4
+            (1, 2),  # bond between atoms 1 and 2
+            (3, 4)   # bond between atoms 3 and 4
         ]
     
     def test_minimize_request(self):

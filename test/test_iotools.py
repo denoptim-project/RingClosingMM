@@ -64,16 +64,15 @@ class TestIOToolsFileIO(unittest.TestCase):
         
         self.assertIsInstance(zmatrix.bonds, list)
         self.assertEqual(len(zmatrix.bonds), 6)
-        # Each bond should be a tuple of (atom1_idx, atom2_idx, bond_type)
+        # Each bond should be a tuple of (atom1_idx, atom2_idx)
         if len(zmatrix.bonds) > 0:
             for bond in zmatrix.bonds:
-                self.assertEqual(len(bond), 3)
+                self.assertEqual(len(bond), 2)
                 self.assertIsInstance(bond[0], int)
                 self.assertIsInstance(bond[1], int)
-                self.assertIsInstance(bond[2], int)
         # Check that the bonds are correct
-        expected_bonds = [(0, 1, 1), (1, 2, 1), (2, 4, 1), (2, 5, 1), (4, 5, 1), (3, 4, 1)]
-        actual_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in zmatrix.bonds]
+        expected_bonds = [(0, 1), (1, 2), (2, 4), (2, 5), (4, 5), (3, 4)]
+        actual_bonds_sorted = [(bond[0], bond[1]) if bond[0] < bond[1] else (bond[1], bond[0]) for bond in zmatrix.bonds]
         for bond in actual_bonds_sorted:
             self.assertIn(bond, expected_bonds)
     
@@ -85,7 +84,7 @@ class TestIOToolsFileIO(unittest.TestCase):
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (0, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (0, 2)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -220,8 +219,8 @@ class TestIOToolsFileIO(unittest.TestCase):
                     self.assertEqual(orig_atom.get('chirality', 0), new_atom.get('chirality', 0))
 
             # Compare bonds
-            original_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in original_zmatrix.bonds]
-            new_bonds_sorted = [(bond[0], bond[1], bond[2]) if bond[0] < bond[1] else (bond[1], bond[0], bond[2]) for bond in new_zmatrix.bonds]
+            original_bonds_sorted = [(bond[0], bond[1]) if bond[0] < bond[1] else (bond[1], bond[0]) for bond in original_zmatrix.bonds]
+            new_bonds_sorted = [(bond[0], bond[1]) if bond[0] < bond[1] else (bond[1], bond[0]) for bond in new_zmatrix.bonds]
 
             for bond in new_bonds_sorted:
                 self.assertIn(bond, original_bonds_sorted)
@@ -254,7 +253,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
             
             # Check that bond (1,4) was added (0-based: 0,3)
             bonds = data.bonds
-            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            bond_set = {(min(a, b), max(a, b)) for a, b in bonds}
             self.assertIn((0, 3), bond_set)
             
         finally:
@@ -281,7 +280,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
             
             # Check that bond (2,3) was removed (0-based: 1,2)
             bonds = data.bonds
-            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            bond_set = {(min(a, b), max(a, b)) for a, b in bonds}
             self.assertNotIn((1, 2), bond_set)
             
         finally:
@@ -308,7 +307,7 @@ class TestIOToolsBondModifications(unittest.TestCase):
             data = read_int_file(temp_path)
             
             bonds = data.bonds
-            bond_set = {(min(a, b), max(a, b)) for a, b, _ in bonds}
+            bond_set = {(min(a, b), max(a, b)) for a, b in bonds}
             
             # Check additions and removals
             self.assertIn((0, 3), bond_set)   # Bond added
@@ -332,7 +331,7 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -362,7 +361,7 @@ class TestIOToolsComplexZMatrices(unittest.TestCase):
             {'id': 0, 'element': 'H', 'atomic_num': 1},
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 0.74},
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1)])
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.int', delete=False) as f:
             temp_path = f.name
@@ -796,8 +795,7 @@ $$$$
                 line = original_lines[orig_bond_start + i]
                 atom1 = int(line[0:3].strip())
                 atom2 = int(line[3:6].strip())
-                bond_type = int(line[6:9].strip())
-                original_bonds.append((min(atom1, atom2), max(atom1, atom2), bond_type))
+                original_bonds.append((min(atom1, atom2), max(atom1, atom2)))
             
             # Written bonds
             writ_bond_start = writ_atom_start + writ_num_atoms
@@ -807,12 +805,11 @@ $$$$
                 line = written_lines[writ_bond_start + i]
                 atom1 = int(line[0:3].strip())
                 atom2 = int(line[3:6].strip())
-                bond_type = int(line[6:9].strip())
-                written_bonds.append((min(atom1, atom2), max(atom1, atom2), bond_type))
+                written_bonds.append((min(atom1, atom2), max(atom1, atom2)))
             
             # Convert to sets for comparison (ignore bond type for now)
-            original_bond_pairs = {(a1, a2) for a1, a2, _ in original_bonds}
-            written_bond_pairs = {(a1, a2) for a1, a2, _ in written_bonds}
+            original_bond_pairs = {(a1, a2) for a1, a2 in original_bonds}
+            written_bond_pairs = {(a1, a2) for a1, a2 in written_bonds}
             
             # All original bonds should be present in written file
             # (written file may have additional bonds from Z-matrix structure)

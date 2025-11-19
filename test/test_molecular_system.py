@@ -350,7 +350,7 @@ class TestMolecularSystemFromData(unittest.TestCase):
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
-        self.zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (0, 2, 1)])
+        self.zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (0, 2)])
     
     def test_from_data_basic(self):
         """Test creating MolecularSystem from raw data."""
@@ -502,7 +502,7 @@ class TestMolecularSystemErrorHandling(unittest.TestCase):
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (0, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (0, 2)])
         rcp_terms = [(0, 2)]
         
         system = MolecularSystem.from_data(
@@ -537,7 +537,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3)])
         
         system = MolecularSystem.from_data(
             zmatrix, str(self.forcefield_file),
@@ -558,7 +558,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -566,7 +566,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.58,  # Changed
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2)])
 
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -591,7 +591,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -601,7 +601,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 100.0, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}  # Changed
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3)])
 
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -628,7 +628,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -638,7 +638,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}  # Changed
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -664,7 +664,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': -179.0, 'chirality': 0}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -674,7 +674,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 179.0, 'chirality': 0}  # Near +180°
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -701,7 +701,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -711,7 +711,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.60,  # Changed
              'angle_ref': 1, 'angle': 100.0, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}  # Changed
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3)])
 
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -742,7 +742,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.0,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'H', 'atomic_num': 1},
@@ -750,7 +750,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.05,
              'angle_ref': 0, 'angle': 120.0}
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -770,7 +770,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54}
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -778,7 +778,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -803,7 +803,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}  # cis
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3), (3, 4)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -815,7 +815,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}  # trans
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3), (3, 4)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -844,7 +844,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 110.0, 'chirality': 1}  # second angle!
         ]
-        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
+        zmatrix1 = ZMatrix(zmatrix1_atoms, [(0, 1), (1, 2), (2, 3), (3, 4)])
         
         zmatrix2_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
@@ -856,7 +856,7 @@ class TestMolecularSystemRMSD(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 120.0, 'chirality': 1}  # second angle!
         ]
-        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
+        zmatrix2 = ZMatrix(zmatrix2_atoms, [(0, 1), (1, 2), (2, 3), (3, 4)])
         
         system = MolecularSystem.from_data(
             zmatrix1, str(self.forcefield_file),
@@ -895,7 +895,7 @@ class TestMolecularSystemGraphMethods(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2)])
         
         graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
         
@@ -916,7 +916,7 @@ class TestMolecularSystemGraphMethods(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3)])
         
         graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
         
@@ -935,7 +935,7 @@ class TestMolecularSystemGraphMethods(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2)])
         
         graph = MolecularSystem._build_bond_graph(zmatrix, topology=None)
         
@@ -1089,7 +1089,7 @@ class TestMolecularSystemDOFMethods(unittest.TestCase):
         for i in range(1, len(zmatrix_atoms)):
             atom = zmatrix_atoms[i]
             if 'bond_ref' in atom:
-                bonds.append((atom['bond_ref'], i, 1))
+                bonds.append((atom['bond_ref'], i))
         zmatrix = ZMatrix(zmatrix_atoms, bonds)
         
         rotatable_indices = [9, 4]  # 0-based indices in zmatrix
@@ -1128,7 +1128,7 @@ class TestMolecularSystemDOFMethods(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
              'angle_ref': 0, 'angle': 109.47, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2)])
         
         rotatable_indices = []
         rc_critical_rotatable_indeces = []  # No critical indices for this test
@@ -1149,7 +1149,7 @@ class TestMolecularSystemDOFMethods(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54, 
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3)])
         
         rotatable_indices = [3]  # Only atom 3
         rc_critical_rotatable_indeces = []  # No critical indices for this test
@@ -1176,7 +1176,7 @@ class TestMolecularSystemDOFMethods(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54, 
              'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (1, 3, 1), (1, 4, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (1, 3), (1, 4)])
         
         rotatable_indices = [4]  # Atom with chirality=0
         rc_critical_rotatable_indeces = []  # No critical indices for this test
@@ -1230,7 +1230,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3)])
         
         rotatable_indices = [3]
         rcp_terms = []
@@ -1257,7 +1257,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3), (3, 4)])
         
         rotatable_indices = [3]  # Atom 3 is rotatable
         rcp_terms = [(0, 4)]  # Path from atom 0 to atom 4
@@ -1290,7 +1290,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
              'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 180.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (1, 3, 1), (3, 4, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (1, 3), (3, 4)])
         
         rotatable_indices = [3]  # Atom 3 is rotatable
         rcp_terms = [(0, 2), (0, 4)]  # Two RCP paths
@@ -1317,7 +1317,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2)])
         
         rotatable_indices = []  # No rotatable indices
         rcp_terms = [(0, 2)]  # Path from atom 0 to atom 2
@@ -1351,7 +1351,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
              'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 0}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (1, 2, 1), (2, 3, 1), (3, 4, 1), (4, 5, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)])
         
         rotatable_indices = [3, 4]  # Atoms 3 and 4 are rotatable
         rcp_terms = [(0, 2)]  # Path from atom 0 to atom 2 is [0, 1, 2]
@@ -1377,7 +1377,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 2, 'element': 'C', 'atomic_num': 6},
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1), (2, 3, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1), (2, 3)])
         
         rotatable_indices = []
         rcp_terms = [(0, 3)]  # No path between 0 and 3
@@ -1396,7 +1396,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
             {'id': 0, 'element': 'C', 'atomic_num': 6},
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54}
         ]
-        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1, 1)])
+        zmatrix = ZMatrix(zmatrix_atoms, [(0, 1)])
         
         rotatable_indices = []
         rcp_terms = [(0, 0)]  # Same atom

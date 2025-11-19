@@ -737,7 +737,7 @@ def _get_third_ref_atom_id(atom_idx: int, first_ref: int, second_ref: int,
     return third_ref, chirality_flag
 
 
-def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, int, int]]) -> ZMatrix:
+def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, int]]) -> ZMatrix:
     """
     Generate Z-matrix from Cartesian coordinates and bond connectivity.
     
@@ -750,8 +750,8 @@ def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, 
         List of atom dictionaries, each containing:
         - 'element': element symbol (str)
         - 'coords': 3D coordinates (np.ndarray)
-    bonds : List[Tuple[int, int, int]]
-        List of bonds as (atom1_idx, atom2_idx, bond_type) tuples (0-based indices)
+    bonds : List[Tuple[int, int]]
+        List of bonds as (atom1_idx, atom2_idx) tuples (0-based indices)
         
     Returns
     -------
@@ -782,7 +782,7 @@ def generate_zmatrix(atoms: List[Dict[str, np.ndarray]], bonds: List[Tuple[int, 
     # Build bond connectivity graph (adjacency list, 0-based)
     graph = defaultdict(list)
     
-    for atom1, atom2, bond_type in bonds:
+    for atom1, atom2 in bonds:
         graph[atom1].append(atom2)
         graph[atom2].append(atom1)
     
