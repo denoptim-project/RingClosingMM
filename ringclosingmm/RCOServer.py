@@ -22,6 +22,7 @@ import signal
 from typing import Tuple, Any, Dict, Union, Optional
 from pathlib import Path
 import logging
+from datetime import datetime
 
 # Note: Using pathlib for resource access, which works in both development and installed packages
 
@@ -284,6 +285,8 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     Dict[str, Any]
         JSON response with STATUS, ENERGY, RCSCORE, coordinates, etc.
     """
+    print(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Handling optimization request.")
+
     # Extract required fields
     zmatrix = request.get('zmatrix')
     if not zmatrix:
@@ -317,6 +320,15 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
     bonds_data = request.get('bonds_data') # 1-based indexing
     if not bonds_data:
         raise ValueError("Missing required field: bonds_data")
+    if not isinstance(bonds_data, list):
+        raise ValueError(f"Invalid type for bonds_data: {type(bonds_data)}: {bonds_data}")
+    for bond in bonds_data:
+        if not isinstance(bond, list):
+            raise ValueError(f"Invalid type for bond: {type(bond)}: {bond}")
+        if len(bond) != 2:
+            raise ValueError(f"Invalid bond: {bond}: {bond}")
+        if not isinstance(bond[0], int) or not isinstance(bond[1], int):
+            raise ValueError(f"Invalid bond: {bond}: {bond}")
     bonds_data = [(a-1, b-1) for a, b in bonds_data] # 0-based indexing
 
     # Convert to ZMatrix immediately - this is the only boundary where we convert List[Dict] to ZMatrix
