@@ -28,7 +28,7 @@ import logging
 # Import RingClosureOptimizer and dependencies
 from .MolecularSystem import MolecularSystem
 from .RingClosureOptimizer import RingClosureOptimizer
-from .CoordinateConversion import zmatrix_to_cartesian
+from .CoordinateConversion import zmatrix_to_cartesian, _get_atomic_number
 from .ZMatrix import ZMatrix
 
 MY_NAME = "rc-optimizer-server"
@@ -302,6 +302,14 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
             atom_0based[ZMatrix.FIELD_ANGLE_REF] = atom_0based[ZMatrix.FIELD_ANGLE_REF] - 1
         if ZMatrix.FIELD_DIHEDRAL_REF in atom_0based:
             atom_0based[ZMatrix.FIELD_DIHEDRAL_REF] = atom_0based[ZMatrix.FIELD_DIHEDRAL_REF] - 1
+        
+        # Generate atomic_num from element if missing
+        if ZMatrix.FIELD_ATOMIC_NUM not in atom_0based:
+            if ZMatrix.FIELD_ELEMENT in atom_0based:
+                atom_0based[ZMatrix.FIELD_ATOMIC_NUM] = _get_atomic_number(atom_0based[ZMatrix.FIELD_ELEMENT])
+            else:
+                raise ValueError(f"Atom {atom_0based.get(ZMatrix.FIELD_ID, 'unknown')} missing both 'element' and 'atomic_num' fields")
+        
         zmatrix_0based.append(atom_0based)
 
     # List of atom indices that are bonded to each other and the bond type
