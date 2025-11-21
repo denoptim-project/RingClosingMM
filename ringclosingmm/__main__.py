@@ -102,6 +102,10 @@ def parse_arguments() -> argparse.Namespace:
     mem_group.add_argument('--zmatrix-iterations', type=int,
                           default=DEFAULT_ZMATRIX_ITERATIONS,
                           help='Iterations for Z-matrix space minimization')
+    mem_group.add_argument('--trajectory-file', type=str,
+                          help='Write optimization trajectory to this XYZ file (append mode). '
+                               'Writes coordinates for the torsional and Z-matrix refinements in dedicated files. '
+                               'Example: --trajectory-file trajectory.xyz')
     
     # Minimization option 
     min_group = parser.add_argument_group('Local Energy Minimization')
@@ -294,6 +298,8 @@ def main() -> int:
         print(f"RCP terms: {rcp_terms}")
     print(f"Force field: {args.forcefield}")
     print(f"Output: {args.output}")
+    if args.trajectory_file:
+        print(f"Trajectory file: {args.trajectory_file}")
         
     try:
         optimizer = RingClosureOptimizer.from_files(
@@ -331,6 +337,7 @@ def main() -> int:
                     space_type=args.space_type,
                     zmatrix_dof_bounds_per_type=zmatrix_dof_bounds_per_type,
                     gradient_tolerance=args.gradient_tolerance,
+                    trajectory_file=args.trajectory_file,
                     verbose=verbose
                 )
 
@@ -346,6 +353,7 @@ def main() -> int:
                 torsional_iterations=args.torsional_iterations,
                 zmatrix_iterations=args.zmatrix_iterations,
                 gradient_tolerance=args.gradient_tolerance,
+                trajectory_file=args.trajectory_file,
                 verbose=verbose
             )
             

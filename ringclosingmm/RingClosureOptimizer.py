@@ -134,6 +134,7 @@ class RingClosureOptimizer:
                 torsional_iterations: int = 50,
                 zmatrix_iterations: int = 50,
                 gradient_tolerance: float = 0.01,
+                trajectory_file: Optional[str] = None,
                 verbose: bool = False) -> Dict[str, Any]:
         """
         Run torsional optimization using a divide and conquer strategy:
@@ -157,6 +158,9 @@ class RingClosureOptimizer:
             Iterations per torsional optimization step (default: 50)
         zmatrix_iterations : int
             Iterations for Z-matrix space minimization (default: 50)
+        trajectory_file : Optional[str]
+            If provided, write optimization trajectory to this XYZ file (append mode).
+            Writes coordinates for the torsional and Z-matrix refinements in dedicated files.
         verbose : bool
             Print progress information (default: True)
             
@@ -216,12 +220,16 @@ class RingClosureOptimizer:
                 current_zmatrix = best_zmatrix
                 current_energy = best_energy
                 pss_ref_init = time.time()
+                trajectory_file_torsional = None
+                if trajectory_file:
+                    trajectory_file_torsional = trajectory_file.replace('.xyz', '_torsional.xyz')
                 for smoothing in smoothing_sequence:
                     self.system.setSmoothingParameter(smoothing)
                     refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_torsional_space(
                         current_zmatrix,
                         non_rc_critical_rotatable_indices,
                         max_iterations=torsional_iterations,
+                        trajectory_file=trajectory_file_torsional,
                         verbose=verbose
                     )
                     if info['success']:
@@ -247,12 +255,16 @@ class RingClosureOptimizer:
                 current_zmatrix = best_zmatrix
                 current_energy = best_energy
                 zms_ref_init = time.time()
+                trajectory_file_zmatrix = None
+                if trajectory_file:
+                    trajectory_file_zmatrix = trajectory_file.replace('.xyz', '_zmat.xyz')
                 self.system.setSmoothingParameter(0.0)
                 refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_zmatrix_space(
                     current_zmatrix,
                     dof_indices=self.system.dof_indices,
                     max_iterations=zmatrix_iterations,
                     gradient_tolerance=gradient_tolerance,
+                    trajectory_file=trajectory_file_zmatrix,
                     verbose=verbose
                 )
                 if info['success']:
@@ -293,6 +305,7 @@ class RingClosureOptimizer:
                  space_type: str = "Cartesian",
                  zmatrix_dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[10.0, 180.0, 180.0]],
                  gradient_tolerance: float = 0.01,
+                 trajectory_file: Optional[str] = None,
                  verbose: bool = True) -> Dict[str, Any]:
         """
         Perform energy minimization on the current structure.
@@ -317,6 +330,9 @@ class RingClosureOptimizer:
             that bond lengths are bound to change to up to 0.02 Å of the current value, angles and 5.0 degrees, and torsions by 10.0 degrees. Multiple tuples can be provided to request any stepwise application of bounds. Example: [[0.02, 5.0, 10.0], [0.01, 3.0, 8.0]] means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is [(10.0, 180.0, 180.0)].
         gradient_tolerance : float
             Gradient tolerance for minimization (default: 0.01)
+        trajectory_file : Optional[str]
+            If provided, write optimization trajectory to this XYZ file (append mode).
+            Writes coordinates for the torsional and Z-matrix refinements in dedicated files.
         verbose : bool
             Print minimization progress (default: True)
         
@@ -396,6 +412,7 @@ class RingClosureOptimizer:
                     current_zmatrix,
                     self.system.rotatable_indices,
                     max_iterations=max_iterations,
+                    trajectory_file=trajectory_file,
                     verbose=verbose
                 )
                 
@@ -415,6 +432,7 @@ class RingClosureOptimizer:
                     dof_bounds_per_type = zmatrix_dof_bounds_per_type,
                     max_iterations=max_iterations,
                     gradient_tolerance=gradient_tolerance,
+                    trajectory_file=trajectory_file,
                     verbose=verbose
                 )
                 time_taken = time.time() - init_time
