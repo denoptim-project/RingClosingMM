@@ -160,6 +160,54 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/strained_ring_closure",
             "justMyCode": false,
+        },
+        {
+            "name": "Compare NonBonded Implementations",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_energy_profiles_two_atoms_with_both_implementation.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/misc/plot_custom_nonbonded",
+            "justMyCode": false,
+            "env": {
+                "MPLBACKEND": "TkAgg"
+            }
+        },
+        {
+            "name": "Python: Plot function fr",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_function_fr.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/misc/plot_custom_nonbonded",
+            "justMyCode": false,
+            "env": {
+                "MPLBACKEND": "TkAgg"
+            }
+        },
+        {
+            "name": "Optimize gaussian fit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/misc/vdw_from_gaussian/fit_vdw_with_gaussian.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/misc/vdw_from_gaussian",
+            "justMyCode": false,
+            "env": {
+                "MPLBACKEND": "TkAgg"
+            }
+        },
+        {
+            "name": "Optimize one gaussian fit",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/misc/vdw_from_gaussian/fit_one_vdw_with_gaussian.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/misc/vdw_from_gaussian",
+            "justMyCode": false,
+            "env": {
+                "MPLBACKEND": "TkAgg"
+            }
         }
     ]
 }
