@@ -174,6 +174,18 @@
             }
         },
         {
+            "name": "Dist + Sigma components",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_components.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/misc/plot_custom_nonbonded",
+            "justMyCode": false,
+            "env": {
+                "MPLBACKEND": "TkAgg"
+            }
+        },
+        {
             "name": "Python: Plot function fr",
             "type": "debugpy",
             "request": "launch",

@@ -1,5 +1,6 @@
 from openmm.app import Simulation
 import openmm as mm
+from openmm import Platform
 from openmm.app import ForceField
 from openmm.app.forcefield import _parseFunctions, _createFunctions, \
     HarmonicBondGenerator, HarmonicAngleGenerator, \
@@ -16,6 +17,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 trackedForceTypes = ['CustomNonbondedForce',  # Index 0 used below!
                      'RCPForce',  # Index 1 used below!
                      'HeadTailNonbondedForce',  # Index 2 used below!
+                     'RCPAtomsNonbondedForce',  # Index 3 used below!
                      'HarmonicBondForce',
                      'HarmonicAngleForce']
 
@@ -171,6 +173,63 @@ def getAngle(p0: Any, p1: Any, p2: Any) -> float:
 # Force Field Generation 
 # =============================================================================
 
+# class OurNonbondedGenerator():
+#     """A generator for the non bonding interactions between the head and tail of a ring-closing pair.
+#     User OurNonbondedForce.
+#     """
+#     def __init__(self, forcefield, energy, verbose=False):
+#         self.ff = forcefield
+#         self.energy = energy
+#         self.globalParams = {}
+#         self.perParticleParams = []
+#         self.computedValues = {}
+#         self.functions = []
+#         self.verbose = verbose
+
+#     @staticmethod
+#     def parseElement(element, ff):
+#         generator = OurNonbondedGenerator(ff, element.attrib['energy'])
+#         ff.registerGenerator(generator)
+#         for param in element.findall('GlobalParameter'):
+#             generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
+#         for param in element.findall('PerParticleParameter'):
+#             generator.perParticleParams.append(param.attrib['name'])
+#         for value in element.findall('ComputedValue'):
+#             generator.computedValues[value.attrib['name']] = value.attrib['expression']
+#         generator.params = ForceField._AtomTypeParameters(ff, 'CustomNonbondedForce', 'Atom', generator.perParticleParams)
+#         generator.params.parseDefinitions(element)
+#         generator.functions += _parseFunctions(element)
+
+#     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
+#         """Create our nonbonded force using CustomManyParticleForce.
+#         """
+#         force = mm.CustomManyParticleForce(2, self.energy)
+#         force.setName('OurNonbondedForce')
+#         for param in self.globalParams:
+#             force.addGlobalParameter(param, self.globalParams[param])
+#         for param in self.perParticleParams:
+#             force.addPerParticleParameter(param)
+#         for name in self.computedValues:
+#             force.addComputedValue(name, self.computedValues[name])
+
+#         _createFunctions(force, self.functions)
+
+#         rcpterms = args.get('rcpterms', [])
+        
+#         for atom in data.atoms:
+#             values = self.params.getAtomParameters(atom, data)
+#             force.addParticle(values)
+#         force.setCutoffDistance(nonbondedCutoff)
+
+#         sys.addForce(force)
+
+#     def postprocessSystem(self, sys, data, args):
+#         pass
+
+
+# parsers["OurNonbondedForce"] = OurNonbondedGenerator.parseElement
+
+
 class ConstrainedBondGenerator(HarmonicBondGenerator):
     """A generator for constraints that try to preserve the distances
     between bonded pairs of particles."""
@@ -300,10 +359,10 @@ class ConstrainedAngleGenerator(HarmonicAngleGenerator):
 
 parsers["ConstrainedAngleForce"] = ConstrainedAngleGenerator.parseElement
 
+
 class HeadTailNonbondedGenerator():
     """
-    A generator for the non bonding interactions between the head and tail of a ring-closing pair.
-    User CustomCompoundBondForce.
+    A generator for the nonbonded interactions between the head and tail of any chain connecting a ring-closing pair. Does not consider the ring-closing pair itself.
     """
     def __init__(self, forcefield, energy, verbose=False):
         self.ff = forcefield
@@ -324,7 +383,7 @@ class HeadTailNonbondedGenerator():
         generator.functions += _parseFunctions(element)
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
-        """Create the head-tail nonbonded force using CustomCompoundBondForce.
+        """Create the head-tail nonbonded force.
         """
         force = mm.CustomCompoundBondForce(2, self.energy)
         force.setName('HeadTailNonbondedForce')
@@ -391,6 +450,116 @@ class HeadTailNonbondedGenerator():
 
 
 parsers["HeadTailNonbondedForce"] = HeadTailNonbondedGenerator.parseElement
+
+
+class RCPAtomsNonbondedGenerator():
+    """
+    A generator for the nonbonded interactions between any atom in a RCP pair and any atom in thesystem.
+    """
+    def __init__(self, forcefield, energy, verbose=False):
+        self.ff = forcefield
+        self.energy = energy
+        self.globalParams = {}
+        self.perBondParams = []
+        self.perParticleParams = []
+        self.functions = []
+        self.verbose = verbose
+
+    @staticmethod
+    def parseElement(element, ff):
+        generator = RCPAtomsNonbondedGenerator(ff, element.attrib['energy'])
+        ff.registerGenerator(generator)
+        for param in element.findall('GlobalParameter'):
+            generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
+        for param in element.findall('PerParticleParameter'):
+            generator.perParticleParams.append(param.attrib['name'])
+        for param in element.findall('PerBondParameter'):
+            generator.perBondParams.append(param.attrib['name'])
+        # TODO: consider getting the perparticle parameters from the CustomNonbondedGenerator
+        generator.params = ForceField._AtomTypeParameters(ff, 'RCPAtomsNonbondedForce', 'Atom', generator.perParticleParams)
+        generator.params.parseDefinitions(element)
+        generator.functions += _parseFunctions(element)
+
+    def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
+        """Create the RCPatom-to-any nonbonded force.
+        """
+        force = mm.CustomCompoundBondForce(3, self.energy)
+        force.setName('RCPAtomsNonbondedForce')
+        
+        # Add global parameters (smoothing, scaling, etc.)
+        for param in self.globalParams:
+            force.addGlobalParameter(param, self.globalParams[param])
+        for param in self.perBondParams:
+            force.addPerBondParameter(param)
+
+        # Add custom functions (Gaussians, etc.)
+        _createFunctions(force, self.functions)
+
+        rcpterms = args.get('rcpterms', [])
+        if self.verbose:
+            print(f'Adding 2x{len(rcpterms)} sets of RCPatom-to-any nonbonded terms to RCPAtomsNonbondedForce')
+
+        # Identify pairs of atoms aready treated by HeadTailNonbondedForce
+        pairs_treated_by_HTterm = set()
+        for ht_force in sys.getForces():
+            if ht_force.getName() == 'HeadTailNonbondedForce':
+                for ht_bond in ht_force.getBonds():
+                    pairs_treated_by_HTterm.add((ht_bond[0], ht_bond[1]))
+        
+        # Utility to ensure we do not add the same force twice
+        pairs_added = set()
+        # WARNING! These force terms are not symmetric!
+        def addForceOnce(properAtomIdx, otherAtomIdx, attractorAtmIdx):
+            pair = (min(properAtomIdx, otherAtomIdx), max(properAtomIdx, otherAtomIdx))
+            # ignore dummy atoms
+            if '_Du' in data.atoms[otherAtomIdx].name:
+                return False
+            eps0 = self.params.getAtomParameters(data.atoms[pair[0]], data)[1]
+            eps1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[1]
+            sigma0 = self.params.getAtomParameters(data.atoms[pair[0]], data)[0]
+            sigma1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[0]
+            sigmaPerBond = 0.5 * (sigma0 + sigma1)
+            epsilonPerBond = math.sqrt(eps0) * math.sqrt(eps1)
+            if pair not in pairs_added and pair not in pairs_treated_by_HTterm:
+                pairs_added.add(pair)
+                #if verbose:
+                #TODO del
+                print(f'   RCPatom-to-any nonbonded term ({len(pairs_added)}): {properAtomIdx} - {otherAtomIdx} (ref={attractorAtmIdx}) sigma={sigmaPerBond} epsilon={epsilonPerBond}')
+                force.addBond([properAtomIdx, otherAtomIdx, attractorAtmIdx], [sigmaPerBond, epsilonPerBond])
+                return True
+            return False
+
+        def identifyAttractorAndProperAtoms(p0, p1):
+            attractorAtm = None;
+            properAtm = None;
+            typ0 = data.atoms[p0].name
+            typ1 = data.atoms[p1].name
+            if (typ0.startswith('_ATM_') or typ0.startswith('_ATP_') or typ0.startswith('_ATN_')) and (not typ1.startswith('_ATM_') and not typ1.startswith('_ATP_') and not typ1.startswith('_ATN_')):
+                attractorAtm = p0;
+                properAtm = p1;
+            elif (typ1.startswith('_ATM_') or typ1.startswith('_ATP_') or typ1.startswith('_ATN_')) and (not typ0.startswith('_ATM_') and not typ0.startswith('_ATP_') and not typ0.startswith('_ATN_')):
+                attractorAtm = p1;
+                properAtm = p0;
+            else:
+                raise ValueError(f'Invalid RCP term with atoms {p0} ({typ0}) and {p1} ({typ1}). Neither is recognized as an attractor atom.')
+            return attractorAtm, properAtm;
+        
+        for idx, pair in enumerate(rcpterms):
+            p0 = int(pair[0])
+            p1 = int(pair[1])
+            attractorAtmIdx, properAtmIdx = identifyAttractorAndProperAtoms(p0, p1)
+            for atom in data.atoms:
+                if atom.index == properAtmIdx or atom.index == attractorAtmIdx:
+                    continue
+                addForceOnce(properAtmIdx, atom.index, attractorAtmIdx)
+                        
+        sys.addForce(force)
+
+    def postprocessSystem(self, sys, data, args):
+        pass
+
+
+parsers["RCPAtomsNonbondedForce"] = RCPAtomsNonbondedGenerator.parseElement
 
 
 class RingClosingForceGenerator():
@@ -562,7 +731,9 @@ def create_simulation(topo, rcpterms, forcefieldfile, positions, smoothing=0.0,
 
     system = create_system(topo, rcpterms, forcefieldfile, positions, smoothing, scalingNonBonded, scalingRCP)
     integrator = VerletIntegrator(stepLength)
-    simulation = Simulation(topo, system, integrator)
+    # Explicitly use CPU platform to avoid OpenCL driver issues
+    platform = Platform.getPlatformByName('CPU')
+    simulation = Simulation(topo, system, integrator, platform)
     if positions is not None:
         simulation.context.setPositions(positions)
 
@@ -582,7 +753,9 @@ def create_simulation_from_system(topo: Any, system: mm.System, positions: Any, 
     stepLength : float
         The length of the time step for the simulation."""
     integrator = VerletIntegrator(stepLength)
-    simulation = Simulation(topo, system, integrator)
+    # Explicitly use CPU platform to avoid OpenCL driver issues
+    platform = Platform.getPlatformByName('CPU')
+    simulation = Simulation(topo, system, integrator, platform)
     simulation.context.setPositions(positions)
     return simulation   
 
@@ -658,6 +831,8 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                               smoothing)
     setGlobalParameterOfForce(system, trackedForceTypes[2], 'smoothing',
                               smoothing)
+    setGlobalParameterOfForce(system, trackedForceTypes[3], 'smoothing',
+                              smoothing)
     if scalingNonBonded is not None:
         setGlobalParameterOfForce(system, trackedForceTypes[0],
                               'scalingNonBonded',
@@ -668,10 +843,14 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                               scalingRCP)
 
     #
-    # Add exclusions to CustomNonbondedForce for RCP pairs and their neighbors
-    # This prevents double-counting: RCP pairs are handled by CustomCompoundBondForce,
-    # so they should not also interact via the vdW CustomNonbondedForce.
-    # We also exclude interactions between (p1, neighbors_of_p2) and (neighbors_of_p1, p2)
+    # Add exclusions to CustomNonbondedForce (i.e., trackedForceTypes[0]) for 
+    # RCP pairs and their neighbors because their non-bonded interactions are 
+    # defined by a specific energy term, i.e., HeadTailNonbondedForce.
+    #
+    # The policy for excluding nonbonded interactions is:
+    # - atoms in the RCP pair do not interact with any other atom in the system.
+    # - atoms in 1-2, 1-3, and 1-4 relations defined as if the RCP pair atoms would 
+    #   coincide (i.e., 1-1 relation) do not interact with each other.
     #
     if trackedForceTypes[0] in forces.keys() and len(rcpterms) > 0:
         nbForce = forces[trackedForceTypes[0]]  # vdW term
@@ -710,12 +889,19 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
         for idx, pair in enumerate(rcpterms):
             p1 = int(pair[0])
             p2 = int(pair[1])
+
+            # Exclude any pair (RCP atom, any other atom)
+            for atom in (topo.atoms()):
+                if add_exclusion_once(p1, atom.index):
+                    if verbose:
+                        print(f'  RCP term {idx}: excluding vdW between particles {p1} - {atom.index}')
             
-            # Exclude the RCP pair itself (1-1 relation)
+            # Exclude the RCP pair itself (1-1 relation). Redundant, but kept for clarity.
             if add_exclusion_once(p1, p2):
                 if verbose:
                     print(f'  RCP term {idx}: excluding vdW between particles {p1} - {p2}')
 
+            # Exclude atoms in 1-2, 1-3, and 1-4 relations
             for pair in _get_atoms_in_1_2_relation(p1, p2, neighbors):
                 if add_exclusion_once(pair[0], pair[1]):
                     if verbose:
