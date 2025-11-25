@@ -260,7 +260,23 @@
    <Atom type="ATP" sigma="1.0" epsilon="0.0"/>
    <Atom type="ATN" sigma="1.0" epsilon="0.0"/>
    <Atom type="Du" sigma="1.0" epsilon="0.0"/>
-  </CustomNonbondedForce>
+ </CustomNonbondedForce>
+ <RCPAtomsNonbondedForce energy="scalingRCPAtomsNonBonded*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplNbA*epsilonPerBond; bA=widthNbA/sigmaDep; aB=amplNbB*epsilonPerBond; bB=widthNbB/sigmaDep; sigmaDep=sgm*(1+fourthWeight*(sgm^3)); sgm=min(sigmaPerBond,distance(p2,p3))">
+   <GlobalParameter name="scalingRCPAtomsNonBonded" defaultValue="1.0"/>
+   <GlobalParameter name="amplNbA" defaultValue="35500.0"/>
+   <GlobalParameter name="widthNbA" defaultValue="60.0"/>
+   <GlobalParameter name="amplNbB" defaultValue="-3.0"/>
+   <GlobalParameter name="widthNbB" defaultValue="5.3"/>
+   <GlobalParameter name="fourthWeight" defaultValue="13.0"/>
+   <GlobalParameter name="smoothing" defaultValue="0.0"/>
+  <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
+   <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
+   <!-- NB: the sigma nd epsilon per-particle are internally converted into per-bond parameters-->
+   <PerParticleParameter name="sigma"/>
+   <PerParticleParameter name="epsilon"/>
+   <PerBondParameter name="sigmaPerBond"/>
+   <PerBondParameter name="epsilonPerBond"/>
+  </RCPAtomsNonbondedForce>
   <HeadTailNonbondedForce energy="scalingHT*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplHTA*eps; bA=widthHTA/sigmaDep; aB=amplHTB*eps; bB=widthHTB/sigmaDep; eps=epsilon*htRadFraction*bondDistanceFactor; sigmaDep=sigma*(1+fourthWeightHT*sigma^3)">
    <GlobalParameter name="scalingHT" defaultValue="0.0"/>
    <GlobalParameter name="htRadFraction" defaultValue="0.2"/>
@@ -279,13 +295,13 @@
   </HeadTailNonbondedForce>
   <RingClosingForce energy="scalingRCP*calToJoule*(gA+gB+gC); gA=(aa/tb)*exp(-ba*((distance(p1,p2))^2)/ta); aa=amplRcpA; ba=widthRcpA; gB=(ab/tb)*exp(-bb*((distance(p1,p2))^2)/ta); ab=amplRcpB; bb=widthRcpB; gC=(ac/tb)*exp(-bc*((distance(p1,p2))^2)/ta); ac=amplRcpC; bc=widthRcpC; tb=sqrt(ta^3); ta=1.0+4.0*smoothing">
    <!-- NB: RCP pairs are explicitly defined in building the system file using CustomCompoundBondForce -->
-   <GlobalParameter name="scalingRCP" defaultValue="0.0"/>
+   <GlobalParameter name="scalingRCP" defaultValue="1.0"/>
    <GlobalParameter name="amplRcpA" defaultValue="-2.5"/>
-   <GlobalParameter name="widthRcpA" defaultValue="2.0"/>
+   <GlobalParameter name="widthRcpA" defaultValue="200.0"/>
    <GlobalParameter name="amplRcpB" defaultValue="-1.7"/>
-   <GlobalParameter name="widthRcpB" defaultValue="0.1"/>
+   <GlobalParameter name="widthRcpB" defaultValue="10.0"/>
    <GlobalParameter name="amplRcpC" defaultValue="-6.0"/>
-   <GlobalParameter name="widthRcpC" defaultValue="15.0"/>
+   <GlobalParameter name="widthRcpC" defaultValue="1500.0"/>
    <GlobalParameter name="smoothing" defaultValue="0.0"/>
    <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>

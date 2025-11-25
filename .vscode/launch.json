@@ -162,10 +162,10 @@
             "justMyCode": false,
         },
         {
-            "name": "Compare NonBonded Implementations",
+            "name": "Plot nonbonded energy profiles w smoothing",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_energy_profiles_two_atoms_with_both_implementation.py",
+            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_smoothing.py",
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/misc/plot_custom_nonbonded",
             "justMyCode": false,
@@ -174,7 +174,7 @@
             }
         },
         {
-            "name": "Dist + Sigma components",
+            "name": "Plot nonbonded with separated Distance and Sigma components",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_components.py",

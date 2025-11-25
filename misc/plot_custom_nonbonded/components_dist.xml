@@ -271,132 +271,9 @@
    <GlobalParameter name="smoothing" defaultValue="0.0"/>
   <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
-   <!-- NB: the sigma nd epsilon per-particle are internally converted into per-bond parameters-->
-   <PerParticleParameter name="sigma"/>
-   <PerParticleParameter name="epsilon"/>
+   <!-- NB: the sigma and epsilon per-particle are inherited from CustomNonbondedForce and internally converted into per-bond parameters-->
    <PerBondParameter name="sigmaPerBond"/>
    <PerBondParameter name="epsilonPerBond"/>
-   <Atom type="1" sigma="0.28860" epsilon="0.0440"/>
-   <Atom type="2" sigma="0.23620" epsilon="0.0560"/>
-   <Atom type="3" sigma="0.24510" epsilon="0.0250"/>
-   <Atom type="4" sigma="0.27450" epsilon="0.0850"/>
-   <Atom type="5" sigma="0.40830" epsilon="0.1800"/>
-   <Atom type="6" sigma="0.38510" epsilon="0.1050"/>
-   <Atom type="7" sigma="0.36600" epsilon="0.0690"/>
-   <Atom type="8" sigma="0.35000" epsilon="0.0600"/>
-   <Atom type="9" sigma="0.33640" epsilon="0.0500"/>
-   <Atom type="10" sigma="0.32430" epsilon="0.0420"/>
-   <Atom type="11" sigma="0.29830" epsilon="0.0300"/>
-   <Atom type="12" sigma="0.30210" epsilon="0.1110"/>
-   <Atom type="13" sigma="0.44990" epsilon="0.5050"/>
-   <Atom type="14" sigma="0.42950" epsilon="0.4020"/>
-   <Atom type="15" sigma="0.41470" epsilon="0.3050"/>
-   <Atom type="16" sigma="0.40350" epsilon="0.2740"/>
-   <Atom type="17" sigma="0.39470" epsilon="0.2270"/>
-   <Atom type="18" sigma="0.38680" epsilon="0.1850"/>
-   <Atom type="19" sigma="0.38120" epsilon="0.0350"/>
-   <Atom type="20" sigma="0.33990" epsilon="0.2380"/>
-   <Atom type="21" sigma="0.32950" epsilon="0.0190"/>
-   <Atom type="22" sigma="0.31750" epsilon="0.0170"/>
-   <Atom type="23" sigma="0.31440" epsilon="0.0160"/>
-   <Atom type="24" sigma="0.30230" epsilon="0.0150"/>
-   <Atom type="25" sigma="0.29610" epsilon="0.0130"/>
-   <Atom type="26" sigma="0.29120" epsilon="0.0130"/>
-   <Atom type="27" sigma="0.28720" epsilon="0.0140"/>
-   <Atom type="28" sigma="0.28340" epsilon="0.0150"/>
-   <Atom type="29" sigma="0.34950" epsilon="0.0050"/>
-   <Atom type="30" sigma="0.27630" epsilon="0.1240"/>
-   <Atom type="31" sigma="0.43830" epsilon="0.4150"/>
-   <Atom type="32" sigma="0.42800" epsilon="0.3790"/>
-   <Atom type="33" sigma="0.42300" epsilon="0.3090"/>
-   <Atom type="34" sigma="0.42050" epsilon="0.2910"/>
-   <Atom type="35" sigma="0.41890" epsilon="0.2510"/>
-   <Atom type="36" sigma="0.41410" epsilon="0.2200"/>
-   <Atom type="37" sigma="0.41140" epsilon="0.0400"/>
-   <Atom type="38" sigma="0.36410" epsilon="0.2350"/>
-   <Atom type="39" sigma="0.33450" epsilon="0.0720"/>
-   <Atom type="40" sigma="0.31240" epsilon="0.0690"/>
-   <Atom type="41" sigma="0.31650" epsilon="0.0590"/>
-   <Atom type="42" sigma="0.30520" epsilon="0.0560"/>
-   <Atom type="43" sigma="0.29980" epsilon="0.0480"/>
-   <Atom type="44" sigma="0.29630" epsilon="0.0560"/>
-   <Atom type="45" sigma="0.29290" epsilon="0.0530"/>
-   <Atom type="46" sigma="0.28990" epsilon="0.0480"/>
-   <Atom type="47" sigma="0.31480" epsilon="0.0360"/>
-   <Atom type="48" sigma="0.28480" epsilon="0.2280"/>
-   <Atom type="49" sigma="0.44630" epsilon="0.5990"/>
-   <Atom type="50" sigma="0.43920" epsilon="0.5670"/>
-   <Atom type="51" sigma="0.44200" epsilon="0.4490"/>
-   <Atom type="52" sigma="0.44700" epsilon="0.3980"/>
-   <Atom type="53" sigma="0.45000" epsilon="0.3390"/>
-   <Atom type="54" sigma="0.44040" epsilon="0.3320"/>
-   <Atom type="55" sigma="0.45170" epsilon="0.0450"/>
-   <Atom type="56" sigma="0.37030" epsilon="0.3640"/>
-   <Atom type="57" sigma="0.35220" epsilon="0.0170"/>
-   <Atom type="58" sigma="0.35560" epsilon="0.1300"/>
-   <Atom type="59" sigma="0.36060" epsilon="0.0100"/>
-   <Atom type="60" sigma="0.35750" epsilon="0.0100"/>
-   <Atom type="61" sigma="0.35470" epsilon="0.0090"/>
-   <Atom type="62" sigma="0.35200" epsilon="0.0080"/>
-   <Atom type="63" sigma="0.34930" epsilon="0.0080"/>
-   <Atom type="64" sigma="0.33680" epsilon="0.0090"/>
-   <Atom type="65" sigma="0.34510" epsilon="0.0070"/>
-   <Atom type="66" sigma="0.34280" epsilon="0.0070"/>
-   <Atom type="67" sigma="0.34090" epsilon="0.0070"/>
-   <Atom type="68" sigma="0.33910" epsilon="0.0070"/>
-   <Atom type="69" sigma="0.33740" epsilon="0.0060"/>
-   <Atom type="70" sigma="0.33550" epsilon="0.2280"/>
-   <Atom type="71" sigma="0.36400" epsilon="0.0410"/>
-   <Atom type="72" sigma="0.31410" epsilon="0.0720"/>
-   <Atom type="73" sigma="0.31700" epsilon="0.0810"/>
-   <Atom type="74" sigma="0.30690" epsilon="0.0670"/>
-   <Atom type="75" sigma="0.29540" epsilon="0.0660"/>
-   <Atom type="76" sigma="0.31200" epsilon="0.0370"/>
-   <Atom type="77" sigma="0.28400" epsilon="0.0730"/>
-   <Atom type="78" sigma="0.27540" epsilon="0.0800"/>
-   <Atom type="79" sigma="0.32930" epsilon="0.0390"/>
-   <Atom type="80" sigma="0.27050" epsilon="0.3850"/>
-   <Atom type="81" sigma="0.43470" epsilon="0.6800"/>
-   <Atom type="82" sigma="0.42970" epsilon="0.6630"/>
-   <Atom type="83" sigma="0.43700" epsilon="0.5180"/>
-   <Atom type="84" sigma="0.47090" epsilon="0.3250"/>
-   <Atom type="85" sigma="0.47500" epsilon="0.2840"/>
-   <Atom type="86" sigma="0.47650" epsilon="0.2480"/>
-   <Atom type="87" sigma="0.49000" epsilon="0.0500"/>
-   <Atom type="88" sigma="0.36770" epsilon="0.4040"/>
-   <Atom type="89" sigma="0.34780" epsilon="0.0330"/>
-   <Atom type="90" sigma="0.33960" epsilon="0.0260"/>
-   <Atom type="91" sigma="0.34240" epsilon="0.0220"/>
-   <Atom type="92" sigma="0.33950" epsilon="0.0220"/>
-   <Atom type="93" sigma="0.34240" epsilon="0.0190"/>
-   <Atom type="94" sigma="0.34240" epsilon="0.0160"/>
-   <Atom type="95" sigma="0.33810" epsilon="0.0140"/>
-   <Atom type="96" sigma="0.33260" epsilon="0.0130"/>
-   <Atom type="97" sigma="0.33390" epsilon="0.0130"/>
-   <Atom type="98" sigma="0.33130" epsilon="0.0130"/>
-   <Atom type="99" sigma="0.32990" epsilon="0.0120"/>
-   <Atom type="100" sigma="0.32860" epsilon="0.0120"/>
-   <Atom type="101" sigma="0.32740" epsilon="0.0110"/>
-   <Atom type="102" sigma="0.32480" epsilon="0.0110"/>
-   <Atom type="103" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="104" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="105" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="106" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="107" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="108" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="109" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="110" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="111" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="112" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="113" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="114" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="115" sigma="0.32360" epsilon="0.0110"/>
-   <Atom type="116" sigma="0.32360" epsilon="0.0110"/>
-   <!-- NB: sigma must be != 0 as it is used as denominator.-->
-   <Atom type="ATM" sigma="1.0" epsilon="0.0"/>
-   <Atom type="ATP" sigma="1.0" epsilon="0.0"/>
-   <Atom type="ATN" sigma="1.0" epsilon="0.0"/>
-   <Atom type="Du" sigma="1.0" epsilon="0.0"/>
   </RCPAtomsNonbondedForce>
   <HeadTailNonbondedForce energy="scalingHT*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplHTA*eps; bA=widthHTA/sigmaDep; aB=amplHTB*eps; bB=widthHTB/sigmaDep; eps=epsilon*htRadFraction*bondDistanceFactor; sigmaDep=sigma*(1+fourthWeightHT*sigma^3)">
    <GlobalParameter name="scalingHT" defaultValue="0.0"/>
@@ -409,7 +286,9 @@
    <GlobalParameter name="smoothing" defaultValue="0.0"/>
    <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
+   <!-- NB: the bondDistanceFactor is used to scale the epsilon of the head-tail nonbonded term according to the bond-distance -->
    <PerBondParameter name="bondDistanceFactor"/>
+   <!-- NB: the sigma and epsilon per-particle are inherited from CustomNonbondedForce and internally converted into per-bond parameters-->
    <PerBondParameter name="sigma"/>
    <PerBondParameter name="epsilon"/>
    <!--Du must be ignored here-->
@@ -418,11 +297,11 @@
    <!-- NB: RCP pairs are explicitly defined in building the system file using CustomCompoundBondForce -->
    <GlobalParameter name="scalingRCP" defaultValue="0.0"/>
    <GlobalParameter name="amplRcpA" defaultValue="-2.5"/>
-   <GlobalParameter name="widthRcpA" defaultValue="2.0"/>
+   <GlobalParameter name="widthRcpA" defaultValue="200.0"/>
    <GlobalParameter name="amplRcpB" defaultValue="-1.7"/>
-   <GlobalParameter name="widthRcpB" defaultValue="0.1"/>
+   <GlobalParameter name="widthRcpB" defaultValue="10.0"/>
    <GlobalParameter name="amplRcpC" defaultValue="-6.0"/>
-   <GlobalParameter name="widthRcpC" defaultValue="15.0"/>
+   <GlobalParameter name="widthRcpC" defaultValue="1500.0"/>
    <GlobalParameter name="smoothing" defaultValue="0.0"/>
    <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>

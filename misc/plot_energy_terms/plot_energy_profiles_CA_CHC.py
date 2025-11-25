@@ -13,9 +13,9 @@ import numpy as np
 
 forcefieldfile = '../../data/RCP_UFFvdW.xml'
 initDistance = 0.00 # in nm
-initVdwDistance = 0.25 # in nm
-step = 0.0025 # in nm
+finalDistance = -0.5 # in nm
 nsteps = 200
+step = (finalDistance - initDistance) / nsteps
 distances = []
 energies = []
 
@@ -41,8 +41,8 @@ topo.addBond(atoms[0], atoms[4], 1)
 #        C4
 #        |
 #      ATM_0
-#        |
-#        |
+#        
+#        
 #        C1 - H2
 #        |  
 #        C3
@@ -51,8 +51,8 @@ topo.addBond(atoms[0], atoms[4], 1)
 positions = np.array([[0, 0, 0], 
                       [0, 0, 0],
                       [0.1, 0, 0],
-                      [0, 0.1, 0],
-                      [0.1, 0, 0]]) * unit.nanometer
+                      [0, 0, 0.1],
+                      [0, 0, -0.1]]) * unit.nanometer
 
 rcpterms = [[0, 1]]
 simulation = create_simulation(topo, rcpterms, forcefieldfile, positions)

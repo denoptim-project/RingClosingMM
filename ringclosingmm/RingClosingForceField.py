@@ -4,7 +4,7 @@ from openmm import Platform
 from openmm.app import ForceField
 from openmm.app.forcefield import _parseFunctions, _createFunctions, \
     HarmonicBondGenerator, HarmonicAngleGenerator, \
-    _convertParameterToNumber
+    _convertParameterToNumber, CustomNonbondedGenerator
 from openmm import VerletIntegrator
 from openmm.app.forcefield import parsers
 from collections import defaultdict
@@ -89,8 +89,15 @@ def _get_atoms_in_1_2_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]])
     """
     atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
-    
+
     atoms_in_1_2_relation = set()
+
+    for atm_b1 in atoms_b1:
+        atoms_in_1_2_relation.add((min(p1, atm_b1), max(p1, atm_b1)))
+    
+    for atm_b2 in atoms_b2:
+        atoms_in_1_2_relation.add((min(p2, atm_b2), max(p2, atm_b2)))
+
     for atm_a1 in atoms_a1:
         for atm_b2 in atoms_b2:
             atoms_in_1_2_relation.add((min(atm_a1, atm_b2), max(atm_a1, atm_b2)))
@@ -110,6 +117,13 @@ def _get_atoms_in_1_3_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]])
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
     
     atoms_in_1_3_relation = set()
+
+    for atm_c1 in atoms_c1:
+        atoms_in_1_3_relation.add((min(p1, atm_c1), max(p1, atm_c1)))
+
+    for atm_c2 in atoms_c2:
+        atoms_in_1_3_relation.add((min(p2, atm_c2), max(p2, atm_c2)))
+
     for atm_a1 in atoms_a1:
         for atm_c2 in atoms_c2:
             atoms_in_1_3_relation.add((min(atm_a1, atm_c2), max(atm_a1, atm_c2)))
@@ -136,6 +150,13 @@ def _get_atoms_in_1_4_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]])
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
     
     atoms_in_1_4_relation = set()
+
+    for atm_d1 in atoms_d1:
+        atoms_in_1_4_relation.add((min(p1, atm_d1), max(p1, atm_d1)))
+
+    for atm_d2 in atoms_d2:
+        atoms_in_1_4_relation.add((min(p2, atm_d2), max(p2, atm_d2)))
+
     for atm_a1 in atoms_a1:
         for atm_d2 in atoms_d2:
             atoms_in_1_4_relation.add((min(atm_a1, atm_d2), max(atm_a1, atm_d2)))
@@ -168,67 +189,182 @@ def getAngle(p0: Any, p1: Any, p2: Any) -> float:
     u2 = getUnitVector(v2)
     return np.arccos(np.clip(np.dot(u1, u2), -1.0, 1.0))
 
+# =============================================================================
+# Registers objects that store topological info related to ring-closing pairs
+# =============================================================================
+class TopologicalInfo:
+    def __init__(self):
+        # Store relations per RCP pair: key is (p1, p2) tuple (canonical: min, max)
+        # Value is a dict with keys 'relation12', 'relation13', 'relation14'
+        self.rcp_relations: Dict[Tuple[int, int], Dict[str, Set[Tuple[int, int]]]] = {}
+    
+    def get_relations_for_rcp(self, p1: int, p2: int) -> Dict[str, Set[Tuple[int, int]]]:
+        """Get relations for a specific RCP pair.
+        
+        Parameters
+        ----------
+        p1, p2 : int
+            Atom indices of the RCP pair. Order is irrelevant.
+            
+        Returns
+        -------
+        Dict[str, Set[Tuple[int, int]]]
+            Dictionary with keys 'relation12', 'relation13', 'relation14'
+            containing sets of atom pairs in canonical order (min, max)
+        """
+        rcp_key = (min(p1, p2), max(p1, p2))
+        return self.rcp_relations.get(rcp_key, {
+            'relation12': set(),
+            'relation13': set(),
+            'relation14': set()
+        })
+    
+    def add_rcp_relations(self, p1: int, p2: int, relation12: Set[Tuple[int, int]], 
+                          relation13: Set[Tuple[int, int]], relation14: Set[Tuple[int, int]]):
+        """Add relations for a specific RCP pair.
+        
+        Parameters
+        ----------
+        p1, p2 : int
+            Atom indices of the RCP pair. Order is irrelevant.
+        relation12, relation13, relation14 : Set[Tuple[int, int]]
+            Sets of atom pairs in canonical order (min, max)
+        """
+        rcp_key = (min(p1, p2), max(p1, p2))
+        self.rcp_relations[rcp_key] = {
+            'relation12': relation12,
+            'relation13': relation13,
+            'relation14': relation14
+        }
+
+
+def _build_neighbors_from_bonds(bonds) -> Dict[int, Set[int]]:
+    """
+    Build a neighbors dictionary from bonds.
+    Works with both data.bonds (bond.atom1, bond.atom2) and topo.bonds() (bond.atom1.index, bond.atom2.index).
+    
+    Parameters
+    ----------
+    bonds : iterable
+        Iterable of bond objects
+        
+    Returns
+    -------
+    Dict[int, Set[int]]
+        Dictionary mapping atom indices to sets of their bonded neighbors
+    """
+    neighbors = defaultdict(set)
+    for bond in bonds:
+        # Handle both data.bonds (direct indices) and topo.bonds() (bond.atom1.index)
+        if hasattr(bond.atom1, 'index'):
+            atom1_idx = bond.atom1.index
+            atom2_idx = bond.atom2.index
+        else:
+            atom1_idx = bond.atom1
+            atom2_idx = bond.atom2
+        neighbors[atom1_idx].add(atom2_idx)
+        neighbors[atom2_idx].add(atom1_idx)
+    return neighbors
+
+
+def _compute_and_store_topological_info(data, args: Dict[str, Any]) -> TopologicalInfo:
+    """
+    Compute topological relations for all RCP pairs and store in args.
+    This function computes the relations once and caches them in args['topological_info'].
+    
+    Parameters
+    ----------
+    data : openmm.app.forcefield._SystemData
+        System data containing bond information
+    args : Dict[str, Any]
+        Arguments dictionary passed to any createForce method
+        
+    Returns
+    -------
+    TopologicalInfo
+        The computed topological information
+    """
+    # Check if already computed and cached
+    if 'topological_info' in args:
+        return args['topological_info']
+    
+    # Create new TopologicalInfo instance
+    topo_info = TopologicalInfo()
+    
+    # Get RCP terms
+    rcpterms = args.get('rcpterms', [])
+    if len(rcpterms) == 0:
+        # No RCP terms, return empty info
+        args['topological_info'] = topo_info
+        return topo_info
+    
+    # Build a dictionary of bonded neighbors for each atom
+    neighbors = _build_neighbors_from_bonds(data.bonds)
+    
+    # Compute relations for each RCP pair
+    for pair in rcpterms:
+        p1 = int(pair[0])
+        p2 = int(pair[1])
+        
+        # Compute relations
+        relation12 = _get_atoms_in_1_2_relation(p1, p2, neighbors)
+        relation13 = _get_atoms_in_1_3_relation(p1, p2, neighbors)
+        relation14 = _get_atoms_in_1_4_relation(p1, p2, neighbors)
+        
+        # Store in TopologicalInfo
+        topo_info.add_rcp_relations(p1, p2, relation12, relation13, relation14)
+    
+    # Cache in args for future use
+    args['topological_info'] = topo_info
+    
+    return topo_info
+
+
+def _compute_topological_info_from_topology(topo, rcpterms: List[Tuple[int, int]]) -> TopologicalInfo:
+    """
+    Compute topological relations for all RCP pairs from a topology object.
+    This version works with openmm.app.Topology objects.
+    
+    Parameters
+    ----------
+    topo : openmm.app.Topology
+        Topology containing bond information
+    rcpterms : List[Tuple[int, int]]
+        List of RCP pairs
+        
+    Returns
+    -------
+    TopologicalInfo
+        The computed topological information
+    """
+    # Create new TopologicalInfo instance
+    topo_info = TopologicalInfo()
+    
+    if len(rcpterms) == 0:
+        return topo_info
+    
+    # Build a dictionary of bonded neighbors for each atom
+    neighbors = _build_neighbors_from_bonds(topo.bonds())
+    
+    # Compute relations for each RCP pair
+    for pair in rcpterms:
+        p1 = int(pair[0])
+        p2 = int(pair[1])
+        
+        # Compute relations
+        relation12 = _get_atoms_in_1_2_relation(p1, p2, neighbors)
+        relation13 = _get_atoms_in_1_3_relation(p1, p2, neighbors)
+        relation14 = _get_atoms_in_1_4_relation(p1, p2, neighbors)
+        
+        # Store in TopologicalInfo
+        topo_info.add_rcp_relations(p1, p2, relation12, relation13, relation14)
+    
+    return topo_info
+
 
 # =============================================================================
 # Force Field Generation 
 # =============================================================================
-
-# class OurNonbondedGenerator():
-#     """A generator for the non bonding interactions between the head and tail of a ring-closing pair.
-#     User OurNonbondedForce.
-#     """
-#     def __init__(self, forcefield, energy, verbose=False):
-#         self.ff = forcefield
-#         self.energy = energy
-#         self.globalParams = {}
-#         self.perParticleParams = []
-#         self.computedValues = {}
-#         self.functions = []
-#         self.verbose = verbose
-
-#     @staticmethod
-#     def parseElement(element, ff):
-#         generator = OurNonbondedGenerator(ff, element.attrib['energy'])
-#         ff.registerGenerator(generator)
-#         for param in element.findall('GlobalParameter'):
-#             generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
-#         for param in element.findall('PerParticleParameter'):
-#             generator.perParticleParams.append(param.attrib['name'])
-#         for value in element.findall('ComputedValue'):
-#             generator.computedValues[value.attrib['name']] = value.attrib['expression']
-#         generator.params = ForceField._AtomTypeParameters(ff, 'CustomNonbondedForce', 'Atom', generator.perParticleParams)
-#         generator.params.parseDefinitions(element)
-#         generator.functions += _parseFunctions(element)
-
-#     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
-#         """Create our nonbonded force using CustomManyParticleForce.
-#         """
-#         force = mm.CustomManyParticleForce(2, self.energy)
-#         force.setName('OurNonbondedForce')
-#         for param in self.globalParams:
-#             force.addGlobalParameter(param, self.globalParams[param])
-#         for param in self.perParticleParams:
-#             force.addPerParticleParameter(param)
-#         for name in self.computedValues:
-#             force.addComputedValue(name, self.computedValues[name])
-
-#         _createFunctions(force, self.functions)
-
-#         rcpterms = args.get('rcpterms', [])
-        
-#         for atom in data.atoms:
-#             values = self.params.getAtomParameters(atom, data)
-#             force.addParticle(values)
-#         force.setCutoffDistance(nonbondedCutoff)
-
-#         sys.addForce(force)
-
-#     def postprocessSystem(self, sys, data, args):
-#         pass
-
-
-# parsers["OurNonbondedForce"] = OurNonbondedGenerator.parseElement
-
 
 class ConstrainedBondGenerator(HarmonicBondGenerator):
     """A generator for constraints that try to preserve the distances
@@ -261,7 +397,39 @@ class ConstrainedBondGenerator(HarmonicBondGenerator):
             generator.registerBond(bond.attrib)
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
+        """
+        Create the ConstrainedBondForce.
+
+        Parameters
+        ----------
+        sys : openmm.System
+            The system to which the force is added
+        data : openmm.app.forcefield._SystemData
+            System data containing bond information
+        nonbondedMethod : str
+            The nonbonded method used for the simulation
+        nonbondedCutoff : float
+            The nonbonded cutoff distance used for the simulation
+        args : Dict[str, Any]
+            Arguments dictionary passed to any createForce method
+            
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        The rcpterms must be provided in args['rcpterms'] as a list of 
+        [particle1, particle2] pairs. 
+        Also, the atom coordinates must be provided in args['positions'] 
+        as a list of openmm.unit.Quantity objects.
+        The topological info is computed and cached in args['topological_info'].
+        """
         existing = [f for f in sys.getForces() if type(f) == mm.HarmonicBondForce]
+
+        # Get or compute topological info (computes once and caches in args)
+        topo_info = _compute_and_store_topological_info(data, args)
+
         if len(existing) == 0:
             force = mm.HarmonicBondForce()
             sys.addForce(force)
@@ -325,7 +493,39 @@ class ConstrainedAngleGenerator(HarmonicAngleGenerator):
             generator.registerAngle(angle.attrib)
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
+        """
+        Create the ConstrainedAngleForce.
+
+        Parameters
+        ----------
+        sys : openmm.System
+            The system to which the force is added
+        data : openmm.app.forcefield._SystemData
+            System data containing bond information
+        nonbondedMethod : str
+            The nonbonded method used for the simulation
+        nonbondedCutoff : float
+            The nonbonded cutoff distance used for the simulation
+        args : Dict[str, Any]
+            Arguments dictionary passed to any createForce method
+            
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        The rcpterms must be provided in args['rcpterms'] as a list of 
+        [particle1, particle2] pairs. 
+        Also, the atom coordinates must be provided in args['positions'] 
+        as a list of openmm.unit.Quantity objects.
+        The topological info is computed and cached in args['topological_info'].
+        """
         existing = [f for f in sys.getForces() if type(f) == mm.HarmonicAngleForce]
+
+        # Get or compute topological info (computes once and caches in args)
+        topo_info = _compute_and_store_topological_info(data, args)
+        
         if len(existing) == 0:
             force = mm.HarmonicAngleForce()
             sys.addForce(force)
@@ -369,7 +569,6 @@ class HeadTailNonbondedGenerator():
         self.energy = energy
         self.globalParams = {}
         self.perBondParams = []
-        self.functions = []
         self.verbose = verbose
 
     @staticmethod
@@ -380,13 +579,47 @@ class HeadTailNonbondedGenerator():
             generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
         for param in element.findall('PerBondParameter'):
             generator.perBondParams.append(param.attrib['name'])
-        generator.functions += _parseFunctions(element)
+                
+        # Force-field parameters are inherited from the CustomNonbondedForce
+        for other_generator in ff.getGenerators():
+            if isinstance(other_generator, CustomNonbondedGenerator):
+                generator.params = other_generator.params
+                break
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
-        """Create the head-tail nonbonded force.
+        """
+        Create the head-tail nonbonded force.
+
+        Parameters
+        ----------
+        sys : openmm.System
+            The system to which the force is added
+        data : openmm.app.forcefield._SystemData
+            System data containing bond information
+        nonbondedMethod : str
+            The nonbonded method used for the simulation
+        nonbondedCutoff : float
+            The nonbonded cutoff distance used for the simulation
+        args : Dict[str, Any]
+            Arguments dictionary passed to any createForce method
+            
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        The rcpterms must be provided in args['rcpterms'] as a list of 
+        [particle1, particle2] pairs. 
+        Also, the atom coordinates must be provided in args['positions'] 
+        as a list of openmm.unit.Quantity objects.
+        The topological info is computed and cached in args['topological_info'].
         """
         force = mm.CustomCompoundBondForce(2, self.energy)
         force.setName('HeadTailNonbondedForce')
+        
+        # Get or compute topological info (computes once and caches in args)
+        topo_info = _compute_and_store_topological_info(data, args)
         
         # Add global parameters (smoothing, scaling, etc.)
         for param in self.globalParams:
@@ -396,13 +629,8 @@ class HeadTailNonbondedGenerator():
         for param in self.perBondParams:
             force.addPerBondParameter(param)
 
-        # Add custom functions (Gaussians, etc.)
-        _createFunctions(force, self.functions)
-
         # Add each RCP term explicitly
         rcpterms = args.get('rcpterms', [])
-        if self.verbose:
-            print(f'Adding {len(rcpterms)} head-tail nonbonded terms to HeadTailNonbondedForce')
         
         # Utility to ensure we do not add the same force twice
         pairs_added = set()
@@ -412,36 +640,35 @@ class HeadTailNonbondedGenerator():
             # ignore dummy atoms
             if '_Du' in data.atoms[pair[0]].name or '_Du' in data.atoms[pair[1]].name:
                 return False
+            eps0 = self.params.getAtomParameters(data.atoms[pair[0]], data)[1]
+            eps1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[1]
+            sigma0 = self.params.getAtomParameters(data.atoms[pair[0]], data)[0]
+            sigma1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[0]
+            sigmaPerBond = 0.5 * (sigma0 + sigma1)
+            epsilonPerBond = math.sqrt(eps0) * math.sqrt(eps1)
             if pair not in pairs_added:
                 pairs_added.add(pair)
-                force.addBond([pair[0], pair[1]], [bondFactor, 0.4, 0.04]) # bondFactor, sigma, epsilon
+                if self.verbose:
+                    print(f'   Head-tail nonbonded term ({len(pairs_added)}): {pair[0]} - {pair[1]} (bondFactor={bondFactor}) sigma={sigmaPerBond} epsilon={epsilonPerBond}')
+                force.addBond([pair[0], pair[1]], [bondFactor, sigmaPerBond, epsilonPerBond])
                 return True
             return False
-        
-        # Build a dictionary of bonded neighbors for each atom
-        neighbors = defaultdict(set)
-        for bond in data.bonds:
-            neighbors[bond.atom1].add(bond.atom2)
-            neighbors[bond.atom2].add(bond.atom1)
 
         for idx, pair in enumerate(rcpterms):
             p1 = int(pair[0])
             p2 = int(pair[1])
 
             # Ignore the RCP pair itself (1-1 relation): do nothing for (p1,p2) and (p2,p1)
-
-            for pair in _get_atoms_in_1_2_relation(p1, p2, neighbors):
-                if addForceOnce(pair[0], pair[1], 2.0):
-                    if verbose:
-                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-2 relation)')
-            for pair in _get_atoms_in_1_3_relation(p1, p2, neighbors):
-                if addForceOnce(pair[0], pair[1], 3.0):
-                    if verbose:
-                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-3 relation)')
-            for pair in _get_atoms_in_1_4_relation(p1, p2, neighbors):
-                if addForceOnce(pair[0], pair[1], 4.0):
-                    if verbose:
-                        print(f'    Also H-T nonbonded term: {pair[0]} - {pair[1]} (1-4 relation)')
+            
+            # Get pre-computed relations from TopologicalInfo
+            relations = topo_info.get_relations_for_rcp(p1, p2)
+            
+            for pair in relations['relation12']:
+                addForceOnce(pair[0], pair[1], 2.0)
+            for pair in relations['relation13']:
+                addForceOnce(pair[0], pair[1], 3.0)
+            for pair in relations['relation14']:
+                addForceOnce(pair[0], pair[1], 4.0)
                         
         sys.addForce(force)
 
@@ -462,7 +689,6 @@ class RCPAtomsNonbondedGenerator():
         self.globalParams = {}
         self.perBondParams = []
         self.perParticleParams = []
-        self.functions = []
         self.verbose = verbose
 
     @staticmethod
@@ -475,16 +701,47 @@ class RCPAtomsNonbondedGenerator():
             generator.perParticleParams.append(param.attrib['name'])
         for param in element.findall('PerBondParameter'):
             generator.perBondParams.append(param.attrib['name'])
-        # TODO: consider getting the perparticle parameters from the CustomNonbondedGenerator
-        generator.params = ForceField._AtomTypeParameters(ff, 'RCPAtomsNonbondedForce', 'Atom', generator.perParticleParams)
-        generator.params.parseDefinitions(element)
-        generator.functions += _parseFunctions(element)
+
+        # Force-field parameters are inherited from the CustomNonbondedForce
+        for other_generator in ff.getGenerators():
+            if isinstance(other_generator, CustomNonbondedGenerator):
+                generator.params = other_generator.params
+                break
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
-        """Create the RCPatom-to-any nonbonded force.
+        """
+        Create the RCPatom-to-any nonbonded force.
+
+        Parameters
+        ----------
+        sys : openmm.System
+            The system to which the force is added
+        data : openmm.app.forcefield._SystemData
+            System data containing bond information
+        nonbondedMethod : str
+            The nonbonded method used for the simulation
+        nonbondedCutoff : float
+            The nonbonded cutoff distance used for the simulation
+        args : Dict[str, Any]
+            Arguments dictionary passed to any createForce method
+            
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
+        The rcpterms must be provided in args['rcpterms'] as a list of 
+        [particle1, particle2] pairs. 
+        Also, the atom coordinates must be provided in args['positions'] 
+        as a list of openmm.unit.Quantity objects.
+        The topological info is computed and cached in args['topological_info'].
         """
         force = mm.CustomCompoundBondForce(3, self.energy)
         force.setName('RCPAtomsNonbondedForce')
+
+        # Get or compute topological info (computes once and caches in args)
+        topo_info = _compute_and_store_topological_info(data, args)
         
         # Add global parameters (smoothing, scaling, etc.)
         for param in self.globalParams:
@@ -492,23 +749,22 @@ class RCPAtomsNonbondedGenerator():
         for param in self.perBondParams:
             force.addPerBondParameter(param)
 
-        # Add custom functions (Gaussians, etc.)
-        _createFunctions(force, self.functions)
-
         rcpterms = args.get('rcpterms', [])
-        if self.verbose:
-            print(f'Adding 2x{len(rcpterms)} sets of RCPatom-to-any nonbonded terms to RCPAtomsNonbondedForce')
 
-        # Identify pairs of atoms aready treated by HeadTailNonbondedForce
-        pairs_treated_by_HTterm = set()
-        for ht_force in sys.getForces():
-            if ht_force.getName() == 'HeadTailNonbondedForce':
-                for ht_bond in ht_force.getBonds():
-                    pairs_treated_by_HTterm.add((ht_bond[0], ht_bond[1]))
+        # Exclude pairs that are related by 1-2, 1-3, or 1-4 relations around the RC bonds
+        pairs_excluded_by_rc_bond_relations = set()
+        for rcpterm in rcpterms:
+            p1 = int(rcpterm[0])
+            p2 = int(rcpterm[1])
+            relations = topo_info.get_relations_for_rcp(p1, p2)
+            for relation_type in ['relation12', 'relation13', 'relation14']:
+                for pair in relations[relation_type]:
+                    pairs_excluded_by_rc_bond_relations.add((min(pair[0], pair[1]), max(pair[0], pair[1])))
         
         # Utility to ensure we do not add the same force twice
         pairs_added = set()
-        # WARNING! These force terms are not symmetric!
+        # WARNING! These force terms are not symmetric! Yet, this is refleced by the different 
+        # atom type of the atoms in the pair.
         def addForceOnce(properAtomIdx, otherAtomIdx, attractorAtmIdx):
             pair = (min(properAtomIdx, otherAtomIdx), max(properAtomIdx, otherAtomIdx))
             # ignore dummy atoms
@@ -520,11 +776,10 @@ class RCPAtomsNonbondedGenerator():
             sigma1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[0]
             sigmaPerBond = 0.5 * (sigma0 + sigma1)
             epsilonPerBond = math.sqrt(eps0) * math.sqrt(eps1)
-            if pair not in pairs_added and pair not in pairs_treated_by_HTterm:
+            if pair not in pairs_added and pair not in pairs_excluded_by_rc_bond_relations:
                 pairs_added.add(pair)
-                #if verbose:
-                #TODO del
-                print(f'   RCPatom-to-any nonbonded term ({len(pairs_added)}): {properAtomIdx} - {otherAtomIdx} (ref={attractorAtmIdx}) sigma={sigmaPerBond} epsilon={epsilonPerBond}')
+                if self.verbose:
+                    print(f'   RCPatom-to-any nonbonded term: {properAtomIdx} - {otherAtomIdx} (ref={attractorAtmIdx}) sigma={sigmaPerBond} epsilon={epsilonPerBond}')
                 force.addBond([properAtomIdx, otherAtomIdx, attractorAtmIdx], [sigmaPerBond, epsilonPerBond])
                 return True
             return False
@@ -599,7 +854,8 @@ class RingClosingForceGenerator():
         generator.functions += _parseFunctions(element)
 
     def createForce(self, sys, data, nonbondedMethod, nonbondedCutoff, args):
-        """Create the RCP force using CustomCompoundBondForce.
+        """
+        Create the RCP force using CustomCompoundBondForce.
 
         Parameters
         ----------
@@ -613,11 +869,19 @@ class RingClosingForceGenerator():
             The nonbonded cutoff to use.
         args : dict
             The arguments to add the force to.
-    
+
+        Returns
+        -------
+        None
+        
+        Notes
+        -----
         The rcpterms must be provided in args['rcpterms'] as a list of 
         [particle1, particle2] pairs. 
         Also, the atom coordinates must be provided in args['positions'] 
-        as a list of openmm.unit.Quantity objects."""
+        as a list of openmm.unit.Quantity objects.
+        The topological info is computed and cached in args['topological_info'].
+        """
 
         # Use the position just to avoid triggering error about unused arg
         lenPositions = len(args['positions'])
@@ -625,6 +889,9 @@ class RingClosingForceGenerator():
         # Create force with 2 particles per "bond" (the RCP pair)
         force = mm.CustomCompoundBondForce(2, self.energy)
         force.setName('RCPForce')
+
+        # Get or compute topological info (computes once and caches in args)
+        topo_info = _compute_and_store_topological_info(data, args)
         
         # Add global parameters (smoothing, scaling, etc.)
         for param in self.globalParams:
@@ -855,11 +1122,8 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
     if trackedForceTypes[0] in forces.keys() and len(rcpterms) > 0:
         nbForce = forces[trackedForceTypes[0]]  # vdW term
         
-        # Build a dictionary of bonded neighbors for each atom
-        neighbors = defaultdict(set)
-        for bond in topo.bonds():
-            neighbors[bond.atom1.index].add(bond.atom2.index)
-            neighbors[bond.atom2.index].add(bond.atom1.index)
+        # Compute topological info from topology (reuses the same computation logic)
+        topo_info = _compute_topological_info_from_topology(topo, rcpterms)
         
         # Track exclusions to avoid duplicates (store in canonical order: min, max)
         exclusions_added = set()
@@ -901,16 +1165,19 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                 if verbose:
                     print(f'  RCP term {idx}: excluding vdW between particles {p1} - {p2}')
 
+            # Get pre-computed relations from TopologicalInfo
+            relations = topo_info.get_relations_for_rcp(p1, p2)
+            
             # Exclude atoms in 1-2, 1-3, and 1-4 relations
-            for pair in _get_atoms_in_1_2_relation(p1, p2, neighbors):
+            for pair in relations['relation12']:
                 if add_exclusion_once(pair[0], pair[1]):
                     if verbose:
                         print(f'    Also excluding: {pair[0]} - {pair[1]} (1-2 relation)')
-            for pair in _get_atoms_in_1_3_relation(p1, p2, neighbors):
+            for pair in relations['relation13']:
                 if add_exclusion_once(pair[0], pair[1]):
                     if verbose:
                         print(f'    Also excluding: {pair[0]} - {pair[1]} (1-3 relation)')
-            for pair in _get_atoms_in_1_4_relation(p1, p2, neighbors):
+            for pair in relations['relation14']:
                 if add_exclusion_once(pair[0], pair[1]):
                     if verbose:
                         print(f'    Also excluding: {pair[0]} - {pair[1]} (1-4 relation)')

@@ -118,7 +118,7 @@ for i in range(nsteps):
 
     distances.append(distance)
     energies.append(e)
-    print(f'Step {i} of {nsteps} Distance: {distance:.4f}, Energy: {e}')
+    #print(f'Step {i} of {nsteps} Distance: {distance:.4f}, Energy: {e}')
 
 # Create the plot
 plt.figure(figsize=(10, 6))

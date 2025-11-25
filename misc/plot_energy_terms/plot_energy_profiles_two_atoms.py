@@ -21,7 +21,7 @@ energies = []
 topo = Topology()
 c0 = topo.addChain()
 r0 = topo.addResidue('res0', c0)
-topo.addAtom('ATM', Element.getBySymbol('H'), r0)
+topo.addAtom('_ATM_0', Element.getBySymbol('H'), r0)
 topo.addAtom('C', Element.getBySymbol('C'), r0)
 positions = [[0, 0, 0], [0, 0, 0]]
 rcpterms = [[0, 1]]
@@ -46,6 +46,7 @@ plt.ylabel('Energy (kJ/mol)', fontsize=12)
 plt.legend(['OpenMM'], fontsize=12)
 plt.title('RCP Energy Profile', fontsize=14)
 plt.grid(True, alpha=0.3)
+plt.ylim(-44.77, 1.4)
 plt.tight_layout()
 #plt.savefig('energy_profile.png', dpi=300)
 #print('Plot saved as energy_profile.png')
