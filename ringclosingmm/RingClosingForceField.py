@@ -693,7 +693,7 @@ class RCPAtomsNonbondedGenerator():
 
     @staticmethod
     def parseElement(element, ff):
-        generator = RCPAtomsNonbondedGenerator(ff, element.attrib['energy'])
+        generator = RCPAtomsNonbondedGenerator(ff, element.attrib['energy'], verbose=verbose)
         ff.registerGenerator(generator)
         for param in element.findall('GlobalParameter'):
             generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])
@@ -844,7 +844,7 @@ class RingClosingForceGenerator():
     @staticmethod
     def parseElement(element, ff):
         # bondCutoff attribute is now optional/ignored for CustomCompoundBondForce
-        generator = RingClosingForceGenerator(ff, element.attrib['energy'])
+        generator = RingClosingForceGenerator(ff, element.attrib['energy'], verbose=verbose)
         ff.registerGenerator(generator)
         for param in element.findall('GlobalParameter'):
             generator.globalParams[param.attrib['name']] = float(param.attrib['defaultValue'])

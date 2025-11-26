@@ -186,12 +186,12 @@
             }
         },
         {
-            "name": "Python: Plot function fr",
+            "name": "Python: Plot energy terms",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/misc/plot_custom_nonbonded/plot_function_fr.py",
+            "program": "${workspaceFolder}/misc/plot_energy_terms/plot_energy_profiles_CA_CHC.py",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/misc/plot_custom_nonbonded",
+            "cwd": "${workspaceFolder}/misc/plot_energy_terms",
             "justMyCode": false,
             "env": {
                 "MPLBACKEND": "TkAgg"

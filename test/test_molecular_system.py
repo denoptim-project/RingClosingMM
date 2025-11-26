@@ -32,6 +32,7 @@ class TestMolecularSystemCreation(unittest.TestCase):
             self.skipTest(f"Force field file not found: {self.forcefield_file}")
         
         self.test_int_file = self.test_dir / 'simple_molecule.int'
+        self.test_int_file_w_rcp_terms = self.test_dir / 'simple_molecule_w_rcp_terms.int'
     
     def test_from_file_with_valid_input(self):
         """Test creating MolecularSystem from valid INT file."""
@@ -53,19 +54,19 @@ class TestMolecularSystemCreation(unittest.TestCase):
     
     def test_from_file_with_rcp_terms(self):
         """Test creating MolecularSystem with RCP terms."""
-        if not self.test_int_file.exists():
-            self.skipTest(f"Test INT file not found: {self.test_int_file}")
+        if not self.test_int_file_w_rcp_terms.exists():
+            self.skipTest(f"Test INT file not found: {self.test_int_file_w_rcp_terms}")
         
-        rcp_terms = [(0, 2)]  # 0-based indices
+        rcp_terms = [(0, 5)]  # 0-based indices
         system = MolecularSystem.from_file(
-            str(self.test_int_file),
+            str(self.test_int_file_w_rcp_terms),
             str(self.forcefield_file),
             rcp_terms=rcp_terms
         )
         
         self.assertIsNotNone(system)
         self.assertEqual(len(system.rcpterms), 1)
-        self.assertEqual(system.rcpterms[0], (0, 2))
+        self.assertEqual(system.rcpterms[0], (0, 5))
     
     def test_set_smoothing_parameter(self):
         """Test setting smoothing parameter."""
@@ -95,6 +96,7 @@ class TestMolecularSystemEnergy(unittest.TestCase):
         self.test_dir = Path(__file__).parent / 'fixtures'
         self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
         self.test_int_file = self.test_dir / 'simple_molecule.int'
+        self.test_int_file_w_rcp_terms = self.test_dir / 'simple_molecule_w_rcp_terms.int'
     
     def test_evaluate_energy(self):
         """Test energy evaluation."""
@@ -174,6 +176,7 @@ class TestMolecularSystemRingClosure(unittest.TestCase):
         self.test_dir = Path(__file__).parent / 'fixtures'
         self.forcefield_file = Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml'
         self.test_int_file = self.test_dir / 'simple_molecule.int'
+        self.test_int_file_w_rcp_terms = self.test_dir / 'simple_molecule_w_rcp_terms.int'
     
     def test_ring_closure_score_exponential_no_rcp_terms(self):
         """Test exponential score with no RCP terms."""
@@ -194,13 +197,13 @@ class TestMolecularSystemRingClosure(unittest.TestCase):
     
     def test_ring_closure_score_exponential_with_rcp_terms(self):
         """Test exponential score with RCP terms."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
+        if not self.test_int_file_w_rcp_terms.exists() or not self.forcefield_file.exists():
             self.skipTest("Required test files not found")
         
         # Create system with RCP terms
-        rcp_terms = [(0, 2)]  # 0-based: first and third atom
+        rcp_terms = [(0, 5)]  # 0-based: first and third atom
         system = MolecularSystem.from_file(
-            str(self.test_int_file),
+            str(self.test_int_file_w_rcp_terms),
             str(self.forcefield_file),
             rcp_terms=rcp_terms
         )
@@ -216,12 +219,12 @@ class TestMolecularSystemRingClosure(unittest.TestCase):
     
     def test_ring_closure_score_exponential_tolerance(self):
         """Test exponential score respects tolerance."""
-        if not self.test_int_file.exists() or not self.forcefield_file.exists():
+        if not self.test_int_file_w_rcp_terms.exists() or not self.forcefield_file.exists():
             self.skipTest("Required test files not found")
         
-        rcp_terms = [(0, 2)]
+        rcp_terms = [(0, 5)]
         system = MolecularSystem.from_file(
-            str(self.test_int_file),
+            str(self.test_int_file_w_rcp_terms),
             str(self.forcefield_file),
             rcp_terms=rcp_terms
         )
@@ -345,7 +348,7 @@ class TestMolecularSystemFromData(unittest.TestCase):
         
         # Simple Z-matrix
         zmatrix_atoms = [
-            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
@@ -497,7 +500,7 @@ class TestMolecularSystemErrorHandling(unittest.TestCase):
             self.skipTest("Force field file not found")
         
         zmatrix_atoms = [
-            {'id': 0, 'element': 'H', 'atomic_num': 1},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0},
             {'id': 2, 'element': 'H', 'atomic_num': 1, 'bond_ref': 0, 'bond_length': 1.0,
              'angle_ref': 1, 'angle': 109.47}
@@ -1248,7 +1251,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         # RCP terms: (0, 4)
         # Rotatable indices: [3] (atom 3 has a dihedral)
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
@@ -1281,7 +1284,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         # RCP terms: (0, 2) and (0, 4)
         # Rotatable indices: [3] (atom 3 has a dihedral)
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0 (in both RCP terms)
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
@@ -1312,7 +1315,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         # Simple chain: 0-1-2
         # RCP terms: (0, 2)
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47}
@@ -1340,7 +1343,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         # RCP terms: (0, 2) - path is [0, 1, 2]
         # Rotatable indices: [3, 4] - atoms 3 and 4 are not on the path
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.54,
              'angle_ref': 0, 'angle': 109.47},
@@ -1372,7 +1375,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         """Test with disconnected RCP atoms (no path exists)."""
         # Two separate components: 0-1 and 2-3
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54},
             {'id': 2, 'element': 'C', 'atomic_num': 6},
             {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.54}
@@ -1393,7 +1396,7 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
     def test_identify_rc_critical_same_rcp_atom(self):
         """Test with RCP term where both atoms are the same."""
         zmatrix_atoms = [
-            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 0, 'element': 'ATN', 'atomic_num': 1},  # RCP atom with _ATN_0
             {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.54}
         ]
         zmatrix = ZMatrix(zmatrix_atoms, [(0, 1)])
