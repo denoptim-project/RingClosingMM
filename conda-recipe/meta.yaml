@@ -30,10 +30,14 @@ requirements:
     - wheel
   
   run:
+    # Python constraint: >=3.8,<3.14 due to numba dependency
+    # For Python 3.14 support, use numba>=0.63.0rc1 (release candidate)
+    # Note: pip will enforce the <3.14 constraint from pyproject.toml
     - python >=3.8
     - numpy >=1.20.0
     - scipy >=1.7.0
     - openmm >=7.7.0
+    - numba >=0.56.0
 
 test:
   imports:

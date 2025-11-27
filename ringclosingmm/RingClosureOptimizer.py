@@ -193,14 +193,26 @@ class RingClosureOptimizer:
         if trajectory_file:
             trajectory_file_diff_evo = trajectory_file.replace('.xyz', '_diff_evo.xyz')
         diff_evo_time = time.time()
-        ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
+
+        ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space_fabrik(
             zmatrix=self.system.zmatrix,
-            rotatable_indices=self.system.rc_critical_rotatable_indeces,
+            rotatable_indices=self.system.rotatable_indices,
             max_iterations=500,
             ring_closure_tolerance=ring_closure_tolerance,
             ring_closure_decay_rate=ring_closure_decay_rate,
             trajectory_file=trajectory_file_diff_evo,
             verbose=verbose)
+
+#TODO del
+        # ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
+        #     zmatrix=self.system.zmatrix,
+        #     rotatable_indices=self.system.rc_critical_rotatable_indeces,
+        #     max_iterations=500,
+        #     ring_closure_tolerance=ring_closure_tolerance,
+        #     ring_closure_decay_rate=ring_closure_decay_rate,
+        #     trajectory_file=trajectory_file_diff_evo,
+        #     verbose=verbose)
+        
         diff_evo_time = time.time() - diff_evo_time
         print(f"  Time: {diff_evo_time:.2f} seconds")
 

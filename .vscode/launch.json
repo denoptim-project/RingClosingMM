@@ -137,6 +137,20 @@
             "justMyCode": false
         },
         {
+            "name": "Python: TestAnalyticalDistance Tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_analytical_distance.py::TestJITCompilation::test_distance_computation_with_dihedrals_indirect",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
             "name": "Python: Run rc-optimizer",
             "type": "debugpy",
             "request": "launch",

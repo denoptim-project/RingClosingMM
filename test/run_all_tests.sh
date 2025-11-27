@@ -20,6 +20,7 @@ ENV_FILE="../environment.yml"
 
 # Test files to run
 TEST_FILES=(
+    "test_analytical_distance.py"
     "test_coordinate_conversion.py"
     "test_zmatrix.py"
     "test_molecular_system.py"
