@@ -220,7 +220,24 @@
             "env": {
                 "MPLBACKEND": "TkAgg"
             }
-        }
+        },
+        {
+            "name": "Distorted Complex",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "distorted_complex.int",
+                "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
+                "-c", "7", "39", "77", "35",
+                "-o", "distorted_complex_min",
+                "--trajectory-file", "distorted_complex_trj.xyz"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/strained_ring_closure",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        },
     ]
 }
 
