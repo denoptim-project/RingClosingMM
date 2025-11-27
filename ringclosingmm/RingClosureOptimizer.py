@@ -160,7 +160,7 @@ class RingClosureOptimizer:
             Iterations for Z-matrix space minimization (default: 50)
         trajectory_file : Optional[str]
             If provided, write optimization trajectory to this XYZ file (append mode).
-            Writes coordinates for the torsional and Z-matrix refinements in dedicated files.
+            Writes coordinates for each refinement step in dedicated files. The given string is used as basename for trajectory files of each refinement step.
         verbose : bool
             Print progress information (default: True)
             
@@ -188,14 +188,18 @@ class RingClosureOptimizer:
         initial_ring_closure_score = self.system.ring_closure_score_exponential(initial_coords)
         initial_energy = self.system.evaluate_energy(initial_coords)
     
-        print(f"\nTorsional space optimization to maximize ring closure score...")
+        print(f"\nTorsional space optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions) to maximize ring closure score...")
+        trajectory_file_diff_evo = None
+        if trajectory_file:
+            trajectory_file_diff_evo = trajectory_file.replace('.xyz', '_diff_evo.xyz')
         diff_evo_time = time.time()
         ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
             zmatrix=self.system.zmatrix,
-            rotatable_indices=self.system.rotatable_indices,
+            rotatable_indices=self.system.rc_critical_rotatable_indeces,
             max_iterations=500,
             ring_closure_tolerance=ring_closure_tolerance,
             ring_closure_decay_rate=ring_closure_decay_rate,
+            trajectory_file=trajectory_file_diff_evo,
             verbose=verbose)
         diff_evo_time = time.time() - diff_evo_time
         print(f"  Time: {diff_evo_time:.2f} seconds")

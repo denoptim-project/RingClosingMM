@@ -266,7 +266,7 @@ def zmatrix_to_cartesian(zmatrix: ZMatrix) -> np.ndarray:
                 angle_deg = np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
                 raise ValueError(
                     f"Linearity detected: Cannot compute dihedral angle for atom {i+1} (0-based: {i}). "
-                    f"The geometry around atoms {ib+1} (0-based: {ib}), {ia+1} (0-based: {ia}), and {ic+1} (0-based: {ic}) "
+                    f"The geometry around atoms {ib+1}-{ia+1}-{ic+1} (0-based: {ib}-{ia}-{ic}) "
                     f"is linear (angle ≈ {angle_deg:.2f}°). Dihedral angles are undefined for linear geometries. "
                     f"Consider adjusting the Z-matrix definition or the current geometry to avoid linear arrangements."
                 )
@@ -301,7 +301,7 @@ def zmatrix_to_cartesian(zmatrix: ZMatrix) -> np.ndarray:
                 angle_deg = np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
                 raise ValueError(
                     f"Linearity detected: Cannot compute chirality angle for atom {i+1} (0-based: {i}). "
-                    f"The geometry around atoms {ib+1} (0-based: {ib}), {ia+1} (0-based: {ia}), and {ic+1} (0-based: {ic}) "
+                    f"The geometry around atoms {ib+1}-{ia+1}-{ic+1} (0-based: {ib}-{ia}-{ic}) "
                     f"is linear (angle ≈ {angle_deg:.2f}°). Chirality angles are undefined for linear geometries. "
                     f"Consider adjusting the Z-matrix definition or the current geometry to avoid linear arrangements."
                 )

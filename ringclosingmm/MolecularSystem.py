@@ -839,6 +839,7 @@ class MolecularSystem:
                                                   max_iterations: int = 100,
                                                   ring_closure_tolerance: float = 0.2,
                                                   ring_closure_decay_rate: float = 0.5,
+                                                  trajectory_file: Optional[str] = None,
                                                   verbose: bool = False) -> Tuple[ZMatrix, float, Dict[str, Any]]:
         """
         Maximize ring closure in torsional space by dual annealing.
@@ -851,9 +852,24 @@ class MolecularSystem:
             Indices of rotatable atoms in Z-matrix (atoms whose dihedrals can be optimized)
         max_iterations : int
             Maximum optimization iterations
+        ring_closure_tolerance : float
+            Ring closure tolerance (Å) for computing ring closure score
+        ring_closure_decay_rate : float
+            Ring closure decay rate for computing ring closure score
+        trajectory_file : Optional[str]
+            If provided, write optimization trajectory to this XYZ file (append mode).
+            Writes coordinates after each optimizer iteration (not every function evaluation).
         verbose : bool
             Print optimization progress
         """
+
+        # Clear trajectory file if provided
+        if trajectory_file:
+            Path(trajectory_file).unlink(missing_ok=True)
+
+        # Iteration counter for trajectory
+        iteration_counter = [0]
+
         def objective(torsions: np.ndarray) -> float:
             """Objective function: evaluate ring closure score for given torsions."""
             try:
@@ -870,6 +886,29 @@ class MolecularSystem:
 
         def callback(intermediate_result: OptimizeResult):
             """Callback function called after each optimizer iteration to verify reaching of theoretical best solution (i.e., f(x) = -1.0)."""
+            if trajectory_file:
+                try:
+                    # Update zmatrix with current torsion values
+                    current_zmatrix = zmatrix.copy()
+                    for j, idx in enumerate(rotatable_indices):
+                        current_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = intermediate_result.x[j]
+                    coords = zmatrix_to_cartesian(current_zmatrix)
+                    elements = current_zmatrix.get_elements()
+                    
+                    # Write to trajectory (append mode)
+                    print(f"Iteration {iteration_counter[0]}, Ring closure score: {-intermediate_result.fun:.2f}")
+                    write_xyz_file(
+                        coords, 
+                        elements, 
+                        trajectory_file,
+                        comment=f"Iteration {iteration_counter[0]}, Ring closure score: {-intermediate_result.fun:.2f}",
+                        append=True
+                    )
+                    iteration_counter[0] += 1
+                except Exception as e:
+                    # Don't fail optimization if trajectory writing fails
+                    if verbose:
+                        print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
             # scipy works on minimization, hence we use a negated ring closing score.
             return (intermediate_result.fun + 1.0) < 0.02 
 
@@ -890,7 +929,7 @@ class MolecularSystem:
                 args=(),
                 callback=callback,
                 atol=0.05,
-                maxiter=250,
+                maxiter=max_iterations,
                 polish=False,
                 disp=verbose
             )
