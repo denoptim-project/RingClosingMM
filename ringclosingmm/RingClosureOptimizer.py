@@ -187,32 +187,34 @@ class RingClosureOptimizer:
         initial_coords = zmatrix_to_cartesian(initial_zmatrix)
         initial_ring_closure_score = self.system.ring_closure_score_exponential(initial_coords)
         initial_energy = self.system.evaluate_energy(initial_coords)
-    
-        print(f"\nTorsional space optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions) to maximize ring closure score...")
+
         trajectory_file_rc_opt = None
         if trajectory_file:
             trajectory_file_rc_opt = trajectory_file.replace('.xyz', '_rc_opt.xyz')
+
+        non_intersecting_rcp_paths = self.system.get_non_intersecting_rcp_paths(initial_zmatrix, self.system.rc_critical_rotatable_indeces)
+       
+        print(f"\nRing-closing optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions - {len(non_intersecting_rcp_paths)} intersecting RCP paths) to maximize ring closure score...")
+
         rc_opt_time = time.time()
-
-        ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space_fabrik(
-            zmatrix=self.system.zmatrix,
-            rotatable_indices=self.system.rc_critical_rotatable_indeces,
-            max_iterations=500,
-            ring_closure_tolerance=ring_closure_tolerance,
-            ring_closure_decay_rate=ring_closure_decay_rate,
-            trajectory_file=trajectory_file_rc_opt,
-            verbose=verbose)
-
-#TODO del
-        # ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
-        #     zmatrix=self.system.zmatrix,
-        #     rotatable_indices=self.system.rc_critical_rotatable_indeces,
-        #     max_iterations=500,
-        #     ring_closure_tolerance=ring_closure_tolerance,
-        #     ring_closure_decay_rate=ring_closure_decay_rate,
-        #     trajectory_file=trajectory_file_rc_opt,
-        #     verbose=verbose)
-        
+        if len(non_intersecting_rcp_paths) < 2:
+            ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space_fabrik(
+                zmatrix=self.system.zmatrix,
+                rotatable_indices=self.system.rc_critical_rotatable_indeces,
+                max_iterations=50,
+                ring_closure_tolerance=ring_closure_tolerance,
+                ring_closure_decay_rate=ring_closure_decay_rate,
+                trajectory_file=trajectory_file_rc_opt,
+                verbose=verbose)
+        else:
+            ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space(
+                zmatrix=self.system.zmatrix,
+                rotatable_indices=self.system.rc_critical_rotatable_indeces,
+                max_iterations=500,
+                ring_closure_tolerance=ring_closure_tolerance,
+                ring_closure_decay_rate=ring_closure_decay_rate,
+                trajectory_file=trajectory_file_rc_opt,
+                verbose=verbose)
         rc_opt_time = time.time() - rc_opt_time
         print(f"  Time: {rc_opt_time:.2f} seconds")
 

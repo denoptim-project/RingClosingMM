@@ -143,6 +143,11 @@ class MolecularSystem:
         # Cache simulations by smoothing parameter to avoid recreating them
         self._simulation_cache = {}
         self._current_smoothing = 0.0
+        
+        # RCP path data and groups (computed on demand, cached)
+        self._rcp_path_data: Optional[Dict[Tuple[int, int], Tuple[List[int], List[int]]]] = None
+        self._rcp_paths: Optional[List[Tuple[List[Tuple[int, int]], List[int], List[int]]]] = None
+        self._rcp_path_data_zmatrix_hash: Optional[int] = None  # Hash to detect zmatrix changes
     
     @property
     def elements(self) -> List[str]:
@@ -182,6 +187,11 @@ class MolecularSystem:
             )
         else:
             self.dof_indices = []
+        
+        # Invalidate RCP path cache when rotatable indices change
+        self._rcp_path_data = None
+        self._rcp_paths = None
+        self._rcp_path_data_zmatrix_hash = None
 
     def set_dof_indices(self, dof_indices: List[Tuple[int, int]]):
         """
@@ -961,6 +971,261 @@ class MolecularSystem:
             return zmatrix.copy(), -initial_score, info
 
 
+    def _compute_rcp_path_data(self, zmatrix: ZMatrix, rotatable_indices: List[int], verbose: bool = False) -> Dict[Tuple[int, int], Tuple[List[int], List[int]]]:
+        """
+        Compute paths and rotatable indices for all RCP terms.
+        
+        Parameters
+        ----------
+        zmatrix : ZMatrix
+            Z-matrix representation
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix
+        verbose : bool
+            Print warnings if paths not found
+            
+        Returns
+        -------
+        Dict[Tuple[int, int], Tuple[List[int], List[int]]]
+            Dictionary mapping RCP terms to (path, path_rotatable_indices)
+        """
+        # Build bond graph to find paths
+        graph = self._build_bond_graph(zmatrix, self.topology)
+        
+        # Find paths for all RCP terms
+        rcp_path_data = {}
+        for rca1, rca2 in self.rcpterms:
+            path = self._find_path_bfs(graph, rca1, rca2)
+            if path is None:
+                if verbose:
+                    print(f"Warning: No path found between RCA atoms {rca1} and {rca2}")
+                continue
+            
+            # Find rotatable dihedrals on this path
+            path_rotatable_indices = []
+            for rot_idx in rotatable_indices:
+                if rot_idx in path:
+                    # Check if this dihedral affects atoms on the path
+                    atom = zmatrix[rot_idx]
+                    bond_ref = atom.get(ZMatrix.FIELD_BOND_REF)
+                    angle_ref = atom.get(ZMatrix.FIELD_ANGLE_REF)
+                    # If any reference atom is on path, this dihedral affects the path
+                    if bond_ref is not None and (bond_ref in path or angle_ref in path):
+                        path_rotatable_indices.append(rot_idx)
+            
+            if path_rotatable_indices:
+                rcp_path_data[(rca1, rca2)] = (path, path_rotatable_indices)
+        
+        return rcp_path_data
+    
+    def _compute_rcp_paths(self, zmatrix: ZMatrix, rcp_path_data: Dict[Tuple[int, int], Tuple[List[int], List[int]]]) -> List[Tuple[List[Tuple[int, int]], List[int], List[int]]]:
+        """
+        Group RCP terms into related pairs and create combined path info.
+        
+        Two RCP terms (a,b) and (c,d) are related if:
+        - a is bonded to c and b is bonded to d, OR
+        - a is bonded to d and b is bonded to c
+        
+        Parameters
+        ----------
+        zmatrix : ZMatrix
+            Z-matrix representation
+        rcp_path_data : Dict[Tuple[int, int], Tuple[List[int], List[int]]]
+            Dictionary mapping RCP terms to (path, path_rotatable_indices)
+            
+        Returns
+        -------
+        List[Tuple[List[Tuple[int, int]], List[int], List[int]]]
+            List of (rcp_group, combined_path, combined_rotatable_indices)
+        """
+        # Build bond graph for grouping
+        graph = self._build_bond_graph(zmatrix, self.topology)
+        
+        def are_rcp_terms_related(rcp1: Tuple[int, int], rcp2: Tuple[int, int], graph: Dict[int, List[int]]) -> bool:
+            """Check if two RCP terms are related (neighbors)."""
+            a1, b1 = rcp1
+            a2, b2 = rcp2
+            # Check if a1 is bonded to a2 and b1 is bonded to b2
+            if (a2 in graph.get(a1, [])) and (b2 in graph.get(b1, [])):
+                return True
+            # Check if a1 is bonded to b2 and b1 is bonded to a2
+            if (b2 in graph.get(a1, [])) and (a2 in graph.get(b1, [])):
+                return True
+            return False
+        
+        # Group RCP terms into related pairs
+        rcp_groups = []
+        remaining_rcps = set(rcp_path_data.keys())
+        
+        while remaining_rcps:
+            # Start a new group with the first remaining RCP
+            current_group = [remaining_rcps.pop()]
+            
+            # Find all RCPs related to any RCP in the current group
+            found_new = True
+            while found_new:
+                found_new = False
+                for rcp in list(remaining_rcps):
+                    for group_rcp in current_group:
+                        if are_rcp_terms_related(rcp, group_rcp, graph):
+                            current_group.append(rcp)
+                            remaining_rcps.remove(rcp)
+                            found_new = True
+                            break
+            
+            rcp_groups.append(current_group)
+        
+        # For each group, create combined path info
+        # If group has 2 RCPs, combine them; otherwise treat as single
+        rcp_paths = []
+        for group in rcp_groups:
+            if len(group) == 2:
+                # Related pair: combine paths and rotatable indices
+                rcp1, rcp2 = group
+                path1, rotatable1 = rcp_path_data[rcp1]
+                path2, rotatable2 = rcp_path_data[rcp2]
+                
+                # Union of paths (remove duplicates, preserve order)
+                combined_path = list(dict.fromkeys(path1 + path2))
+                # Union of rotatable indices
+                combined_rotatable = list(set(rotatable1) | set(rotatable2))
+                
+                rcp_paths.append((group, combined_path, combined_rotatable))
+            else:
+                # Single RCP or larger group: treat individually
+                for rcp in group:
+                    path, rotatable = rcp_path_data[rcp]
+                    rcp_paths.append(([rcp], path, rotatable))
+        
+        return rcp_paths
+    
+    def get_rcp_paths(self, zmatrix: ZMatrix, rotatable_indices: List[int], force_recompute: bool = False, verbose: bool = False) -> List[Tuple[List[Tuple[int, int]], List[int], List[int]]]:
+        """
+        Get RCP paths and groups, computing and caching if necessary.
+        
+        Parameters
+        ----------
+        zmatrix : ZMatrix
+            Z-matrix representation
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix
+        force_recompute : bool
+            If True, recompute even if cached
+        verbose : bool
+            Print warnings if paths not found
+            
+        Returns
+        -------
+        List[Tuple[List[Tuple[int, int]], List[int], List[int]]]
+            List of (rcp_group, combined_path, combined_rotatable_indices)
+        """
+        # Check if we need to recompute (zmatrix changed or force_recompute)
+        # Create a hashable representation of zmatrix structure (bonds and atom count)
+        zmatrix_repr = tuple(sorted(zmatrix.bonds)) + (len(zmatrix),)
+        zmatrix_hash = hash(zmatrix_repr)
+        if force_recompute or self._rcp_paths is None or self._rcp_path_data_zmatrix_hash != zmatrix_hash:
+            # Compute path data
+            self._rcp_path_data = self._compute_rcp_path_data(zmatrix, rotatable_indices, verbose)
+            # Compute grouped paths
+            self._rcp_paths = self._compute_rcp_paths(zmatrix, self._rcp_path_data)
+            self._rcp_path_data_zmatrix_hash = zmatrix_hash
+        
+        return self._rcp_paths
+    
+    
+    def get_non_intersecting_rcp_paths(self, zmatrix: ZMatrix, rotatable_indices: List[int], 
+                                   force_recompute: bool = False, verbose: bool = False) -> List[List[Tuple[List[Tuple[int, int]], List[int], List[int]]]]:
+        """
+        Group RCP paths into non-intersecting sets.
+        
+        Two paths intersect if they share at least one rotatable dihedral (torsion).
+        Paths that don't intersect can be manipulated independently, reducing the
+        complexity of the ring-closing problem.
+        
+        Parameters
+        ----------
+        zmatrix : ZMatrix
+            Z-matrix representation
+        rotatable_indices : List[int]
+            Indices of rotatable atoms in Z-matrix
+        force_recompute : bool
+            If True, recompute paths even if cached
+        verbose : bool
+            Print information about grouping
+        
+        Returns
+        -------
+        List[List[Tuple[List[Tuple[int, int]], List[int], List[int]]]]
+            List of groups, where each group is a list of intersecting paths.
+            Each path is a tuple of (rcp_group, combined_path, combined_rotatable_indices).
+            Paths within a group share at least one rotatable index.
+            Paths in different groups do not share any rotatable indices.
+        
+        Examples
+        --------
+        If paths A and B share rotatable index 5, and paths C and D share rotatable index 7,
+        but A/B don't share any with C/D, then:
+        - Group 1: [path_A, path_B]
+        - Group 2: [path_C, path_D]
+        """
+        # Get all RCP paths
+        all_paths = self.get_rcp_paths(zmatrix, rotatable_indices, force_recompute, verbose)
+        
+        if not all_paths:
+            return []
+        
+        # Build intersection graph: paths are nodes, edges connect paths that share rotatable indices
+        n_paths = len(all_paths)
+        intersection_graph = {i: [] for i in range(n_paths)}
+        
+        for i in range(n_paths):
+            rcp_group_i, path_i, rotatable_i = all_paths[i]
+            rotatable_set_i = set(rotatable_i)
+            
+            for j in range(i + 1, n_paths):
+                rcp_group_j, path_j, rotatable_j = all_paths[j]
+                rotatable_set_j = set(rotatable_j)
+                
+                # Check if paths share any rotatable indices
+                if rotatable_set_i & rotatable_set_j:  # Intersection is non-empty
+                    intersection_graph[i].append(j)
+                    intersection_graph[j].append(i)
+        
+        # Find connected components (groups of intersecting paths)
+        visited = set()
+        groups = []
+        
+        def dfs(node: int, current_group: List[int]):
+            """Depth-first search to find all connected paths."""
+            visited.add(node)
+            current_group.append(node)
+            for neighbor in intersection_graph[node]:
+                if neighbor not in visited:
+                    dfs(neighbor, current_group)
+        
+        for i in range(n_paths):
+            if i not in visited:
+                current_group = []
+                dfs(i, current_group)
+                # Convert indices to actual path tuples
+                group_paths = [all_paths[idx] for idx in current_group]
+                groups.append(group_paths)
+        
+        if verbose:
+            print(f"Found {len(groups)} non-intersecting path groups:")
+            for group_idx, group in enumerate(groups):
+                rcp_terms_in_group = []
+                rotatable_in_group = set()
+                for rcp_group, path, rotatable in group:
+                    rcp_terms_in_group.extend(rcp_group)
+                    rotatable_in_group.update(rotatable)
+                print(f"  Group {group_idx + 1}: {len(group)} path(s), "
+                      f"RCP terms: {rcp_terms_in_group}, "
+                      f"Rotatable indices: {sorted(rotatable_in_group)}")
+        
+        return groups
+
+
     def maximize_ring_closure_in_torsional_space_fabrik(self, zmatrix: ZMatrix, 
                                                          rotatable_indices: List[int],
                                                          max_iterations: int = 50,
@@ -1020,35 +1285,10 @@ class MolecularSystem:
         if trajectory_file:
             Path(trajectory_file).unlink(missing_ok=True)
         
-        #TODO: move to initialization of molecular system
-        # Build bond graph to find paths
-        graph = self._build_bond_graph(zmatrix, self.topology)
+        # Get RCP paths (computed and cached if needed)
+        rcp_paths = self.get_rcp_paths(zmatrix, rotatable_indices, force_recompute=False, verbose=verbose)
         
-        # Find paths for all RCP terms
-        rcp_path_data = {}
-        for rca1, rca2 in self.rcpterms:
-            path = self._find_path_bfs(graph, rca1, rca2)
-            if path is None:
-                if verbose:
-                    print(f"Warning: No path found between RCA atoms {rca1} and {rca2}")
-                continue
-            
-            # Find rotatable dihedrals on this path
-            path_rotatable_indices = []
-            for rot_idx in rotatable_indices:
-                if rot_idx in path:
-                    # Check if this dihedral affects atoms on the path
-                    atom = zmatrix[rot_idx]
-                    bond_ref = atom.get(ZMatrix.FIELD_BOND_REF)
-                    angle_ref = atom.get(ZMatrix.FIELD_ANGLE_REF)
-                    # If any reference atom is on path, this dihedral affects the path
-                    if bond_ref is not None and (bond_ref in path or angle_ref in path):
-                        path_rotatable_indices.append(rot_idx)
-            
-            if path_rotatable_indices:
-                rcp_path_data[(rca1, rca2)] = (path, path_rotatable_indices)
-        
-        if not rcp_path_data:
+        if not rcp_paths:
             if verbose:
                 print("Warning: No valid paths found for RCP terms")
             initial_score = self.ring_closure_score_exponential(
@@ -1059,66 +1299,6 @@ class MolecularSystem:
                 'improvement': 0.0,
                 'iterations': 0
             }
-        
-        # Group RCP terms into related pairs
-        # Two RCP terms (a,b) and (c,d) are related if:
-        # - a is bonded to c and b is bonded to d, OR
-        # - a is bonded to d and b is bonded to c
-        def are_rcp_terms_related(rcp1: Tuple[int, int], rcp2: Tuple[int, int], graph: Dict[int, List[int]]) -> bool:
-            """Check if two RCP terms are related (neighbors)."""
-            a1, b1 = rcp1
-            a2, b2 = rcp2
-            # Check if a1 is bonded to a2 and b1 is bonded to b2
-            if (a2 in graph.get(a1, [])) and (b2 in graph.get(b1, [])):
-                return True
-            # Check if a1 is bonded to b2 and b1 is bonded to a2
-            if (b2 in graph.get(a1, [])) and (a2 in graph.get(b1, [])):
-                return True
-            return False
-        
-        # Group RCP terms into related pairs
-        rcp_groups = []
-        remaining_rcps = set(rcp_path_data.keys())
-        
-        while remaining_rcps:
-            # Start a new group with the first remaining RCP
-            current_group = [remaining_rcps.pop()]
-            
-            # Find all RCPs related to any RCP in the current group
-            found_new = True
-            while found_new:
-                found_new = False
-                for rcp in list(remaining_rcps):
-                    for group_rcp in current_group:
-                        if are_rcp_terms_related(rcp, group_rcp, graph):
-                            current_group.append(rcp)
-                            remaining_rcps.remove(rcp)
-                            found_new = True
-                            break
-            
-            rcp_groups.append(current_group)
-        
-        # For each group, create combined path info
-        # If group has 2 RCPs, combine them; otherwise treat as single
-        rcp_paths = []
-        for group in rcp_groups:
-            if len(group) == 2:
-                # Related pair: combine paths and rotatable indices
-                rcp1, rcp2 = group
-                path1, rotatable1 = rcp_path_data[rcp1]
-                path2, rotatable2 = rcp_path_data[rcp2]
-                
-                # Union of paths (remove duplicates, preserve order)
-                combined_path = list(dict.fromkeys(path1 + path2))
-                # Union of rotatable indices
-                combined_rotatable = list(set(rotatable1) | set(rotatable2))
-                
-                rcp_paths.append((group, combined_path, combined_rotatable))
-            else:
-                # Single RCP or larger group: treat individually
-                for rcp in group:
-                    path, rotatable = rcp_path_data[rcp]
-                    rcp_paths.append(([rcp], path, rotatable))
         
         # Initialize
         distance_function_factory = AnalyticalDistanceFactory(zmatrix, self.topology)

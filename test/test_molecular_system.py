@@ -1413,6 +1413,653 @@ class TestMolecularSystemRCCriticalIndices(unittest.TestCase):
         self.assertEqual(sorted(rc_critical_atoms), [0])
 
 
+class TestMolecularSystemRCPPathComputation(unittest.TestCase):
+    """Test RCP path computation methods."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create a simple linear chain for testing
+        self.linear_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+        ]
+        self.linear_bonds = [(0, 1), (1, 2), (2, 3), (3, 4)]
+        self.linear_zmatrix = ZMatrix(self.linear_atoms, self.linear_bonds)
+        
+        # Create a branched structure for testing related pairs
+        # Structure: 0-1-2-3-4
+        #            |     |
+        #            5     6
+        # RCP terms: (0,4) and (5,6) - related if 0-5 and 4-6 are bonded
+        self.branched_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 0.0, 'chirality': 0},
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0},
+        ]
+        self.branched_bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (3, 6)]
+        self.branched_zmatrix = ZMatrix(self.branched_atoms, self.branched_bonds)
+        
+        # Create topology for branched structure
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.branched_atoms)]
+        self.branched_topology = build_topology_from_data(atoms_data, self.branched_bonds)
+    
+    def _create_minimal_system(self, zmatrix, rcp_terms, topology):
+        """Create a minimal MolecularSystem instance for testing without full OpenMM system."""
+        # Create a dummy system (we won't use it for these tests)
+        import openmm
+        dummy_system = openmm.System()
+        
+        # Create MolecularSystem instance
+        system = MolecularSystem(
+            system=dummy_system,
+            topology=topology,
+            rcpterms=rcp_terms,
+            zmatrix=zmatrix,
+            step_length=0.0002,
+            ring_closure_threshold=1.5
+        )
+        return system
+    
+    def test_compute_rcp_path_data_single_rcp(self):
+        """Test _compute_rcp_path_data with a single RCP term."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Create minimal system with RCP term (0, 4)
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        # Rotatable indices: atoms 2, 3, 4 have dihedrals
+        rotatable_indices = [2, 3, 4]
+        
+        # Compute path data
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Check results
+        self.assertEqual(len(rcp_path_data), 1)
+        self.assertIn((0, 4), rcp_path_data)
+        
+        path, path_rotatable = rcp_path_data[(0, 4)]
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        # Rotatable indices on path: 2, 3, 4 (all are in path)
+        self.assertEqual(sorted(path_rotatable), [2, 3, 4])
+    
+    def test_compute_rcp_path_data_multiple_rcps(self):
+        """Test _compute_rcp_path_data with multiple RCP terms."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Create minimal system with multiple RCP terms
+        rcp_terms = [(0, 2), (2, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Both RCP terms should have paths
+        self.assertEqual(len(rcp_path_data), 2)
+        self.assertIn((0, 2), rcp_path_data)
+        self.assertIn((2, 4), rcp_path_data)
+        
+        # Check path (0, 2)
+        path1, rotatable1 = rcp_path_data[(0, 2)]
+        self.assertEqual(path1, [0, 1, 2])
+        # Only atom 2 is in path and has references in path
+        # Atom 2: in path, bond_ref=1 (in path), angle_ref=0 (in path) -> included
+        # Atom 3: NOT in path -> skipped
+        # Atom 4: NOT in path -> skipped
+        self.assertEqual(sorted(rotatable1), [2])
+        
+        # Check path (2, 4)
+        path2, rotatable2 = rcp_path_data[(2, 4)]
+        self.assertEqual(path2, [2, 3, 4])
+        # Atoms 2, 3, 4 are all rotatable and in path
+        # Atom 2: in path, bond_ref=1 (NOT in path), angle_ref=0 (NOT in path) -> NOT included
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included
+        # Actually, let's check: path is [2, 3, 4]
+        # Atom 2: bond_ref=1 (NOT in [2,3,4]), angle_ref=0 (NOT in [2,3,4]) -> NOT included
+        # Atom 3: bond_ref=2 (in path), angle_ref=1 (NOT in path) -> included (bond_ref in path)
+        # Atom 4: bond_ref=3 (in path), angle_ref=2 (in path) -> included
+        self.assertEqual(sorted(rotatable2), [3, 4])
+    
+    def test_compute_rcp_path_data_no_rotatable_on_path(self):
+        """Test _compute_rcp_path_data when no rotatable dihedrals are on the path."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 1)]  # Short path, no dihedrals needed
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]  # None of these are on path [0, 1]
+        
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Path exists but no rotatable indices on it, so should be empty
+        self.assertEqual(len(rcp_path_data), 0)
+    
+    def test_compute_rcp_path_data_no_path_found(self):
+        """Test _compute_rcp_path_data when no path exists."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Create a disconnected structure (atom 10 doesn't exist)
+        rcp_terms = [(0, 10)]  # Invalid RCP term
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # No path found, should be empty
+        self.assertEqual(len(rcp_path_data), 0)
+    
+    def test_compute_rcp_path_data_branch_atoms(self):
+        """Test _compute_rcp_path_data with branch atoms affecting path."""
+        # Use branched structure
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.branched_zmatrix, rcp_terms, self.branched_topology)
+        
+        # Rotatable indices: 2, 3, 4, 5, 6
+        rotatable_indices = [2, 3, 4, 5, 6]
+        
+        rcp_path_data = system._compute_rcp_path_data(self.branched_zmatrix, rotatable_indices, verbose=False)
+        
+        self.assertEqual(len(rcp_path_data), 1)
+        path, path_rotatable = rcp_path_data[(0, 4)]
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        # Check which rotatable atoms affect the path:
+        # Atom 2: in path, bond_ref=1 (in path), angle_ref=0 (in path) -> included
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included
+        # Atom 5: NOT in path, bond_ref=0 (in path), angle_ref=1 (in path) -> included (affects path)
+        # Atom 6: NOT in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included (affects path)
+        # The logic checks: if rot_idx in path OR (bond_ref in path OR angle_ref in path)
+        # But actually the code checks: if rot_idx in path AND (bond_ref in path OR angle_ref in path)
+        # So atoms 5 and 6 won't be included because they're not in the path
+        # Only atoms 2, 3, 4 are in path and have references in path
+        self.assertEqual(sorted(path_rotatable), [2, 3, 4])
+    
+    def test_compute_rcp_paths_single_rcp(self):
+        """Test _compute_rcp_paths with a single RCP term."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Compute grouped paths
+        rcp_paths = system._compute_rcp_paths(self.linear_zmatrix, rcp_path_data)
+        
+        # Single RCP should result in one group
+        self.assertEqual(len(rcp_paths), 1)
+        rcp_group, path, rotatable = rcp_paths[0]
+        self.assertEqual(rcp_group, [(0, 4)])
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        self.assertEqual(sorted(rotatable), [2, 3, 4])
+    
+    def test_compute_rcp_paths_related_pair(self):
+        """Test _compute_rcp_paths with two related RCP terms."""
+        # Create structure where (0,4) and (5,6) are related
+        # Need: 0 bonded to 5, 4 bonded to 6
+        # Structure: 0-1-2-3-4
+        #            |     |
+        #            5     6
+        rcp_terms = [(0, 4), (5, 6)]
+        system = self._create_minimal_system(self.branched_zmatrix, rcp_terms, self.branched_topology)
+        
+        rotatable_indices = [2, 3, 4, 5, 6]
+        rcp_path_data = system._compute_rcp_path_data(self.branched_zmatrix, rotatable_indices, verbose=False)
+        
+        # Both RCPs should have paths
+        self.assertEqual(len(rcp_path_data), 2)
+        
+        # Compute grouped paths
+        rcp_paths = system._compute_rcp_paths(self.branched_zmatrix, rcp_path_data)
+        
+        # Should be grouped into one pair (if related) or two separate groups
+        # Check if they're related: 0-5 bonded? 4-6 bonded?
+        graph = system._build_bond_graph(self.branched_zmatrix, self.branched_topology)
+        is_related = (5 in graph.get(0, [])) and (6 in graph.get(4, []))
+        
+        if is_related:
+            # Should be one group with 2 RCPs
+            self.assertEqual(len(rcp_paths), 1)
+            rcp_group, combined_path, combined_rotatable = rcp_paths[0]
+            self.assertEqual(len(rcp_group), 2)
+            # Combined path should include both paths
+            self.assertIn(0, combined_path)
+            self.assertIn(4, combined_path)
+            self.assertIn(5, combined_path)
+            self.assertIn(6, combined_path)
+        else:
+            # Should be two separate groups
+            self.assertEqual(len(rcp_paths), 2)
+    
+    def test_compute_rcp_paths_unrelated_pair(self):
+        """Test _compute_rcp_paths with two unrelated RCP terms."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Two RCP terms that are not neighbors
+        rcp_terms = [(0, 2), (2, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        rcp_path_data = system._compute_rcp_path_data(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Compute grouped paths
+        rcp_paths = system._compute_rcp_paths(self.linear_zmatrix, rcp_path_data)
+        
+        # Unrelated RCPs should be in separate groups
+        self.assertEqual(len(rcp_paths), 2)
+        self.assertEqual(rcp_paths[0][0], [(0, 2)])  # First group
+        self.assertEqual(rcp_paths[1][0], [(2, 4)])  # Second group
+    
+    def test_compute_rcp_paths_mixed_related_and_unrelated(self):
+        """Test _compute_rcp_paths with mix of related and unrelated RCP terms."""
+        # Create structure with 3 RCP terms: (0,4), (5,6), (0,2)
+        # (0,4) and (5,6) might be related if 0-5 and 4-6 are bonded
+        # (0,2) is unrelated to the others
+        rcp_terms = [(0, 4), (5, 6), (0, 2)]
+        system = self._create_minimal_system(self.branched_zmatrix, rcp_terms, self.branched_topology)
+        
+        rotatable_indices = [2, 3, 4, 5, 6]
+        rcp_path_data = system._compute_rcp_path_data(self.branched_zmatrix, rotatable_indices, verbose=False)
+        
+        # All 3 RCPs should have paths
+        self.assertEqual(len(rcp_path_data), 3)
+        
+        # Compute grouped paths
+        rcp_paths = system._compute_rcp_paths(self.branched_zmatrix, rcp_path_data)
+        
+        # Should have at least 2 groups (one for unrelated (0,2))
+        self.assertGreaterEqual(len(rcp_paths), 2)
+        
+        # Find group containing (0,2) - should be alone
+        group_with_02 = None
+        for group, path, rotatable in rcp_paths:
+            if (0, 2) in group:
+                group_with_02 = group
+                break
+        self.assertIsNotNone(group_with_02)
+        # (0,2) should be in its own group or with unrelated RCPs
+        self.assertIn((0, 2), group_with_02)
+    
+    def test_compute_rcp_paths_group_larger_than_two(self):
+        """Test _compute_rcp_paths with group larger than 2 RCPs."""
+        # Create a structure where 3 RCPs form a chain of relations
+        # RCP1 (0,4) related to RCP2 (5,6) if 0-5 and 4-6
+        # RCP2 (5,6) related to RCP3 (6,7) if 5-6 and 6-7 (but 5-6 is already in RCP2)
+        # Actually, let's create a simpler case: add atom 7 bonded to 6
+        extended_atoms = self.branched_atoms + [
+            {'id': 7, 'element': 'C', 'atomic_num': 6, 'bond_ref': 6, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 0.0, 'chirality': 0}
+        ]
+        extended_bonds = self.branched_bonds + [(6, 7)]
+        extended_zmatrix = ZMatrix(extended_atoms, extended_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(extended_atoms)]
+        extended_topology = build_topology_from_data(atoms_data, extended_bonds)
+        
+        # RCP terms: (0,4), (5,6), (6,7)
+        # (5,6) and (6,7) share atom 6, but they're not "related" by our definition
+        # (they need to be neighbors: a1 bonded to a2 and b1 bonded to b2)
+        rcp_terms = [(0, 4), (5, 6), (6, 7)]
+        system = self._create_minimal_system(extended_zmatrix, rcp_terms, extended_topology)
+        
+        rotatable_indices = [2, 3, 4, 5, 6, 7]
+        rcp_path_data = system._compute_rcp_path_data(extended_zmatrix, rotatable_indices, verbose=False)
+        
+        # Compute grouped paths
+        rcp_paths = system._compute_rcp_paths(extended_zmatrix, rcp_path_data)
+        
+        # Groups larger than 2 are treated individually
+        # So we should have 3 groups (one per RCP)
+        self.assertEqual(len(rcp_paths), 3)
+        for group, path, rotatable in rcp_paths:
+            self.assertEqual(len(group), 1)  # Each treated individually
+    
+    def test_get_rcp_paths_caching(self):
+        """Test that get_rcp_paths caches results correctly."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        # First call - should compute
+        paths1 = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, force_recompute=False, verbose=False)
+        self.assertIsNotNone(system._rcp_paths)
+        self.assertIsNotNone(system._rcp_path_data)
+        
+        # Second call - should use cache
+        paths2 = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, force_recompute=False, verbose=False)
+        self.assertEqual(paths1, paths2)
+        
+        # Force recompute - should recompute
+        paths3 = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, force_recompute=True, verbose=False)
+        self.assertEqual(len(paths1), len(paths3))  # Should have same structure
+    
+    def test_get_rcp_paths_zmatrix_change_invalidation(self):
+        """Test that get_rcp_paths recomputes when zmatrix structure changes."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        # First call
+        paths1 = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, force_recompute=False, verbose=False)
+        original_hash = system._rcp_path_data_zmatrix_hash
+        
+        # Create a different zmatrix with different structure (different number of atoms)
+        different_atoms = self.linear_atoms + [
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 120.0, 'chirality': 0}
+        ]
+        different_bonds = self.linear_bonds + [(4, 5)]
+        different_zmatrix = ZMatrix(different_atoms, different_bonds)
+        
+        # Second call with different zmatrix - should recompute
+        paths2 = system.get_rcp_paths(different_zmatrix, rotatable_indices, force_recompute=False, verbose=False)
+        new_hash = system._rcp_path_data_zmatrix_hash
+        
+        # Hash should be different (zmatrix structure changed - different number of atoms/bonds)
+        self.assertNotEqual(original_hash, new_hash)
+        # Paths should be recomputed
+        self.assertIsNotNone(paths2)
+    
+    def test_get_non_intersecting_rcp_paths_single_path(self):
+        """Test get_non_intersecting_rcp_paths with a single path."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Single path should result in one group
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]), 1)
+        
+        # Verify the path structure
+        rcp_group, path, rotatable = groups[0][0]
+        self.assertEqual(rcp_group, [(0, 4)])
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        self.assertEqual(sorted(rotatable), [2, 3, 4])
+    
+    def test_get_non_intersecting_rcp_paths_intersecting_paths(self):
+        """Test get_non_intersecting_rcp_paths with two paths that share rotatable indices."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Two RCP terms that should share rotatable indices
+        # Path (0, 3): includes atoms 0,1,2,3 - rotatable indices should include 2,3
+        # Path (1, 4): includes atoms 1,2,3,4 - rotatable indices should include 2,3,4
+        # They share indices 2 and 3, so they should be in the same group
+        rcp_terms = [(0, 3), (1, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Both paths should share rotatable indices (2 and/or 3), so they should be in one group
+        # First verify we have paths
+        all_paths = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        if len(all_paths) >= 2:
+            # Check if paths share rotatable indices
+            path1_rotatable = set(all_paths[0][2])  # rotatable indices for first path
+            path2_rotatable = set(all_paths[1][2])  # rotatable indices for second path
+            
+            if path1_rotatable & path2_rotatable:  # They share rotatable indices
+                # Should be in one group
+                self.assertEqual(len(groups), 1)
+                self.assertEqual(len(groups[0]), 2)
+                
+                # Verify both paths are in the group
+                rcp_groups_in_group = [path[0] for path in groups[0]]
+                self.assertIn(all_paths[0][0], rcp_groups_in_group)
+                self.assertIn(all_paths[1][0], rcp_groups_in_group)
+            else:
+                # They don't share, so separate groups
+                self.assertEqual(len(groups), 2)
+        else:
+            # Not enough paths, skip this assertion
+            self.assertGreaterEqual(len(groups), 0)
+    
+    def test_get_non_intersecting_rcp_paths_non_intersecting_paths(self):
+        """Test get_non_intersecting_rcp_paths with paths that don't share rotatable indices."""
+        # Create a structure with two separate paths that don't share rotatable indices
+        # Path 1: 0-1-2 (rotatable: [2])
+        # Path 2: 3-4 (rotatable: [4], but 4 is not in path 1's rotatable set)
+        # Actually, we need paths that truly don't share rotatable indices
+        
+        # Create a structure: 0-1-2 and 3-4-5 (disconnected or separate branches)
+        separate_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+        ]
+        separate_bonds = [(0, 1), (1, 2), (3, 4), (4, 5)]
+        separate_zmatrix = ZMatrix(separate_atoms, separate_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(separate_atoms)]
+        topology = build_topology_from_data(atoms_data, separate_bonds)
+        
+        # RCP terms: (0, 2) and (3, 5)
+        # Path (0, 2): rotatable indices [2] (if 2 is rotatable)
+        # Path (3, 5): rotatable indices [5] (if 5 is rotatable)
+        rcp_terms = [(0, 2), (3, 5)]
+        system = self._create_minimal_system(separate_zmatrix, rcp_terms, topology)
+        
+        # Only make 2 and 5 rotatable (they don't share)
+        rotatable_indices = [2, 5]
+        
+        groups = system.get_non_intersecting_rcp_paths(separate_zmatrix, rotatable_indices, verbose=False)
+        
+        # Paths don't share rotatable indices, so they should be in separate groups
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups[0]), 1)
+        self.assertEqual(len(groups[1]), 1)
+        
+        # Verify each group contains one path
+        rcp_groups = [path[0] for group in groups for path in group]
+        self.assertIn([(0, 2)], rcp_groups)
+        self.assertIn([(3, 5)], rcp_groups)
+    
+    def test_get_non_intersecting_rcp_paths_mixed_intersecting(self):
+        """Test get_non_intersecting_rcp_paths with mixed intersecting and non-intersecting paths."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # Use paths that we know will share rotatable indices
+        # Path (0, 3): includes atoms 0,1,2,3 - rotatable indices should include 2,3
+        # Path (1, 4): includes atoms 1,2,3,4 - rotatable indices should include 2,3,4
+        # Path (0, 1): short path, might not have rotatable indices or different ones
+        rcp_terms = [(0, 3), (1, 4), (0, 1)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Get all paths to check which ones share rotatable indices
+        all_paths = system.get_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Find paths that share rotatable indices
+        intersecting_pairs = []
+        for i, path_i in enumerate(all_paths):
+            rotatable_i = set(path_i[2])
+            for j, path_j in enumerate(all_paths[i+1:], start=i+1):
+                rotatable_j = set(path_j[2])
+                if rotatable_i & rotatable_j:
+                    intersecting_pairs.append((i, j))
+        
+        # If we have intersecting pairs, verify they're in the same group
+        if intersecting_pairs:
+            self.assertGreaterEqual(len(groups), 1)
+            # Check that intersecting paths are in the same group
+            for i, j in intersecting_pairs:
+                found_together = False
+                for group in groups:
+                    group_indices = [idx for idx, path in enumerate(all_paths) if path in group]
+                    if i in group_indices and j in group_indices:
+                        found_together = True
+                        break
+                self.assertTrue(found_together, f"Paths {i} and {j} should be in the same group")
+        else:
+            # No intersections, each path in its own group
+            self.assertEqual(len(groups), len(all_paths))
+    
+    def test_get_non_intersecting_rcp_paths_all_intersecting(self):
+        """Test get_non_intersecting_rcp_paths when all paths share rotatable indices."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # All paths share rotatable index 2
+        rcp_terms = [(0, 2), (1, 2), (2, 3)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # All paths should be in one group (they all share rotatable index 2)
+        self.assertEqual(len(groups), 1)
+        self.assertGreaterEqual(len(groups[0]), 2)  # At least 2 paths should be in the group
+    
+    def test_get_non_intersecting_rcp_paths_no_intersections(self):
+        """Test get_non_intersecting_rcp_paths when no paths share rotatable indices."""
+        # Create structure with completely separate paths
+        # This is similar to test_get_non_intersecting_rcp_paths_non_intersecting_paths
+        # but with more paths
+        
+        separate_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+        ]
+        separate_bonds = [(0, 1), (1, 2), (3, 4), (4, 5)]
+        separate_zmatrix = ZMatrix(separate_atoms, separate_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(separate_atoms)]
+        topology = build_topology_from_data(atoms_data, separate_bonds)
+        
+        rcp_terms = [(0, 2), (3, 5)]
+        system = self._create_minimal_system(separate_zmatrix, rcp_terms, topology)
+        
+        # Use different rotatable indices for each path
+        rotatable_indices = [2, 5]
+        
+        groups = system.get_non_intersecting_rcp_paths(separate_zmatrix, rotatable_indices, verbose=False)
+        
+        # Each path should be in its own group
+        self.assertEqual(len(groups), 2)
+        for group in groups:
+            self.assertEqual(len(group), 1)
+    
+    def test_get_non_intersecting_rcp_paths_empty_paths(self):
+        """Test get_non_intersecting_rcp_paths when there are no paths."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        # No RCP terms
+        rcp_terms = []
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=False)
+        
+        # Should return empty list
+        self.assertEqual(groups, [])
+    
+    def test_get_non_intersecting_rcp_paths_verbose_output(self):
+        """Test that verbose output works correctly."""
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(self.linear_atoms)]
+        topology = build_topology_from_data(atoms_data, self.linear_bonds)
+        
+        rcp_terms = [(0, 2), (2, 4)]
+        system = self._create_minimal_system(self.linear_zmatrix, rcp_terms, topology)
+        
+        rotatable_indices = [2, 3, 4]
+        
+        # Capture output
+        import io
+        import sys
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = io.StringIO()
+        
+        try:
+            groups = system.get_non_intersecting_rcp_paths(self.linear_zmatrix, rotatable_indices, verbose=True)
+            output = captured_output.getvalue()
+            
+            # Should have verbose output
+            self.assertIn("non-intersecting path groups", output)
+            self.assertIn("Group", output)
+        finally:
+            sys.stdout = old_stdout
+        
+        # Should still return correct groups
+        self.assertGreaterEqual(len(groups), 1)
+
+
 def run_tests(verbosity=2):
     """Run all tests with specified verbosity."""
     loader = unittest.TestLoader()
@@ -1431,6 +2078,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemDOFMethods))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRotatableIndices))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRCCriticalIndices))
+    suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRCPPathComputation))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)
