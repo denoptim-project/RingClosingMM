@@ -39,7 +39,7 @@ from .RCOServer import start, stop, status
 
 
 # Default configuration values
-DEFAULT_RING_CLOSURE_TOLERANCE = 0.1  # Angstroms (C-C bond)
+DEFAULT_RING_CLOSURE_TOLERANCE = 0.01  # Angstroms (C-C bond)
 DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  # Exponential decay rate
 DEFAULT_TORSIONAL_ITERATIONS = 50
 DEFAULT_ZMATRIX_ITERATIONS = 50

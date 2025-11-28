@@ -126,8 +126,8 @@ class RingClosureOptimizer:
     
 
     def optimize(self, 
-                ring_closure_tolerance: float = 0.1,
-                ring_closure_decay_rate: float = 0.5, 
+                ring_closure_tolerance: float = 0.001,
+                ring_closure_decay_rate: float = 1.0, 
                 enable_pssrot_refinement: bool = True,
                 enable_zmatrix_refinement: bool = True,
                 smoothing_sequence: List[float] = None,
@@ -189,18 +189,18 @@ class RingClosureOptimizer:
         initial_energy = self.system.evaluate_energy(initial_coords)
     
         print(f"\nTorsional space optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions) to maximize ring closure score...")
-        trajectory_file_diff_evo = None
+        trajectory_file_rc_opt = None
         if trajectory_file:
-            trajectory_file_diff_evo = trajectory_file.replace('.xyz', '_diff_evo.xyz')
-        diff_evo_time = time.time()
+            trajectory_file_rc_opt = trajectory_file.replace('.xyz', '_rc_opt.xyz')
+        rc_opt_time = time.time()
 
         ring_closed_zmatrix, final_score, info = self.system.maximize_ring_closure_in_torsional_space_fabrik(
             zmatrix=self.system.zmatrix,
-            rotatable_indices=self.system.rotatable_indices,
+            rotatable_indices=self.system.rc_critical_rotatable_indeces,
             max_iterations=500,
             ring_closure_tolerance=ring_closure_tolerance,
             ring_closure_decay_rate=ring_closure_decay_rate,
-            trajectory_file=trajectory_file_diff_evo,
+            trajectory_file=trajectory_file_rc_opt,
             verbose=verbose)
 
 #TODO del
@@ -210,16 +210,16 @@ class RingClosureOptimizer:
         #     max_iterations=500,
         #     ring_closure_tolerance=ring_closure_tolerance,
         #     ring_closure_decay_rate=ring_closure_decay_rate,
-        #     trajectory_file=trajectory_file_diff_evo,
+        #     trajectory_file=trajectory_file_rc_opt,
         #     verbose=verbose)
         
-        diff_evo_time = time.time() - diff_evo_time
-        print(f"  Time: {diff_evo_time:.2f} seconds")
+        rc_opt_time = time.time() - rc_opt_time
+        print(f"  Time: {rc_opt_time:.2f} seconds")
 
         best_coords = zmatrix_to_cartesian(ring_closed_zmatrix)
         best_zmatrix = ring_closed_zmatrix
         best_energy = self.system.evaluate_energy(best_coords)
-        # Since the calculation of the score in the diff evo may change, calcualte the score independently from diff evo settings
+        # Since the calculation of the score in the previous step may change, calcualte the score independently from diff evo settings
         best_rc_score = self.system.ring_closure_score_exponential(best_coords)
 
         print(f"  Ring closure score change = {best_rc_score - initial_ring_closure_score:.4f} (from {initial_ring_closure_score:.4f} to {best_rc_score:.4f})")

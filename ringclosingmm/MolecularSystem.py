@@ -16,6 +16,7 @@ import copy
 
 import openmm.unit as unit
 from openmm.app import Element, Simulation, Topology
+from ringclosingmm.AnalyticalDistance import AnalyticalDistanceFactory
 
 # Package imports
 from .IOTools import read_int_file, read_sdf_file, write_xyz_file
@@ -963,8 +964,10 @@ class MolecularSystem:
     def maximize_ring_closure_in_torsional_space_fabrik(self, zmatrix: ZMatrix, 
                                                          rotatable_indices: List[int],
                                                          max_iterations: int = 50,
-                                                         ring_closure_tolerance: float = 0.2,
-                                                         ring_closure_decay_rate: float = 0.5,
+                                                         max_num_converged: int = 2,
+                                                         convergence_tolerance: float = 0.005,
+                                                         ring_closure_tolerance: float = 0.001,
+                                                         ring_closure_decay_rate: float = 1.0,
                                                          trajectory_file: Optional[str] = None,
                                                          verbose: bool = False) -> Tuple[ZMatrix, float, Dict[str, Any]]:
         """
@@ -985,6 +988,8 @@ class MolecularSystem:
             Indices of rotatable atoms in Z-matrix (atoms whose dihedrals can be optimized)
         max_iterations : int
             Maximum optimization iterations (default: 50, typically converges in 5-20)
+        max_num_converged : int
+            Maximum number of consecutive iterations with no improvement to consider converged
         ring_closure_tolerance : float
             Ring closure tolerance (Å) for computing ring closure score
         ring_closure_decay_rate : float
@@ -1015,11 +1020,12 @@ class MolecularSystem:
         if trajectory_file:
             Path(trajectory_file).unlink(missing_ok=True)
         
+        #TODO: move to initialization of molecular system
         # Build bond graph to find paths
         graph = self._build_bond_graph(zmatrix, self.topology)
         
-        # For each RCP pair, find path and identify rotatable dihedrals on path
-        rcp_paths = []
+        # Find paths for all RCP terms
+        rcp_path_data = {}
         for rca1, rca2 in self.rcpterms:
             path = self._find_path_bfs(graph, rca1, rca2)
             if path is None:
@@ -1040,9 +1046,9 @@ class MolecularSystem:
                         path_rotatable_indices.append(rot_idx)
             
             if path_rotatable_indices:
-                rcp_paths.append((rca1, rca2, path, path_rotatable_indices))
+                rcp_path_data[(rca1, rca2)] = (path, path_rotatable_indices)
         
-        if not rcp_paths:
+        if not rcp_path_data:
             if verbose:
                 print("Warning: No valid paths found for RCP terms")
             initial_score = self.ring_closure_score_exponential(
@@ -1054,20 +1060,84 @@ class MolecularSystem:
                 'iterations': 0
             }
         
+        # Group RCP terms into related pairs
+        # Two RCP terms (a,b) and (c,d) are related if:
+        # - a is bonded to c and b is bonded to d, OR
+        # - a is bonded to d and b is bonded to c
+        def are_rcp_terms_related(rcp1: Tuple[int, int], rcp2: Tuple[int, int], graph: Dict[int, List[int]]) -> bool:
+            """Check if two RCP terms are related (neighbors)."""
+            a1, b1 = rcp1
+            a2, b2 = rcp2
+            # Check if a1 is bonded to a2 and b1 is bonded to b2
+            if (a2 in graph.get(a1, [])) and (b2 in graph.get(b1, [])):
+                return True
+            # Check if a1 is bonded to b2 and b1 is bonded to a2
+            if (b2 in graph.get(a1, [])) and (a2 in graph.get(b1, [])):
+                return True
+            return False
+        
+        # Group RCP terms into related pairs
+        rcp_groups = []
+        remaining_rcps = set(rcp_path_data.keys())
+        
+        while remaining_rcps:
+            # Start a new group with the first remaining RCP
+            current_group = [remaining_rcps.pop()]
+            
+            # Find all RCPs related to any RCP in the current group
+            found_new = True
+            while found_new:
+                found_new = False
+                for rcp in list(remaining_rcps):
+                    for group_rcp in current_group:
+                        if are_rcp_terms_related(rcp, group_rcp, graph):
+                            current_group.append(rcp)
+                            remaining_rcps.remove(rcp)
+                            found_new = True
+                            break
+            
+            rcp_groups.append(current_group)
+        
+        # For each group, create combined path info
+        # If group has 2 RCPs, combine them; otherwise treat as single
+        rcp_paths = []
+        for group in rcp_groups:
+            if len(group) == 2:
+                # Related pair: combine paths and rotatable indices
+                rcp1, rcp2 = group
+                path1, rotatable1 = rcp_path_data[rcp1]
+                path2, rotatable2 = rcp_path_data[rcp2]
+                
+                # Union of paths (remove duplicates, preserve order)
+                combined_path = list(dict.fromkeys(path1 + path2))
+                # Union of rotatable indices
+                combined_rotatable = list(set(rotatable1) | set(rotatable2))
+                
+                rcp_paths.append((group, combined_path, combined_rotatable))
+            else:
+                # Single RCP or larger group: treat individually
+                for rcp in group:
+                    path, rotatable = rcp_path_data[rcp]
+                    rcp_paths.append(([rcp], path, rotatable))
+        
         # Initialize
+        distance_function_factory = AnalyticalDistanceFactory(zmatrix, self.topology)
+        distance_functions = distance_function_factory.get_all_distance_functions(self.rcpterms)
         current_zmatrix = zmatrix.copy()
-        initial_coords = zmatrix_to_cartesian(current_zmatrix)
-        initial_score = self.ring_closure_score_exponential(
-            initial_coords, ring_closure_tolerance, ring_closure_decay_rate)
+        
+        rcp_distances = {}
+        for rcp_term in self.rcpterms:
+            rcp1, rcp2 = rcp_term
+            # Use canonical ordering for dictionary lookup
+            cache_key = (min(rcp1, rcp2), max(rcp1, rcp2))
+            distance_function = distance_functions[cache_key]
+            rcp_distances[rcp_term] = distance_function({})
+        initial_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
         
         # Step size for dihedral adjustments (degrees)
         step_size = 60.0  # Start with larger steps
         step_size_factor = 0.3
-        prev_step_size = 180.0
         min_step_size = 1.0
-        
-        # Iteration counter for trajectory
-        iteration_counter = [0]
         
         info = {
             'initial_score': initial_score,
@@ -1076,133 +1146,111 @@ class MolecularSystem:
             'iterations': 0
         }
 
+        current_score = initial_score
+        prev_score = initial_score
+        num_converged = 0
         try:
-            for iteration in range(int(prev_step_size // step_size)):
-                converged = True
+            for iteration in range(max_iterations):
+                # Check if already closed (all RCPs in all groups)
+                if current_score > 0.99:
+                    break
                 
-                # Process each RCP pair
-                for rcp1, rcp2, path, path_rotatable_indices in rcp_paths:
-                    # Get current coordinates
-                    coords = zmatrix_to_cartesian(current_zmatrix)
-                    current_distance = _calc_distance(coords[rcp1], coords[rcp2])
+                scores_per_group = {}
+                group_index = -1
+                for rcp_group, path, path_rotatable_indices in rcp_paths:
+                    group_index += 1
+
+                    # Compute combined distance: sum of distances for all RCPs in group
+                    current_dihedrals = {idx: current_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] for idx in path_rotatable_indices}
                     
-                    # Check if already closed
-                    if current_distance <= ring_closure_tolerance:
-                        continue
-                    
-                    converged = False
-                    
-                    # Forward pass: from RCP1 toward RCP2
-                    # Process dihedrals in path order
+                    # Forward pass: along the combined path
                     path_rotatable_ordered = [idx for idx in path if idx in path_rotatable_indices]
-                    
-                    for rot_idx in path_rotatable_ordered:
-                        # Get current coordinates and distance
-                        coords = zmatrix_to_cartesian(current_zmatrix)
-                        current_distance = _calc_distance(coords[rcp1], coords[rcp2])
-                        
-                        if current_distance <= ring_closure_tolerance:
-                            break
-                        
-                        # Get current dihedral value
-                        current_dihedral = current_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL]
-                        
-                        # Try adjusting dihedral to reduce distance
-                        # Use finite differences to estimate gradient
-                        test_dihedral_values = [
-                            current_dihedral - step_size,
-                            current_dihedral + step_size
-                        ]
-                        
-                        best_dihedral = current_dihedral
-                        best_distance = current_distance
-                        
-                        for test_dihedral_val in test_dihedral_values:
-                            # Wrap to [-180, 180]
-                            wrapped_dihedral = test_dihedral_val
-                            while wrapped_dihedral > 180.0:
-                                wrapped_dihedral -= 360.0
-                            while wrapped_dihedral < -180.0:
-                                wrapped_dihedral += 360.0
-                            
-                            # Test this dihedral
-                            test_zmatrix = current_zmatrix.copy()
-                            test_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL] = wrapped_dihedral
-                            test_coords = zmatrix_to_cartesian(test_zmatrix)
-                            test_distance = _calc_distance(test_coords[rcp1], test_coords[rcp2])
-                            
-                            if test_distance < best_distance:
-                                best_distance = test_distance
-                                best_dihedral = wrapped_dihedral
-                        
-                        # Update if improvement found
-                        #TODO del
-                        print(f'Forward pass: {rot_idx} {current_dihedral} -> {best_dihedral} {current_distance} -> {best_distance}')
-                        if best_distance < current_distance:
-                            current_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL] = best_dihedral
-                            current_distance = best_distance
-                    
-                    # Backward pass: from RCP2 toward RCP1
-                    # Process in reverse path order
+                    # Backward pass: reverse order
                     path_rotatable_ordered_reverse = [idx for idx in reversed(path) if idx in path_rotatable_indices]
-                    
-                    for rot_idx in path_rotatable_ordered_reverse:
-                        # Get current coordinates and distance
-                        coords = zmatrix_to_cartesian(current_zmatrix)
-                        current_distance = _calc_distance(coords[rcp1], coords[rcp2])
-                        
-                        if current_distance <= ring_closure_tolerance:
-                            break
-                        
-                        # Get current dihedral value
-                        current_dihedral = current_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL]
-                        
-                        # Try adjusting dihedral
-                        test_dihedral_values = [
-                            current_dihedral - step_size,
-                            current_dihedral + step_size
-                        ]
-                        
-                        best_dihedral = current_dihedral
-                        best_distance = current_distance
-                        
-                        for test_dihedral_val in test_dihedral_values:
-                            # Wrap to [-180, 180]
-                            wrapped_dihedral = test_dihedral_val
-                            while wrapped_dihedral > 180.0:
-                                wrapped_dihedral -= 360.0
-                            while wrapped_dihedral < -180.0:
-                                wrapped_dihedral += 360.0
+
+                    for direction in [path_rotatable_ordered, path_rotatable_ordered_reverse]:
+                        for rot_idx in direction:
+                            current_dihedral = current_dihedrals[rot_idx]
                             
-                            # Test this dihedral
-                            test_zmatrix = current_zmatrix.copy()
-                            test_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL] = wrapped_dihedral
-                            test_coords = zmatrix_to_cartesian(test_zmatrix)
-                            test_distance = _calc_distance(test_coords[rcp1], test_coords[rcp2])
+                            # Try adjusting dihedral to reduce combined distance
+                            # Use finite differences to estimate gradient
+                            test_dihedral_values = [
+                                current_dihedral - step_size,
+                                current_dihedral + step_size
+                            ]
                             
-                            if test_distance < best_distance:
-                                best_distance = test_distance
-                                best_dihedral = wrapped_dihedral
-                        
-                        # Update if improvement found
-                        #TODO del
-                        print(f'Backward pass: {rot_idx} {current_dihedral} -> {best_dihedral} {current_distance} -> {best_distance}')
-                        if best_distance < current_distance:
-                            current_zmatrix[rot_idx][ZMatrix.FIELD_DIHEDRAL] = best_dihedral
-                
-                # Check convergence: all RCP pairs closed
-                final_coords = zmatrix_to_cartesian(current_zmatrix)
-                all_closed = True
-                distance_str = ""
-                for rcp1, rcp2, _, _ in rcp_paths:
-                    distance = _calc_distance(final_coords[rcp1], final_coords[rcp2])
-                    distance_str += f"RCP {rcp1}-{rcp2}: {distance:.4f} Å "
-                    if distance > ring_closure_tolerance:
-                        all_closed = False
+                            best_loc_dihedral = current_dihedral
+                            best_loc_score = current_score
+                            
+                            for test_dihedral_val in test_dihedral_values:
+                                # Wrap to [-180, 180]
+                                wrapped_dihedral = test_dihedral_val
+                                while wrapped_dihedral > 180.0:
+                                    wrapped_dihedral -= 360.0
+                                while wrapped_dihedral < -180.0:
+                                    wrapped_dihedral += 360.0
+                                
+                                # Test this dihedral: compute sum of distances for all RCPs in group
+                                test_dihedrals = current_dihedrals.copy()
+                                test_dihedrals[rot_idx] = wrapped_dihedral
+                                rcp_distances = {}
+                                for rcp_term in rcp_group:
+                                    rcp1, rcp2 = rcp_term
+                                    # Use canonical ordering for dictionary lookup
+                                    cache_key = (min(rcp1, rcp2), max(rcp1, rcp2))
+                                    distance_function = distance_functions[cache_key]
+                                    rcp_distances[rcp_term] = distance_function(test_dihedrals)
+                                test_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
+                                if test_score > best_loc_score:
+                                    best_loc_score = test_score
+                                    best_loc_dihedral = wrapped_dihedral
+                            
+                            current_dihedrals[rot_idx] = best_loc_dihedral
+                            scores_per_group[group_index] = best_loc_score
+                            
+                            if best_loc_score > 0.99:
+                                break
+
+                    # Update final values in zmatrix
+                    for idx in path_rotatable_indices:
+                        current_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] = current_dihedrals[idx]
+
+                    rcp_distances = {}
+                    for rcp_term in self.rcpterms:
+                        rcp1, rcp2 = rcp_term
+                        # Use canonical ordering for dictionary lookup
+                        cache_key = (min(rcp1, rcp2), max(rcp1, rcp2))
+                        distance_function = distance_functions[cache_key]
+                        rcp_distances[rcp_term] = distance_function(current_dihedrals)
+                    current_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
+
+                    if current_score > 0.99:
                         break
                 
+                # Check convergence: all RCP pairs closed
+                all_closed = True
+                score_str = ""
+                for group_index in scores_per_group:
+                    score_str += f" Group {rcp_paths[group_index][0]}: {scores_per_group[group_index]:.4f}"
+                    if scores_per_group[group_index] < 0.99:
+                        all_closed = False
+                if current_score < 0.99:
+                    all_closed = False
+                
+                # check convergence: no improvement
+                if abs(prev_score - current_score) < convergence_tolerance:
+                    num_converged += 1
+                else:
+                    num_converged = 0
+
+                if num_converged > max_num_converged:
+                    break
+
+                prev_score = current_score
+
                 # Write trajectory if requested
                 if trajectory_file:
+                    final_coords = zmatrix_to_cartesian(current_zmatrix)
                     try:
                         final_score = self.ring_closure_score_exponential(
                             final_coords, ring_closure_tolerance, ring_closure_decay_rate)
@@ -1211,29 +1259,29 @@ class MolecularSystem:
                             final_coords,
                             elements,
                             trajectory_file,
-                            comment=f"Iteration {iteration_counter[0]}, Ring closure score: {final_score:.4f}",
+                            comment=f"Iteration {iteration}, Ring closure score: {final_score:.4f}",
                             append=True
                         )
                         if verbose:
-                            print(f"Iteration {iteration_counter[0]}, Ring closure score: {final_score:.4f}")
-                        iteration_counter[0] += 1
+                            print(f"Iteration {iteration}, Ring closure score: {final_score:.4f}")
                     except Exception as e:
                         if verbose:
-                            print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
+                            print(f"  Warning: Failed to write trajectory at iteration {iteration}: {e}")
                 
-                # Reduce step size for fine-tuning
-                if iteration > (int(prev_step_size // step_size)-1):
-                    iteration = 0
-                    prev_step_size = step_size
-                    step_size = max(step_size * step_size_factor, min_step_size)
+                print(f"Iteration {iteration}: RC score({ring_closure_tolerance:.3f}, {ring_closure_decay_rate:.3f}) {current_score:.4f} - {score_str}")
 
-                print(f"Iteration {iteration}: {distance_str}")
+                # Reduce step size for fineer tuning in next iteratiom
+                step_size = max(step_size * step_size_factor, min_step_size)
+
+                if all_closed:
+                    break
                 
             
-            # Calculate final score
-            final_coords = zmatrix_to_cartesian(current_zmatrix)
-            final_score = self.ring_closure_score_exponential(
-                final_coords, ring_closure_tolerance, ring_closure_decay_rate)
+            # Prepare final results, if not done already
+            if final_coords is None:
+                final_coords = zmatrix_to_cartesian(current_zmatrix)
+                final_score = self.ring_closure_score_exponential(
+                    final_coords, ring_closure_tolerance, ring_closure_decay_rate)
             
             info['final_score'] = final_score
             info['improvement'] = final_score - initial_score
@@ -1242,6 +1290,8 @@ class MolecularSystem:
             return current_zmatrix, final_score, info
             
         except Exception as e:
+            #TODO del
+            print(e)
             if verbose:
                 print(f"FABRIK optimization failed: {e}")
             final_coords = zmatrix_to_cartesian(zmatrix)
@@ -1254,16 +1304,33 @@ class MolecularSystem:
             info['iterations'] = iteration if 'iteration' in locals() else 0
             return zmatrix.copy(), final_score, info
 
+
     def ring_closure_score_exponential(self, coords: np.ndarray, 
                                         tolerance: float = 0.001,
                                         decay_rate: float = 1.0,
                                         verbose: bool = False) -> float:
-        return self._ring_closure_score_exponential(coords, self.rcpterms, tolerance, decay_rate, verbose)
+        return self.ring_closure_score_exponential_from_coords(coords, self.rcpterms, tolerance, decay_rate, verbose)
+
+
+    @staticmethod
+    def ring_closure_score_exponential_from_coords(coords: np.ndarray, 
+                                        rcp_terms: List[Tuple[int, int]],
+                                        tolerance: float = 0.001,
+                                        decay_rate: float = 1.0,
+                                        verbose: bool = False) -> float:
+        if not rcp_terms:
+            return 1.0  # No constraints means "perfectly satisfied"
+
+        rcp_distances = {} 
+        for rcp_term in rcp_terms:
+            distance = _calc_distance(coords[rcp_term[0]], coords[rcp_term[1]])
+            rcp_distances[rcp_term] = distance
+        
+        return MolecularSystem.ring_closure_score_exponential_from_distances(rcp_distances, tolerance, decay_rate, verbose)
     
 
     @staticmethod
-    def _ring_closure_score_exponential(coords: np.ndarray, 
-                                        rcp_terms: List[Tuple[int, int]],
+    def ring_closure_score_exponential_from_distances(rcp_distances: Dict[Tuple[int, int], float], 
                                         tolerance: float = 0.001,
                                         decay_rate: float = 1.0,
                                         verbose: bool = False) -> float:
@@ -1283,8 +1350,8 @@ class MolecularSystem:
         
         Parameters
         ----------
-        coords : np.ndarray
-            Cartesian coordinates (Angstroms)
+        rcp_distances : Dict[Tuple[int, int], float]
+            Dictionary of RCP distances (Angstroms)
         tolerance : float
             Distance threshold below which rings are considered closed (default: 1.54 Å for C-C single bond)
         decay_rate : float
@@ -1316,7 +1383,7 @@ class MolecularSystem:
         - RCP 3: exp(-1.0 * (5.0-1.54)) = exp(-3.46) ≈ 0.031
         Average score = (1.000 + 0.631 + 0.031) / 3 ≈ 0.554
         """
-        if not rcp_terms:
+        if not rcp_distances:
             return 1.0  # No constraints means "perfectly satisfied"
         
         total_score = 0.0
@@ -1324,9 +1391,7 @@ class MolecularSystem:
         if verbose:
             print(f"  RCP Exponential Score Analysis (tolerance: {tolerance:.2f} Å, decay_rate: {decay_rate:.2f}):")
         
-        for rcp_term in rcp_terms:
-            distance = _calc_distance(coords[rcp_term[0]], coords[rcp_term[1]])
-            
+        for rcp_term,distance in rcp_distances.items():
             if distance <= tolerance:
                 # Within tolerance - perfect score
                 score = 1.0
@@ -1349,7 +1414,7 @@ class MolecularSystem:
                       f"dist={distance:6.3f} Å, score={score:6.4f}  {status}")
         
         # Return average score across all RCP terms
-        avg_score = total_score / len(rcp_terms)
+        avg_score = total_score / len(rcp_distances)
         
         if verbose:
             print(f"  Average score: {avg_score:.4f} (range: [0.0, 1.0])")
