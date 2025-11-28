@@ -257,18 +257,11 @@ class TestAnalyticalDistanceFactory(unittest.TestCase):
         # Create a simple chain Z-matrix
         self.chain_atoms = [
             {'id': 0, 'element': 'C', 'atomic_num': 6},
-            {'id': 1, 'element': 'C', 'atomic_num': 6,
-             'bond_ref': 0, 'bond_length': 1.5},
-            {'id': 2, 'element': 'C', 'atomic_num': 6,
-             'bond_ref': 1, 'bond_length': 1.5,
-             'angle_ref': 0, 'angle': 109.47},
-            {'id': 3, 'element': 'C', 'atomic_num': 6,
-             'bond_ref': 2, 'bond_length': 1.5,
-             'angle_ref': 1, 'angle': 109.47,
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 'angle_ref': 1, 'angle': 109.47,
              'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6,
-             'bond_ref': 3, 'bond_length': 1.5,
-             'angle_ref': 2, 'angle': 109.47,
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 'angle_ref': 2, 'angle': 109.47,
              'dihedral_ref': 1, 'dihedral': 60.0, 'chirality': 0}
         ]
         self.chain_bonds = [(0, 1), (1, 2), (2, 3), (3, 4)]
@@ -977,6 +970,163 @@ class TestEdgeCases(unittest.TestCase):
         # Should use default dihedral from zmatrix
         distance = dist_func({})  # Empty dict, should use default
         self.assertGreater(distance, 0.0)
+    
+    def test_partial_dihedral_values(self):
+        """Test behavior when input dict contains values only for some variable dihedrals."""
+        path_info = {
+            'bond_lengths': [1.5, 1.5, 1.5, 1.5],
+            'bond_angles': [109.47, 109.47, 109.47],
+            'dihedral_indices': [3, 4, 5],  # Three variable dihedrals
+            'dihedral_positions': [2, 3, 4],
+            'path_atoms': [0, 1, 2, 3, 4, 5],
+            'zmatrix_refs': []
+        }
+        
+        atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0},
+        ]
+        zmatrix = ZMatrix(atoms, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)])
+        
+        dist_func_jit = AnalyticalDistanceFunction(path_info, zmatrix, use_jit=True)
+        dist_func_python = AnalyticalDistanceFunction(path_info, zmatrix, use_jit=False)
+        
+        # Test 1: All values provided
+        all_values = {3: 90.0, 4: 90.0, 5: 90.0}
+        dist_jit_all = dist_func_jit(all_values)
+        dist_python_all = dist_func_python(all_values)
+        self.assertAlmostEqual(dist_jit_all, dist_python_all, places=4,
+                              msg="JIT and Python should match with all values")
+        
+        # Test 2: Only first value provided (others use defaults)
+        partial1 = {3: 90.0}  # 4→120.0, 5→180.0 defaults
+        dist_jit_partial1 = dist_func_jit(partial1)
+        dist_python_partial1 = dist_func_python(partial1)
+        self.assertAlmostEqual(dist_jit_partial1, dist_python_partial1, places=4,
+                              msg="JIT and Python should match with partial values")
+        
+        # Test 3: Only middle value provided
+        partial2 = {4: 90.0}  # 3→60.0, 5→180.0 defaults
+        dist_jit_partial2 = dist_func_jit(partial2)
+        dist_python_partial2 = dist_func_python(partial2)
+        self.assertAlmostEqual(dist_jit_partial2, dist_python_partial2, places=4,
+                              msg="JIT and Python should match with middle value only")
+        
+        # Test 4: Only last value provided
+        partial3 = {5: 90.0}  # 3→60.0, 4→120.0 defaults
+        dist_jit_partial3 = dist_func_jit(partial3)
+        dist_python_partial3 = dist_func_python(partial3)
+        self.assertAlmostEqual(dist_jit_partial3, dist_python_partial3, places=4,
+                              msg="JIT and Python should match with last value only")
+        
+        # Test 5: Empty dict (all use defaults)
+        empty = {}
+        dist_jit_empty = dist_func_jit(empty)
+        dist_python_empty = dist_func_python(empty)
+        self.assertAlmostEqual(dist_jit_empty, dist_python_empty, places=4,
+                              msg="JIT and Python should match with empty dict")
+        
+        # Test 6: Verify partial matches explicit defaults
+        explicit_defaults = {3: 90.0, 4: 120.0, 5: 180.0}
+        dist_jit_explicit = dist_func_jit(explicit_defaults)
+        dist_python_explicit = dist_func_python(explicit_defaults)
+        self.assertAlmostEqual(dist_jit_partial1, dist_jit_explicit, places=4,
+                              msg="Partial {3: 90.0} should match explicit {3: 90.0, 4: 120.0, 5: 180.0}")
+        self.assertAlmostEqual(dist_python_partial1, dist_python_explicit, places=4,
+                              msg="Partial {3: 90.0} should match explicit {3: 90.0, 4: 120.0, 5: 180.0}")
+    
+    def test_extra_non_variable_dihedrals(self):
+        """Test behavior when input dict contains dihedrals that are not variable."""
+        path_info = {
+            'bond_lengths': [1.5, 1.5, 1.5, 1.5],
+            'bond_angles': [109.47, 109.47, 109.47],
+            'dihedral_indices': [3, 4],  # Only 3 and 4 are variable
+            'dihedral_positions': [2, 3],
+            'path_atoms': [0, 1, 2, 3, 4, 5],
+            'zmatrix_refs': []
+        }
+        
+        atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 60.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0},
+        ]
+        zmatrix = ZMatrix(atoms, [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)])
+        
+        dist_func_jit = AnalyticalDistanceFunction(path_info, zmatrix, use_jit=True)
+        dist_func_python = AnalyticalDistanceFunction(path_info, zmatrix, use_jit=False)
+        
+        # Test 1: Normal case (only variable dihedrals)
+        normal = {3: 90.0, 4: 90.0}
+        dist_jit_normal = dist_func_jit(normal)
+        dist_python_normal = dist_func_python(normal)
+        
+        # Test 2: With extra dihedral (atom 5, NOT in dihedral_indices)
+        with_extra = {3: 90.0, 4: 90.0, 5: 45.0}
+        dist_jit_extra = dist_func_jit(with_extra)
+        dist_python_extra = dist_func_python(with_extra)
+        
+        # Extra dihedrals should be ignored - results should match normal case
+        self.assertAlmostEqual(dist_jit_normal, dist_jit_extra, places=4,
+                              msg="JIT should ignore extra dihedral 5")
+        self.assertAlmostEqual(dist_python_normal, dist_python_extra, places=4,
+                              msg="Python should ignore extra dihedral 5")
+        self.assertAlmostEqual(dist_jit_normal, dist_python_normal, places=4,
+                              msg="JIT and Python should match")
+        self.assertAlmostEqual(dist_jit_extra, dist_python_extra, places=4,
+                              msg="JIT and Python should match with extra dihedrals")
+        
+        # Test 3: Only extra dihedral (no variable dihedrals)
+        only_extra = {5: 45.0}
+        dist_jit_only_extra = dist_func_jit(only_extra)
+        dist_python_only_extra = dist_func_python(only_extra)
+        
+        # Should use defaults for variable dihedrals (3→60.0, 4→120.0), ignore 5
+        empty = {}  # All defaults
+        dist_jit_empty = dist_func_jit(empty)
+        dist_python_empty = dist_func_python(empty)
+        
+        self.assertAlmostEqual(dist_jit_only_extra, dist_jit_empty, places=4,
+                              msg="JIT should ignore extra dihedral and use defaults")
+        self.assertAlmostEqual(dist_python_only_extra, dist_python_empty, places=4,
+                              msg="Python should ignore extra dihedral and use defaults")
+        
+        # Test 4: Non-existent atom index
+        with_nonexistent = {3: 90.0, 4: 90.0, 99: 45.0}
+        dist_jit_nonexistent = dist_func_jit(with_nonexistent)
+        dist_python_nonexistent = dist_func_python(with_nonexistent)
+        
+        # Should match normal case (non-existent atom ignored)
+        self.assertAlmostEqual(dist_jit_normal, dist_jit_nonexistent, places=4,
+                              msg="JIT should ignore non-existent atom 99")
+        self.assertAlmostEqual(dist_python_normal, dist_python_nonexistent, places=4,
+                              msg="Python should ignore non-existent atom 99")
+        
+        # Test 5: Multiple extra dihedrals
+        with_multiple_extra = {3: 90.0, 4: 90.0, 5: 45.0, 99: 30.0, 100: 15.0}
+        dist_jit_multiple = dist_func_jit(with_multiple_extra)
+        dist_python_multiple = dist_func_python(with_multiple_extra)
+        
+        # Should match normal case
+        self.assertAlmostEqual(dist_jit_normal, dist_jit_multiple, places=4,
+                              msg="JIT should ignore all extra dihedrals")
+        self.assertAlmostEqual(dist_python_normal, dist_python_multiple, places=4,
+                              msg="Python should ignore all extra dihedrals")
 
 
 def run_tests():

@@ -417,6 +417,17 @@ class AnalyticalDistanceFunction:
     
     The implementation uses a hybrid approach: it computes positions incrementally
     along the path using Z-matrix geometry, avoiding full zmatrix-to-cartesian conversion.
+
+    The function takes a dictionary of dihedral values and returns the distance between the two atoms.
+    The dictionary keys are the Z-matrix atom indices that have variable dihedrals.
+    The dictionary values are the dihedral values in degrees.
+    The input dictionary may not contain all the dihedrals, if so, the values of the zmatrix given upon construction are used. If these are also not set, the default value of 0.0 is used.
+    The input dictionary may contain dihedral values that are not in the path, if so, they are ignored.
+
+    The function uses the JIT compilation to speed up the computation.
+    If the JIT compilation is not available, the function uses the Python implementation.
+
+    The function is thread-safe.
     """
     
     def __init__(self, path_info: Dict, zmatrix: ZMatrix, use_jit: bool = True):
@@ -877,6 +888,17 @@ class AnalyticalDistanceFunction:
     
     def _compute_distance_python(self, dihedral_values: Dict[int, float]) -> float:
         """Compute distance using Python implementation (fallback)."""
+        # Filter dihedral_values to only include variable dihedrals (for consistency with JIT)
+        filtered_dihedral_values = {}
+        for dih_idx in self.dihedral_indices:
+            dih_idx_int = int(dih_idx)
+            if dih_idx_int in dihedral_values:
+                filtered_dihedral_values[dih_idx_int] = float(dihedral_values[dih_idx_int])
+            else:
+                # Use default from zmatrix
+                atom = self.zmatrix[dih_idx_int]
+                filtered_dihedral_values[dih_idx_int] = float(atom.get(ZMatrix.FIELD_DIHEDRAL, 0.0))
+        
         # Clear coordinate cache
         coords_cache = {}
         
@@ -884,15 +906,15 @@ class AnalyticalDistanceFunction:
         start_atom = int(self.path_atoms[0])
         end_atom = int(self.path_atoms[-1])
         
-        coords_start = self._compute_atom_position(start_atom, dihedral_values, coords_cache)
-        coords_end = self._compute_atom_position(end_atom, dihedral_values, coords_cache)
+        coords_start = self._compute_atom_position(start_atom, filtered_dihedral_values, coords_cache)
+        coords_end = self._compute_atom_position(end_atom, filtered_dihedral_values, coords_cache)
         
         # Return distance
         return np.linalg.norm(coords_end - coords_start)
     
     def gradient(self, dihedral_values: Dict[int, float], 
                  dihedral_idx: int, 
-                 eps: float = 0.1) -> float:
+                 eps: float = 1.0) -> float:
         """
         Compute gradient of distance w.r.t. a specific dihedral using finite differences.
         
