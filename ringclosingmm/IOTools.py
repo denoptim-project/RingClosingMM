@@ -375,7 +375,7 @@ def read_sdf_file(pathname: str) -> ZMatrix:
         x = float(line[0:10].strip())
         y = float(line[10:20].strip())
         z = float(line[20:30].strip())
-        element = line[30:33].strip()
+        element = line[30:34].strip()
         
         atoms_data.append({
             'element': element,
