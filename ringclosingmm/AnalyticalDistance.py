@@ -1124,6 +1124,39 @@ class AnalyticalDistanceFactory:
                 'chirality': atom.get(ZMatrix.FIELD_CHIRALITY, 0)
             })
         
+        # Second pass: Check for branch atoms (not in path) with rotatable dihedrals
+        # that affect the path geometry. A branch atom affects the path if its
+        # bond_ref is in the path.
+        path_set = set(path)
+        for atom_idx in range(len(self.zmatrix)):
+            # Skip atoms already in path (handled in first pass)
+            if atom_idx in path_set:
+                continue
+            
+            atom = self.zmatrix[atom_idx]
+            bond_ref = atom.get(ZMatrix.FIELD_BOND_REF)
+            
+            # Check if this is a branch atom (not in path) whose bond_ref is in path
+            if bond_ref is not None and bond_ref in path_set:
+                # Check if this atom has a rotatable dihedral
+                if ZMatrix.FIELD_DIHEDRAL in atom:
+                    chirality = atom.get(ZMatrix.FIELD_CHIRALITY, 0)
+                    # Only consider true dihedrals (chirality == 0) as rotatable
+                    if chirality == 0:
+                        if rotatable_indices is None or atom_idx in rotatable_indices:
+                            # Find the position of bond_ref in the path
+                            bond_ref_pos = path.index(bond_ref)
+                            # The branch dihedral affects the bond AFTER bond_ref in the path
+                            # If bond_ref is the last atom in path, use the last bond position
+                            if bond_ref_pos < len(path) - 1:
+                                dihedral_position = bond_ref_pos
+                            else:
+                                # bond_ref is the last atom, use the last bond position
+                                dihedral_position = len(path) - 2
+                            
+                            dihedral_indices.append(atom_idx)  # Z-matrix atom index
+                            dihedral_positions.append(dihedral_position)  # Bond position in path (0-based)
+        
         return {
             'bond_lengths': bond_lengths,
             'bond_angles': bond_angles,

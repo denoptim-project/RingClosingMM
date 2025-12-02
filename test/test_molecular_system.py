@@ -1601,6 +1601,218 @@ class TestMolecularSystemRCPPathComputation(unittest.TestCase):
         # Only atoms 2, 3, 4 are in path and have references in path
         self.assertEqual(sorted(path_rotatable), [2, 3, 4])
     
+    def test_compute_rcp_path_data_chirality_in_path(self):
+        """Test _compute_rcp_path_data with chirality atom in path."""
+        # Create structure: 0-1-2-3-4
+        # Atom 3 has chirality != 0, defined by dihedral_ref = 5 (not in path)
+        # Atom 5 is rotatable and should be included in path_rotatable_indices
+        chirality_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},
+        ]
+        chirality_bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5)]
+        chirality_zmatrix = ZMatrix(chirality_atoms, chirality_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(chirality_atoms)]
+        topology = build_topology_from_data(atoms_data, chirality_bonds)
+        
+        # RCP term: (0, 4) - path is [0, 1, 2, 3, 4]
+        # Atom 3 is in path and has chirality != 0, dihedral_ref = 5
+        # Atom 5 is rotatable and should be included
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(chirality_zmatrix, rcp_terms, topology)
+        
+        # Rotatable indices: 1, 3, 4, 5
+        # Atom 1: NOT in path, but atom 3 (in path) has chirality != 0 and angle_ref=1 -> should be included if rotatable
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included (first pass)
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included
+        # Atom 5: NOT in path, but atom 3 (in path) has chirality != 0 and dihedral_ref=5 -> included (second pass)
+        rotatable_indices = [1, 3, 4, 5]
+        
+        rcp_path_data = system._compute_rcp_path_data(chirality_zmatrix, rotatable_indices, verbose=False)
+        
+        self.assertEqual(len(rcp_path_data), 1)
+        path, path_rotatable = rcp_path_data[(0, 4)]
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        # Atom 1: NOT in path, but atom 3 (in path) has chirality != 0 and angle_ref=1 -> included (second pass)
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included (first pass)
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included
+        # Atom 5: NOT in path, but atom 3 (in path) has chirality != 0 and dihedral_ref=5 -> included (second pass)
+        self.assertIn(1, path_rotatable)  # Included because atom 3 has chirality != 0 and angle_ref=1
+        self.assertIn(3, path_rotatable)  # Atom 3 is in path with references in path
+        self.assertIn(4, path_rotatable)
+        self.assertIn(5, path_rotatable)  # Included because atom 3 has chirality != 0 and dihedral_ref=5
+    
+    def test_compute_rcp_path_data_chirality_multiple_atoms(self):
+        """Test _compute_rcp_path_data with multiple chirality atoms in path."""
+        # Create structure: 0-1-2-3-4-5
+        # Atom 2 has chirality != 0, dihedral_ref = 6 (not in path, rotatable)
+        # Atom 4 has chirality != 0, dihedral_ref = 7 (not in path, rotatable)
+        chirality_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 6, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 7, 'dihedral': 90.0, 'chirality': -1},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 3, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 180.0, 'chirality': 0},
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 2, 'dihedral': 0.0, 'chirality': 0},
+            {'id': 7, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0},
+        ]
+        chirality_bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (1, 6), (3, 7)]
+        chirality_zmatrix = ZMatrix(chirality_atoms, chirality_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(chirality_atoms)]
+        topology = build_topology_from_data(atoms_data, chirality_bonds)
+        
+        # RCP term: (0, 5) - path is [0, 1, 2, 3, 4, 5]
+        # Atom 2: in path, chirality != 0, dihedral_ref = 6 -> atom 6 should be included
+        # Atom 4: in path, chirality != 0, dihedral_ref = 7 -> atom 7 should be included
+        # Atom 3: in path, chirality == 0, bond_ref=2 (in path), angle_ref=1 (in path) -> included
+        # Atom 5: in path, chirality == 0, bond_ref=4 (in path), angle_ref=3 (in path) -> included
+        rcp_terms = [(0, 5)]
+        system = self._create_minimal_system(chirality_zmatrix, rcp_terms, topology)
+        
+        # Rotatable indices: 0, 2, 3, 4, 5, 6, 7
+        # Atom 0: NOT in path, but atom 2 (in path) has chirality != 0 and angle_ref=0 -> included (second pass) if rotatable
+        # Atom 2: in path, bond_ref=1 (in path), angle_ref=0 (in path) -> included (first pass)
+        # Also: atom 4 (in path) has chirality != 0 and angle_ref=2 -> atom 2 should be included (second pass)
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included (first pass)
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included (first pass)
+        # Atom 5: in path, bond_ref=4 (in path), angle_ref=3 (in path) -> included
+        # Atom 6: NOT in path, but atom 2 (in path) has chirality != 0 and dihedral_ref=6 -> included (second pass)
+        # Atom 7: NOT in path, but atom 4 (in path) has chirality != 0 and dihedral_ref=7 -> included (second pass)
+        rotatable_indices = [0, 2, 3, 4, 5, 6, 7]
+        
+        rcp_path_data = system._compute_rcp_path_data(chirality_zmatrix, rotatable_indices, verbose=False)
+        
+        self.assertEqual(len(rcp_path_data), 1)
+        path, path_rotatable = rcp_path_data[(0, 5)]
+        self.assertEqual(path, [0, 1, 2, 3, 4, 5])
+        # Atom 0: NOT in path, but atom 2 (in path) has chirality != 0 and angle_ref=0 -> included (second pass)
+        # Atom 2: in path, bond_ref=1 (in path), angle_ref=0 (in path) -> included (first pass)
+        # Also: atom 4 (in path) has chirality != 0 and angle_ref=2 -> atom 2 included again (second pass, but already in)
+        # Atom 3: in path, bond_ref=2 (in path), angle_ref=1 (in path) -> included (first pass)
+        # Atom 4: in path, bond_ref=3 (in path), angle_ref=2 (in path) -> included (first pass)
+        # Atom 5: in path, bond_ref=4 (in path), angle_ref=3 (in path) -> included
+        # Atom 6: NOT in path, but atom 2 (in path) has chirality != 0 and dihedral_ref=6 -> included (second pass)
+        # Atom 7: NOT in path, but atom 4 (in path) has chirality != 0 and dihedral_ref=7 -> included (second pass)
+        self.assertIn(0, path_rotatable)  # Included because atom 2 has chirality != 0 and angle_ref=0
+        self.assertIn(2, path_rotatable)  # Atom 2 is in path with references in path, AND atom 4 has chirality != 0 and angle_ref=2
+        self.assertIn(3, path_rotatable)
+        self.assertIn(4, path_rotatable)  # Atom 4 is in path with references in path
+        self.assertIn(5, path_rotatable)
+        self.assertIn(6, path_rotatable)  # Included because atom 2 has chirality != 0 and dihedral_ref=6
+        self.assertIn(7, path_rotatable)  # Included because atom 4 has chirality != 0 and dihedral_ref=7
+    
+    def test_compute_rcp_path_data_chirality_both_refs_rotatable(self):
+        """Test _compute_rcp_path_data with chirality atom where both angle_ref and dihedral_ref are rotatable."""
+        # Create structure: 0-1-2-3-4
+        # Atom 3 has chirality != 0, defined by angle_ref = 1 and dihedral_ref = 5
+        # Both atom 1 and atom 5 are rotatable and should be included
+        chirality_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},
+        ]
+        chirality_bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5)]
+        chirality_zmatrix = ZMatrix(chirality_atoms, chirality_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(chirality_atoms)]
+        topology = build_topology_from_data(atoms_data, chirality_bonds)
+        
+        # RCP term: (0, 4) - path is [0, 1, 2, 3, 4]
+        # Atom 3 is in path and has chirality != 0, angle_ref = 1, dihedral_ref = 5
+        # Both atom 1 and atom 5 are rotatable and should be included
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(chirality_zmatrix, rcp_terms, topology)
+        
+        # Rotatable indices: 1, 4, 5
+        rotatable_indices = [1, 4, 5]
+        
+        rcp_path_data = system._compute_rcp_path_data(chirality_zmatrix, rotatable_indices, verbose=False)
+        
+        self.assertEqual(len(rcp_path_data), 1)
+        path, path_rotatable = rcp_path_data[(0, 4)]
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        # Atom 1: NOT in path, but atom 3 (in path) has chirality != 0 and angle_ref=1 -> included (second pass)
+        # Atom 4: in path, references in path -> included (first pass)
+        # Atom 5: NOT in path, but atom 3 (in path) has chirality != 0 and dihedral_ref=5 -> included (second pass)
+        self.assertIn(1, path_rotatable)  # Included because atom 3 has chirality != 0 and angle_ref=1
+        self.assertIn(4, path_rotatable)
+        self.assertIn(5, path_rotatable)  # Included because atom 3 has chirality != 0 and dihedral_ref=5
+    
+    def test_compute_rcp_path_data_chirality_refs_not_rotatable(self):
+        """Test _compute_rcp_path_data with chirality atom whose angle_ref and dihedral_ref are not rotatable."""
+        # Create structure: 0-1-2-3-4
+        # Atom 3 has chirality != 0, defined by angle_ref = 1 and dihedral_ref = 5
+        # Neither atom 1 nor atom 5 are rotatable, so should NOT be included
+        chirality_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 60.0, 'chirality': 1},
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 120.0, 'chirality': 0},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},
+        ]
+        chirality_bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (2, 5)]
+        chirality_zmatrix = ZMatrix(chirality_atoms, chirality_bonds)
+        
+        from ringclosingmm.MolecularSystem import build_topology_from_data
+        atoms_data = [(atom['element'], i) for i, atom in enumerate(chirality_atoms)]
+        topology = build_topology_from_data(atoms_data, chirality_bonds)
+        
+        # RCP term: (0, 4) - path is [0, 1, 2, 3, 4]
+        # Atom 3 is in path and has chirality != 0, dihedral_ref = 5
+        # Atom 5 is NOT rotatable, so should NOT be included
+        rcp_terms = [(0, 4)]
+        system = self._create_minimal_system(chirality_zmatrix, rcp_terms, topology)
+        
+        # Rotatable indices: only 4 (atom 5 is NOT rotatable)
+        rotatable_indices = [4]
+        
+        rcp_path_data = system._compute_rcp_path_data(chirality_zmatrix, rotatable_indices, verbose=False)
+        
+        self.assertEqual(len(rcp_path_data), 1)
+        path, path_rotatable = rcp_path_data[(0, 4)]
+        self.assertEqual(path, [0, 1, 2, 3, 4])
+        # Atom 4: in path, references in path -> included
+        # Atom 1: NOT rotatable, so even though atom 3 has chirality != 0 and angle_ref=1,
+        # atom 1 should NOT be included because it's not in rotatable_indices
+        # Atom 5: NOT rotatable, so even though atom 3 has chirality != 0 and dihedral_ref=5,
+        # atom 5 should NOT be included because it's not in rotatable_indices
+        self.assertIn(4, path_rotatable)
+        self.assertNotIn(1, path_rotatable)
+        self.assertNotIn(5, path_rotatable)
+    
     def test_compute_rcp_paths_single_rcp(self):
         """Test _compute_rcp_paths with a single RCP term."""
         from ringclosingmm.MolecularSystem import build_topology_from_data

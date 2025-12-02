@@ -9,6 +9,7 @@ Classes:
     MolecularSystem: Manages OpenMM system, topology, and provides energy evaluation methods
 """
 
+import traceback
 import numpy as np
 from typing import List, Tuple, Dict, Optional, Any
 from pathlib import Path
@@ -1003,6 +1004,8 @@ class MolecularSystem:
             
             # Find rotatable dihedrals on this path
             path_rotatable_indices = []
+            
+            # First pass: check rotatable indices that are directly in the path
             for rot_idx in rotatable_indices:
                 if rot_idx in path:
                     # Check if this dihedral affects atoms on the path
@@ -1010,8 +1013,37 @@ class MolecularSystem:
                     bond_ref = atom.get(ZMatrix.FIELD_BOND_REF)
                     angle_ref = atom.get(ZMatrix.FIELD_ANGLE_REF)
                     # If any reference atom is on path, this dihedral affects the path
-                    if bond_ref is not None and (bond_ref in path or angle_ref in path):
+                    if angle_ref is not None and (bond_ref in path or angle_ref in path):
                         path_rotatable_indices.append(rot_idx)
+            
+            # Second pass: check for chirality cases
+            # For atoms in the path with chirality != 0, their position depends on
+            # both the angle_ref atom (C) and the dihedral_ref atom (D).
+            # Both C and D define angles that determine the position of the chirality atom.
+            # If either C or D has a rotatable dihedral, it affects the path.
+            for path_atom_idx in path:
+                path_atom = zmatrix[path_atom_idx]
+                chirality = path_atom.get(ZMatrix.FIELD_CHIRALITY, 0)
+                
+                if chirality != 0:
+                    # This atom is defined by two angles rather than a dihedral:
+                    # - First angle: centered at bond_ref (B), defined by angle_ref (C)
+                    # - Second angle: centered at bond_ref (B), defined by dihedral_ref (D)
+                    # The position of this atom depends on the positions of both C and D
+                    angle_ref = path_atom.get(ZMatrix.FIELD_ANGLE_REF)
+                    dihedral_ref = path_atom.get(ZMatrix.FIELD_DIHEDRAL_REF)
+                    
+                    # Check if angle_ref (C) has a rotatable dihedral
+                    if angle_ref is not None:
+                        if angle_ref in rotatable_indices and angle_ref not in path_rotatable_indices:
+                            # The rotatable dihedral of angle_ref affects the position of path_atom
+                            path_rotatable_indices.append(angle_ref)
+                    
+                    # Check if dihedral_ref (D) has a rotatable dihedral
+                    if dihedral_ref is not None:
+                        if dihedral_ref in rotatable_indices and dihedral_ref not in path_rotatable_indices:
+                            # The rotatable dihedral of dihedral_ref affects the position of path_atom
+                            path_rotatable_indices.append(dihedral_ref)
             
             if path_rotatable_indices:
                 rcp_path_data[(rca1, rca2)] = (path, path_rotatable_indices)
@@ -1087,9 +1119,18 @@ class MolecularSystem:
                 
                 # Union of paths (remove duplicates, preserve order)
                 combined_path = list(dict.fromkeys(path1 + path2))
-                # Union of rotatable indices
-                combined_rotatable = list(set(rotatable1) | set(rotatable2))
-                
+
+                # Union of rotatable indices keeping order of longest list
+                if len(rotatable1) > len(rotatable2):
+                    longest_list = rotatable1
+                    shortest_list = rotatable2
+                else:
+                    longest_list = rotatable2
+                    shortest_list = rotatable1
+                combined_rotatable = longest_list
+                for rotatable in shortest_list:
+                    if rotatable not in combined_rotatable:
+                        combined_rotatable.append(rotatable)
                 rcp_paths.append((group, combined_path, combined_rotatable))
             else:
                 # Single RCP or larger group: treat individually
@@ -1315,9 +1356,9 @@ class MolecularSystem:
         initial_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
         
         # Step size for dihedral adjustments (degrees)
-        step_size = 60.0  # Start with larger steps
-        step_size_factor = 0.3
-        min_step_size = 1.0
+        step_size = 60.0        # Start with larger steps
+        step_size_factor = 0.30 # reduction factor for step size
+        min_step_size = 1.0     # minimum step size
         
         info = {
             'initial_score': initial_score,
@@ -1329,6 +1370,7 @@ class MolecularSystem:
         current_score = initial_score
         prev_score = initial_score
         num_converged = 0
+        final_coords = None  # Initialize to None, will be set if trajectory_file is provided or at end
         try:
             for iteration in range(max_iterations):
                 # Check if already closed (all RCPs in all groups)
@@ -1344,13 +1386,22 @@ class MolecularSystem:
                     current_dihedrals = {idx: current_zmatrix[idx][ZMatrix.FIELD_DIHEDRAL] for idx in path_rotatable_indices}
                     
                     # Forward pass: along the combined path
-                    path_rotatable_ordered = [idx for idx in path if idx in path_rotatable_indices]
+                    path_rotatable_ordered = path_rotatable_indices
                     # Backward pass: reverse order
-                    path_rotatable_ordered_reverse = [idx for idx in reversed(path) if idx in path_rotatable_indices]
+                    path_rotatable_ordered_reverse = [id for id in reversed(path_rotatable_indices)]
 
                     for direction in [path_rotatable_ordered, path_rotatable_ordered_reverse]:
                         for rot_idx in direction:
                             current_dihedral = current_dihedrals[rot_idx]
+
+                            rcp_distances = {}
+                            for rcp_term in rcp_group:
+                                rcp1, rcp2 = rcp_term
+                                # Use canonical ordering for dictionary lookup
+                                cache_key = (min(rcp1, rcp2), max(rcp1, rcp2))
+                                distance_function = distance_functions[cache_key]
+                                rcp_distances[rcp_term] = distance_function(current_dihedrals)
+                            best_loc_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
                             
                             # Try adjusting dihedral to reduce combined distance
                             # Use finite differences to estimate gradient
@@ -1360,7 +1411,6 @@ class MolecularSystem:
                             ]
                             
                             best_loc_dihedral = current_dihedral
-                            best_loc_score = current_score
                             
                             for test_dihedral_val in test_dihedral_values:
                                 # Wrap to [-180, 180]
@@ -1381,9 +1431,12 @@ class MolecularSystem:
                                     distance_function = distance_functions[cache_key]
                                     rcp_distances[rcp_term] = distance_function(test_dihedrals)
                                 test_score = self.ring_closure_score_exponential_from_distances(rcp_distances, ring_closure_tolerance, ring_closure_decay_rate)
+                                accepted = False
                                 if test_score > best_loc_score:
                                     best_loc_score = test_score
                                     best_loc_dihedral = wrapped_dihedral
+                                    accepted = True
+                                #print(f"  Step {step_size:.1f} - Test dihedral: {rot_idx} from {current_dihedral:.3f} to {wrapped_dihedral:.3f} -> score: {test_score:.4f} ({'accepted' if accepted else 'rejected'})")
                             
                             current_dihedrals[rot_idx] = best_loc_dihedral
                             scores_per_group[group_index] = best_loc_score
@@ -1448,7 +1501,8 @@ class MolecularSystem:
                         if verbose:
                             print(f"  Warning: Failed to write trajectory at iteration {iteration}: {e}")
                 
-                print(f"Iteration {iteration}: RC score({ring_closure_tolerance:.3f}, {ring_closure_decay_rate:.3f}) {current_score:.4f} - {score_str}")
+                #print(f"Iteration {iteration}: RC score({ring_closure_tolerance:.3f}, {ring_closure_decay_rate:.3f}) {current_score:.4f} - {score_str}")
+                #print(f'Dihedrals: {current_dihedrals}')
 
                 # Reduce step size for fineer tuning in next iteratiom
                 step_size = max(step_size * step_size_factor, min_step_size)
@@ -1470,10 +1524,8 @@ class MolecularSystem:
             return current_zmatrix, final_score, info
             
         except Exception as e:
-            #TODO del
-            print(e)
-            if verbose:
-                print(f"FABRIK optimization failed: {e}")
+            print(traceback.format_exc())
+            print(f"FABRIK optimization failed: {e}")
             final_coords = zmatrix_to_cartesian(zmatrix)
             final_score = self.ring_closure_score_exponential(
                 final_coords, ring_closure_tolerance, ring_closure_decay_rate)

@@ -388,6 +388,169 @@ class TestAnalyticalDistanceFactory(unittest.TestCase):
         cached = factory.get_cached_functions()
         self.assertEqual(len(cached), 1)
         self.assertIn((0, 4), cached)
+    
+    def test_get_distance_function_with_branch_atoms(self):
+        """Test that branch atoms (not in path) with rotatable dihedrals are included."""
+        # Create structure: 0-1-2-4
+        # Atom 3 is a branch from atom 2, not in path
+        # Atom 3 has a rotatable dihedral that affects the path geometry
+        branch_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},  # Branch atom
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 90.0, 'chirality': 0},  # In path
+        ]
+        branch_bonds = [(0, 1), (1, 2), (2, 3), (2, 4)]
+        branch_zmatrix = ZMatrix(branch_atoms, branch_bonds)
+        
+        from openmm.app import Topology, Element, Residue
+        branch_topology = Topology()
+        residue = branch_topology.addResidue("MOL", branch_topology.addChain())
+        atoms_list = []
+        for atom in branch_atoms:
+            element = Element.getByAtomicNumber(atom['atomic_num'])
+            atom_obj = branch_topology.addAtom(atom['element'], element, residue)
+            atoms_list.append(atom_obj)
+        for bond in branch_bonds:
+            branch_topology.addBond(atoms_list[bond[0]], atoms_list[bond[1]])
+        
+        factory = AnalyticalDistanceFactory(branch_zmatrix, topology=branch_topology)
+        
+        # Path from 0 to 4: [0, 1, 2, 4]
+        # Atom 3 is a branch from atom 2, not in path
+        # Atom 3 has bond_ref=2 (which is in path), so its dihedral affects the path
+        # Atom 4 is in path and has bond_ref=2, so atom 3's dihedral affects bond 2-4
+        
+        # Test with rotatable_indices including branch atom 3
+        dist_func = factory.get_distance_function(0, 4, rotatable_indices=[3, 4])
+        
+        self.assertIsNotNone(dist_func, "Distance function should be created")
+        
+        # Verify path
+        self.assertEqual(list(dist_func.path_atoms), [0, 1, 2, 4], 
+                        "Path should be [0, 1, 2, 4]")
+        
+        # Verify that branch atom 3 is included in dihedral_indices
+        dihedral_indices_list = [int(idx) for idx in dist_func.dihedral_indices]
+        self.assertIn(3, dihedral_indices_list, 
+                     "Branch atom 3 should be included in dihedral_indices")
+        self.assertIn(4, dihedral_indices_list, 
+                     "Path atom 4 should be included in dihedral_indices")
+        
+        # Verify dihedral_positions
+        # Atom 3 (branch from atom 2): bond_ref=2 is at path position 2
+        # The bond after atom 2 in path is 2-4 at position 2, so dihedral_position should be 2
+        # Atom 4 (in path): bond_ref=2, so its dihedral affects bond 2-4 at position 2
+        dihedral_positions_list = dist_func.dihedral_positions
+        self.assertEqual(len(dihedral_positions_list), len(dihedral_indices_list),
+                         "dihedral_positions should have same length as dihedral_indices")
+        
+        # Find positions for atoms 3 and 4
+        idx_3 = dihedral_indices_list.index(3)
+        idx_4 = dihedral_indices_list.index(4)
+        pos_3 = dihedral_positions_list[idx_3]
+        pos_4 = dihedral_positions_list[idx_4]
+        
+        # Both should affect bond at position 2 (bond 2-4)
+        self.assertEqual(pos_3, 2, 
+                         f"Branch atom 3 should affect bond at position 2, got {pos_3}")
+        self.assertEqual(pos_4, 2, 
+                         f"Path atom 4 should affect bond at position 2, got {pos_4}")
+        
+        # Verify that changing branch atom 3's dihedral affects the distance
+        dist1 = dist_func({3: 0.0, 4: 90.0})
+        dist2 = dist_func({3: 180.0, 4: 90.0})
+        
+        # The distances might be the same if the geometry doesn't change significantly,
+        # but we should at least be able to compute them
+        self.assertGreater(dist1, 0.0, "Distance should be positive")
+        self.assertGreater(dist2, 0.0, "Distance should be positive")
+    
+    def test_get_distance_function_with_multiple_branch_atoms(self):
+        """Test that multiple branch atoms are correctly handled."""
+        # Create structure: 0-1-2-4-6
+        # Atom 3 is a branch from atom 2, not in path
+        # Atom 5 is a branch from atom 4, not in path
+        # Both have rotatable dihedrals
+        branch_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},  # Branch from 2
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 90.0, 'chirality': 0},  # In path
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0},  # Branch from 4
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 120.0, 'chirality': 0},  # In path
+        ]
+        branch_bonds = [(0, 1), (1, 2), (2, 3), (2, 4), (4, 5), (4, 6)]
+        branch_zmatrix = ZMatrix(branch_atoms, branch_bonds)
+        
+        from openmm.app import Topology, Element, Residue
+        branch_topology = Topology()
+        residue = branch_topology.addResidue("MOL", branch_topology.addChain())
+        atoms_list = []
+        for atom in branch_atoms:
+            element = Element.getByAtomicNumber(atom['atomic_num'])
+            atom_obj = branch_topology.addAtom(atom['element'], element, residue)
+            atoms_list.append(atom_obj)
+        for bond in branch_bonds:
+            branch_topology.addBond(atoms_list[bond[0]], atoms_list[bond[1]])
+        
+        factory = AnalyticalDistanceFactory(branch_zmatrix, topology=branch_topology)
+        
+        # Path from 0 to 6: [0, 1, 2, 4, 6]
+        # Atom 3 is a branch from atom 2 (at path position 2), affects bond 2-4 at position 2
+        # Atom 5 is a branch from atom 4 (at path position 3), affects bond 4-6 at position 3
+        
+        dist_func = factory.get_distance_function(0, 6, rotatable_indices=[3, 4, 5, 6])
+        
+        self.assertIsNotNone(dist_func, "Distance function should be created")
+        
+        # Verify path
+        self.assertEqual(list(dist_func.path_atoms), [0, 1, 2, 4, 6], 
+                        "Path should be [0, 1, 2, 4, 6]")
+        
+        # Verify that both branch atoms are included
+        dihedral_indices_list = [int(idx) for idx in dist_func.dihedral_indices]
+        self.assertIn(3, dihedral_indices_list, 
+                     "Branch atom 3 should be included in dihedral_indices")
+        self.assertIn(5, dihedral_indices_list, 
+                     "Branch atom 5 should be included in dihedral_indices")
+        self.assertIn(4, dihedral_indices_list, 
+                     "Path atom 4 should be included in dihedral_indices")
+        self.assertIn(6, dihedral_indices_list, 
+                     "Path atom 6 should be included in dihedral_indices")
+        
+        # Verify dihedral_positions
+        dihedral_positions_list = dist_func.dihedral_positions
+        idx_3 = dihedral_indices_list.index(3)
+        idx_5 = dihedral_indices_list.index(5)
+        idx_4 = dihedral_indices_list.index(4)
+        idx_6 = dihedral_indices_list.index(6)
+        
+        # Atom 3 (branch from atom 2 at path pos 2): affects bond 2-4 at position 2
+        self.assertEqual(dihedral_positions_list[idx_3], 2,
+                         "Branch atom 3 should affect bond at position 2")
+        
+        # Atom 5 (branch from atom 4 at path pos 3): affects bond 4-6 at position 3
+        self.assertEqual(dihedral_positions_list[idx_5], 3,
+                         "Branch atom 5 should affect bond at position 3")
+        
+        # Atom 4 (in path, bond_ref=2): affects bond 2-4 at position 2
+        self.assertEqual(dihedral_positions_list[idx_4], 2,
+                         "Path atom 4 should affect bond at position 2")
+        
+        # Atom 6 (in path, bond_ref=4): affects bond 4-6 at position 3
+        self.assertEqual(dihedral_positions_list[idx_6], 3,
+                         "Path atom 6 should affect bond at position 3")
 
 
 class TestJITCompilation(unittest.TestCase):

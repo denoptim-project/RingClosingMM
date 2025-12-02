@@ -194,7 +194,7 @@ class RingClosureOptimizer:
 
         non_intersecting_rcp_paths = self.system.get_non_intersecting_rcp_paths(initial_zmatrix, self.system.rc_critical_rotatable_indeces)
        
-        print(f"\nRing-closing optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions - {len(non_intersecting_rcp_paths)} intersecting RCP paths) to maximize ring closure score...")
+        print(f"\nRing-closing optimization ({len(self.system.rc_critical_rotatable_indeces)} RC critical torsions - {len(non_intersecting_rcp_paths)} intersecting RCP paths)...")
 
         rc_opt_time = time.time()
         if len(non_intersecting_rcp_paths) < 2:
