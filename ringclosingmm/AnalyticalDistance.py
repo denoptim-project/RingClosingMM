@@ -1086,6 +1086,17 @@ class AnalyticalDistanceFactory:
         dihedral_positions = []
         zmatrix_refs = []
         
+        # First, check if the first atom in the path has a rotatable dihedral
+        # The first atom's dihedral affects its own position, which is the starting point of the path
+        first_atom_idx = path[0]
+        first_atom = self.zmatrix[first_atom_idx]
+        if ZMatrix.FIELD_DIHEDRAL in first_atom:
+            chirality = first_atom.get(ZMatrix.FIELD_CHIRALITY, 0)
+            if chirality == 0:  # Only true dihedrals
+                if rotatable_indices is None or first_atom_idx in rotatable_indices:
+                    dihedral_indices.append(first_atom_idx)
+                    dihedral_positions.append(0)  # Affects the first bond (position 0)
+        
         # Extract information for each bond along the path
         for i in range(len(path) - 1):
             atom_idx = path[i + 1]  # Atom at position i+1 in path

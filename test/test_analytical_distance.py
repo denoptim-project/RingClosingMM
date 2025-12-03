@@ -12,6 +12,9 @@ import numpy as np
 import sys
 from pathlib import Path
 
+from ringclosingmm import CoordinateConversion
+from ringclosingmm.IOTools import write_xyz_file
+
 # Add parent directory to path for package imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -551,6 +554,304 @@ class TestAnalyticalDistanceFactory(unittest.TestCase):
         # Atom 6 (in path, bond_ref=4): affects bond 4-6 at position 3
         self.assertEqual(dihedral_positions_list[idx_6], 3,
                          "Path atom 6 should affect bond at position 3")
+    
+    def test_get_distance_function_with_branch_atoms_as_references(self):
+        """Test that branch atoms used as angle_ref or dihedral_ref by path atoms are included."""
+        # Create structure: Path 0-1-2(3)-4(5)-6-7
+        # Where (3) and (5) are branch atoms
+        # Atom 3 (branch): torsion 3,2,1,0 (bond_ref=2, angle_ref=1, dihedral_ref=0)
+        # Atom 4 (in path): angles 4,2,1 and 4,2,3 (bond_ref=2, angle_ref=1, dihedral_ref=3, chirality != 0)
+        # Atom 5 (branch): angle 5,4,2 and torsion 5,4,2,3 (bond_ref=4, angle_ref=2, dihedral_ref=3)
+        # Atom 6 (in path): angle 6,4,2 and angle 6,4,5 (bond_ref=4, angle_ref=2, dihedral_ref=5, chirality != 0)
+        # Atom 7 (in path): angle 7,6,4 and dihedral 7,6,4,5 (bond_ref=6, angle_ref=4, dihedral_ref=5)
+        branch_ref_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6},  # A
+            {'id': 1, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.5},  # B
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 1, 'bond_length': 1.5, 
+             'angle_ref': 0, 'angle': 109.47},  # C (3rd atom, no dihedral)
+            {'id': 3, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 0, 'dihedral': 0.0, 'chirality': 0},  # Branch: torsion 3,2,1,0
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 
+             'angle_ref': 1, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 90.0, 'chirality': -1},  # In path: angles 4,2,1 and 4,2,3
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 0.0, 'chirality': 0},  # Branch: angle 5,4,2 and torsion 5,4,2,3
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 
+             'angle_ref': 2, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 120.0, 'chirality': 1},  # In path: angle 6,4,2 and angle 6,4,5
+            {'id': 7, 'element': 'C', 'atomic_num': 6, 'bond_ref': 6, 'bond_length': 1.5, 
+             'angle_ref': 4, 'angle': 109.47, 'dihedral_ref': 5, 'dihedral': 180.0, 'chirality': 0},  # In path: angle 7,6,4 and dihedral 7,6,4,5
+        ]
+        branch_ref_bonds = [(0, 1), (1, 2), (2, 3), (2, 4), (4, 5), (4, 6), (6, 7)]
+        branch_ref_zmatrix = ZMatrix(branch_ref_atoms, branch_ref_bonds)
+
+        #TODO del
+        write_xyz_file(CoordinateConversion.zmatrix_to_cartesian(branch_ref_zmatrix), branch_ref_zmatrix.get_elements(), "/tmp/branch_ref_zmatrix.xyz")
+        
+        from openmm.app import Topology, Element, Residue
+        branch_ref_topology = Topology()
+        residue = branch_ref_topology.addResidue("MOL", branch_ref_topology.addChain())
+        atoms_list = []
+        for atom in branch_ref_atoms:
+            element = Element.getByAtomicNumber(atom['atomic_num'])
+            atom_obj = branch_ref_topology.addAtom(atom['element'], element, residue)
+            atoms_list.append(atom_obj)
+        for bond in branch_ref_bonds:
+            branch_ref_topology.addBond(atoms_list[bond[0]], atoms_list[bond[1]])
+        
+        factory = AnalyticalDistanceFactory(branch_ref_zmatrix, topology=branch_ref_topology)
+        
+        # Path from 0 to 7: [0, 1, 2, 4, 6, 7]
+        # Atom 4 (in path) has dihedral_ref=3 (branch atom, not in path)
+        # Atom 6 (in path) has dihedral_ref=5 (branch atom, not in path)
+        # Atom 7 (in path) has dihedral_ref=5 (branch atom, not in path)
+        # Atoms 3 and 5 should be included because their dihedrals affect path atoms' positions
+        
+        dist_func = factory.get_distance_function(0, 7, rotatable_indices=[3, 4, 5, 6, 7])
+        
+        self.assertIsNotNone(dist_func, "Distance function should be created")
+        
+        # Verify path
+        self.assertEqual(list(dist_func.path_atoms), [0, 1, 2, 4, 6, 7], 
+                        "Path should be [0, 1, 2, 4, 6, 7]")
+        
+        # Verify that branch atoms 3 and 5 are included
+        # Note: Atom 4 has chirality != 0, so it's not included (only true dihedrals are included)
+        # Atom 6 has chirality != 0, so it's not included either
+        dihedral_indices_list = [int(idx) for idx in dist_func.dihedral_indices]
+        self.assertIn(7, dihedral_indices_list, 
+                     "Path atom 7 should be included in dihedral_indices (has true dihedral)")
+        self.assertIn(3, dihedral_indices_list, 
+                     "Branch atom 3 (dihedral_ref for path atom 4) should be included")
+        self.assertIn(5, dihedral_indices_list, 
+                     "Branch atom 5 (dihedral_ref for path atoms 6 and 7) should be included")
+        
+        # Atom 4 has chirality != 0, so it's not in dihedral_indices (only true dihedrals are rotatable)
+        # Atom 6 has chirality != 0, so it's not in dihedral_indices either
+        self.assertNotIn(4, dihedral_indices_list,
+                        "Path atom 4 should NOT be included (has chirality != 0, not a true dihedral)")
+        self.assertNotIn(6, dihedral_indices_list,
+                        "Path atom 6 should NOT be included (has chirality != 0, not a true dihedral)")
+        
+        # Verify dihedral_positions
+        dihedral_positions_list = dist_func.dihedral_positions
+        idx_3 = dihedral_indices_list.index(3)
+        idx_5 = dihedral_indices_list.index(5)
+        idx_7 = dihedral_indices_list.index(7)
+        
+        # Atom 7 (in path, bond_ref=6): affects bond 6-7 at position 4
+        self.assertEqual(dihedral_positions_list[idx_7], 4,
+                         "Path atom 7 should affect bond at position 4")
+        
+        # Atom 3 (branch, bond_ref=2): affects bond after atom 2, which is bond 2-4 at position 2
+        # Also, atom 3 is dihedral_ref for atom 4, so it affects atom 4's position
+        self.assertEqual(dihedral_positions_list[idx_3], 2,
+                         "Branch atom 3 (dihedral_ref for atom 4) should affect bond at position 2")
+        
+        # Atom 5 (branch, bond_ref=4): affects bond after atom 4, which is bond 4-6 at position 3
+        # Also, atom 5 is dihedral_ref for atoms 6 and 7, so it affects their positions
+        self.assertEqual(dihedral_positions_list[idx_5], 3,
+                         "Branch atom 5 (dihedral_ref for atoms 6 and 7) should affect bond at position 3")
+        
+        # Verify that changing branch atom dihedrals affects the distance
+        # Note: Atoms 4 and 6 have chirality != 0, so they don't have rotatable dihedrals
+        dist1 = dist_func({3: 0.0, 5: 0.0, 7: 0.0})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 5.7056, places=2)
+
+        dist1 = dist_func({3: -120.0, 5: 0.0, 7: 0.0})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 4.7121, places=2)
+
+        dist1 = dist_func({3: 0.0, 5: 75.0, 7: 0.0})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 4.9703, places=2)
+
+        dist1 = dist_func({3: 0.0, 5: 0.0, 7: 66.0})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 5.5759, places=2)
+
+
+    def test_get_distance_function_with_branch_atoms_as_references_2(self):
+        """Test that branch atoms used as angle_ref or dihedral_ref by path atoms are included."""
+
+        branch_ref_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6}, 
+            {'id': 1, 'element': 'ATM', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.36}, 
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.416, 'angle_ref': 1, 'angle': 134.03},
+            {'id': 3, 'element': 'Si', 'atomic_num': 14, 'bond_ref': 0, 'bond_length': 1.788, 'angle_ref': 1, 'angle': 108.28, 'dihedral_ref': 2, 'dihedral': 117.66, 'chirality': -1},  
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 0.0, 'chirality': 0},  
+            {'id': 5, 'element': 'O', 'atomic_num': 8, 'bond_ref': 2, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 120.0, 'dihedral_ref': 4, 'dihedral': 120.0, 'chirality': 1},   
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 'angle_ref': 2, 'angle': 120.0, 'dihedral_ref': 5, 'dihedral': 0.0, 'chirality': 0},  
+            {'id': 7, 'element': 'N', 'atomic_num': 6, 'bond_ref': 6, 'bond_length': 1.5, 'angle_ref': 4, 'angle': 120.0, 'dihedral_ref': 2, 'dihedral': 0.0, 'chirality': 0},
+            {'id': 8, 'element': 'C', 'atomic_num': 6, 'bond_ref': 7, 'bond_length': 1.5, 'angle_ref': 6, 'angle': 120.0, 'dihedral_ref': 4, 'dihedral': 0.0, 'chirality': 0}, 
+            {'id': 9, 'element': 'ATP', 'atomic_num': 1, 'bond_ref': 8, 'bond_length': 1.0, 'angle_ref': 7, 'angle': 120.0, 'dihedral_ref': 6, 'dihedral': -130.0, 'chirality': 0},
+            {'id': 10, 'element': 'C', 'atomic_num': 6, 'bond_ref': 8, 'bond_length': 1.5, 'angle_ref': 9, 'angle': 117.38, 'dihedral_ref': 7, 'dihedral': 132.17, 'chirality': 1},
+            {'id': 11, 'element': 'ATP', 'atomic_num': 1, 'bond_ref': 10, 'bond_length': 1.5, 'angle_ref': 8, 'angle': 88.443, 'dihedral_ref': 9, 'dihedral': 125.786, 'chirality': 0},
+            {'id': 12, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 99.55, 'dihedral_ref': 1, 'dihedral': 2.73, 'chirality': 0},
+            {'id': 13, 'element': 'ATM', 'atomic_num': 1, 'bond_ref': 12, 'bond_length': 1.5, 'angle_ref': 3, 'angle': 100.57, 'dihedral_ref': 0, 'dihedral': -1.03, 'chirality': 0},
+        ]
+        branch_ref_bonds = [(0, 1), (0, 2), (0, 3), (2, 4), (2, 5), (4, 6), (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (3, 12), (12, 13)]
+        rotatable_indices=[4, 6, 7, 8, 9, 11, 12, 13]
+        branch_ref_zmatrix = ZMatrix(branch_ref_atoms, branch_ref_bonds)
+
+        #TODO del
+        write_xyz_file(CoordinateConversion.zmatrix_to_cartesian(branch_ref_zmatrix), branch_ref_zmatrix.get_elements(), "/tmp/branch_ref_zmatrix.xyz")
+        
+        from openmm.app import Topology, Element, Residue
+        branch_ref_topology = Topology()
+        residue = branch_ref_topology.addResidue("MOL", branch_ref_topology.addChain())
+        atoms_list = []
+        for atom in branch_ref_atoms:
+            element = Element.getByAtomicNumber(atom['atomic_num'])
+            atom_obj = branch_ref_topology.addAtom(atom['element'], element, residue)
+            atoms_list.append(atom_obj)
+        for bond in branch_ref_bonds:
+            branch_ref_topology.addBond(atoms_list[bond[0]], atoms_list[bond[1]])
+        
+        factory = AnalyticalDistanceFactory(branch_ref_zmatrix, topology=branch_ref_topology)
+        
+        dist_func = factory.get_distance_function(11, 13, rotatable_indices=rotatable_indices)
+        
+        self.assertIsNotNone(dist_func, "Distance function should be created")
+        
+        # Verify path
+        self.assertEqual(list(dist_func.path_atoms), [11, 10, 9, 8, 7, 6, 4, 2, 0, 3, 12, 13], 
+                        "Path should be [11, 10, 9, 8, 7, 6, 4, 2, 0, 3, 12, 13]")
+        
+        # Verify that changing branch atom dihedrals affects the distance
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: 0.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 7.0307, places=2)
+
+        dist1 = dist_func({4: 90.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: 0.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 7.2630, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 75.0, 7: 0.0, 8: 0.0, 9: 0.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 3.8960, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: -26.0, 8: 0.0, 9: 0.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 7.4241, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: 0.0, 8: 65.0, 9: 0.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 8.0627, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: -110.0, 11:125.786, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 3.7647, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: 0.0, 11:179.0, 12:2.73, 13:-1.03})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 7.6853, places=2)
+
+        dist1 = dist_func({4: 0.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: 0.0, 11:125.786, 12:2.73, 13:120.0})
+        self.assertTrue(isinstance(dist1, float), "Distance should be a float")
+        self.assertAlmostEqual(dist1, 8.7258, places=2)
+
+
+
+    def test_get_distance_function_first_atom_dihedral(self):
+        """Test that the first atom in the path with a rotatable dihedral is included.
+        
+        This test covers the bug fix where the first atom in the path was not being
+        checked for rotatable dihedrals, causing its dihedral changes to be ignored.
+        """
+        # Create a Z-matrix where the first atom in a path has a rotatable dihedral
+        # Structure: 11-10-9-8-7-6-4-2-0-3-12-13
+        # Atom 11 is the first atom in the path and has a rotatable dihedral
+        first_atom_atoms = [
+            {'id': 0, 'element': 'C', 'atomic_num': 6}, 
+            {'id': 1, 'element': 'ATM', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.36}, 
+            {'id': 2, 'element': 'C', 'atomic_num': 6, 'bond_ref': 0, 'bond_length': 1.416, 'angle_ref': 1, 'angle': 134.03},
+            {'id': 3, 'element': 'Si', 'atomic_num': 14, 'bond_ref': 0, 'bond_length': 1.788, 'angle_ref': 1, 'angle': 108.28, 'dihedral_ref': 2, 'dihedral': 117.66, 'chirality': -1},  
+            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 2, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 109.47, 'dihedral_ref': 3, 'dihedral': 0.0, 'chirality': 0},  
+            {'id': 5, 'element': 'O', 'atomic_num': 8, 'bond_ref': 2, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 120.0, 'dihedral_ref': 4, 'dihedral': 120.0, 'chirality': 1},   
+            {'id': 6, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.5, 'angle_ref': 2, 'angle': 120.0, 'dihedral_ref': 5, 'dihedral': 0.0, 'chirality': 0},  
+            {'id': 7, 'element': 'N', 'atomic_num': 6, 'bond_ref': 6, 'bond_length': 1.5, 'angle_ref': 4, 'angle': 120.0, 'dihedral_ref': 2, 'dihedral': 0.0, 'chirality': 0},
+            {'id': 8, 'element': 'C', 'atomic_num': 6, 'bond_ref': 7, 'bond_length': 1.5, 'angle_ref': 6, 'angle': 120.0, 'dihedral_ref': 4, 'dihedral': 0.0, 'chirality': 0}, 
+            {'id': 9, 'element': 'ATP', 'atomic_num': 1, 'bond_ref': 8, 'bond_length': 1.0, 'angle_ref': 7, 'angle': 120.0, 'dihedral_ref': 6, 'dihedral': -130.0, 'chirality': 0},
+            {'id': 10, 'element': 'C', 'atomic_num': 6, 'bond_ref': 8, 'bond_length': 1.5, 'angle_ref': 9, 'angle': 117.38, 'dihedral_ref': 7, 'dihedral': 132.17, 'chirality': 1},
+            {'id': 11, 'element': 'ATP', 'atomic_num': 1, 'bond_ref': 10, 'bond_length': 1.5, 'angle_ref': 9, 'angle': 114.1, 'dihedral_ref': 8, 'dihedral': -0.3863, 'chirality': 0},  # First atom in path, has rotatable dihedral
+            {'id': 12, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.5, 'angle_ref': 0, 'angle': 99.55, 'dihedral_ref': 1, 'dihedral': 2.73, 'chirality': 0},
+            {'id': 13, 'element': 'ATM', 'atomic_num': 1, 'bond_ref': 12, 'bond_length': 1.5, 'angle_ref': 3, 'angle': 100.57, 'dihedral_ref': 0, 'dihedral': -1.03, 'chirality': 0},
+        ]
+        first_atom_bonds = [(0, 1), (0, 2), (0, 3), (2, 4), (2, 5), (4, 6), (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (3, 12), (12, 13)]
+        rotatable_indices = [4, 6, 7, 8, 9, 11, 12, 13]
+        first_atom_zmatrix = ZMatrix(first_atom_atoms, first_atom_bonds)
+        
+        from openmm.app import Topology, Element, Residue
+        first_atom_topology = Topology()
+        residue = first_atom_topology.addResidue("MOL", first_atom_topology.addChain())
+        atoms_list = []
+        for atom in first_atom_atoms:
+            element = Element.getByAtomicNumber(atom['atomic_num'])
+            atom_obj = first_atom_topology.addAtom(atom['element'], element, residue)
+            atoms_list.append(atom_obj)
+        for bond in first_atom_bonds:
+            first_atom_topology.addBond(atoms_list[bond[0]], atoms_list[bond[1]])
+        
+        factory = AnalyticalDistanceFactory(first_atom_zmatrix, topology=first_atom_topology)
+        
+        # Path from atom 11 to atom 13: [11, 10, 9, 8, 7, 6, 4, 2, 0, 3, 12, 13]
+        # Atom 11 is the first atom in the path and has a rotatable dihedral
+        dist_func = factory.get_distance_function(11, 13, rotatable_indices=rotatable_indices)
+        
+        self.assertIsNotNone(dist_func, "Distance function should be created")
+        
+        # Verify path
+        self.assertEqual(list(dist_func.path_atoms), [11, 10, 9, 8, 7, 6, 4, 2, 0, 3, 12, 13], 
+                        "Path should start with atom 11")
+        
+        # Verify that atom 11 (first atom) is included in dihedral_indices
+        dihedral_indices_list = [int(idx) for idx in dist_func.dihedral_indices]
+        self.assertIn(11, dihedral_indices_list, 
+                     "First atom 11 should be included in dihedral_indices")
+        
+        # Verify that atom 11's dihedral_position is 0 (affects the first bond)
+        atom_11_pos = dihedral_indices_list.index(11)
+        dihedral_position_11 = dist_func.dihedral_positions[atom_11_pos]
+        self.assertEqual(dihedral_position_11, 0,
+                        "First atom's dihedral should affect bond position 0")
+        
+        # Test that changing atom 11's dihedral affects the distance
+        # Compare analytical distance with XYZ distance
+        edited_zmatrix = first_atom_zmatrix.copy()
+        
+        # Test with original dihedral value
+        edited_zmatrix[11][ZMatrix.FIELD_DIHEDRAL] = -0.3863
+        analytical_dist = dist_func({11: -0.3863})
+        xyz_coords = zmatrix_to_cartesian(edited_zmatrix)
+        xyz_dist = np.linalg.norm(xyz_coords[11] - xyz_coords[13])
+        self.assertAlmostEqual(analytical_dist, xyz_dist, places=5,
+                              msg="Analytical distance should match XYZ distance for original dihedral")
+        
+        # Test with different dihedral value
+        edited_zmatrix[11][ZMatrix.FIELD_DIHEDRAL] = 0.0
+        analytical_dist = dist_func({11: 0.0})
+        xyz_coords = zmatrix_to_cartesian(edited_zmatrix)
+        xyz_dist = np.linalg.norm(xyz_coords[11] - xyz_coords[13])
+        self.assertAlmostEqual(analytical_dist, xyz_dist, places=5,
+                              msg="Analytical distance should match XYZ distance for changed dihedral")
+        
+        # Test with another different dihedral value
+        edited_zmatrix[11][ZMatrix.FIELD_DIHEDRAL] = 90.0
+        analytical_dist = dist_func({11: 90.0})
+        xyz_coords = zmatrix_to_cartesian(edited_zmatrix)
+        xyz_dist = np.linalg.norm(xyz_coords[11] - xyz_coords[13])
+        self.assertAlmostEqual(analytical_dist, xyz_dist, places=5,
+                              msg="Analytical distance should match XYZ distance for dihedral=90.0")
+        
+        # Verify that the distance actually changes with different dihedral values
+        dist1 = dist_func({11: -0.3863})
+        dist2 = dist_func({11: 0.0})
+        dist3 = dist_func({11: 90.0})
+        self.assertNotAlmostEqual(dist1, dist2, places=3,
+                                 msg="Distance should change when first atom's dihedral changes")
+        self.assertNotAlmostEqual(dist2, dist3, places=3,
+                                 msg="Distance should change when first atom's dihedral changes")
+
 
 
 class TestJITCompilation(unittest.TestCase):

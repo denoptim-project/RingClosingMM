@@ -1368,6 +1368,7 @@ class MolecularSystem:
         }
 
         current_score = initial_score
+        best_score = initial_score
         prev_score = initial_score
         num_converged = 0
         final_coords = None  # Initialize to None, will be set if trajectory_file is provided or at end
@@ -1501,7 +1502,7 @@ class MolecularSystem:
                         if verbose:
                             print(f"  Warning: Failed to write trajectory at iteration {iteration}: {e}")
                 
-                #print(f"Iteration {iteration}: RC score({ring_closure_tolerance:.3f}, {ring_closure_decay_rate:.3f}) {current_score:.4f} - {score_str}")
+                #print(f"Iteration {iteration}: RC score({ring_closure_tolerance:.3f}, {ring_closure_decay_rate:.3f}) {final_score:.4f} - {score_str}")
                 #print(f'Dihedrals: {current_dihedrals}')
 
                 # Reduce step size for fineer tuning in next iteratiom
