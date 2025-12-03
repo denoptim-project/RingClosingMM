@@ -278,7 +278,7 @@
    <PerBondParameter name="epsilonPerBond"/>
   </RCPAtomsNonbondedForce>
   <HeadTailNonbondedForce energy="scalingHT*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplHTA*eps; bA=widthHTA/sigmaDep; aB=amplHTB*eps; bB=widthHTB/sigmaDep; eps=epsilon*htRadFraction*bondDistanceFactor; sigmaDep=sigma*(1+fourthWeightHT*sigma^3)">
-   <GlobalParameter name="scalingHT" defaultValue="1.0"/>
+   <GlobalParameter name="scalingHT" defaultValue="0.25"/>
    <GlobalParameter name="htRadFraction" defaultValue="0.1"/>
    <GlobalParameter name="amplHTA" defaultValue="35500.0"/>
    <GlobalParameter name="widthHTA" defaultValue="60.0"/>
