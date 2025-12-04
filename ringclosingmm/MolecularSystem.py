@@ -9,6 +9,7 @@ Classes:
     MolecularSystem: Manages OpenMM system, topology, and provides energy evaluation methods
 """
 
+import math
 import traceback
 import numpy as np
 from typing import List, Tuple, Dict, Optional, Any
@@ -20,7 +21,7 @@ from openmm.app import Element, Simulation, Topology
 from ringclosingmm.AnalyticalDistance import AnalyticalDistanceFactory
 
 # Package imports
-from .IOTools import read_int_file, read_sdf_file, write_xyz_file
+from .IOTools import read_int_file, read_sdf_file, write_xyz_file, write_zmatrix_file
 from .ZMatrix import ZMatrix
 from .RingClosingForceField import (
     create_simulation_from_system,
@@ -424,6 +425,7 @@ class MolecularSystem:
     def minimize_energy_in_zmatrix_space(self, zmatrix: ZMatrix, 
                                             dof_indices: List[Tuple[int,int]],
                                             dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[10.0, 180.0, 180.0]],
+                                            max_step_length_per_type: Optional[List[float]] = [0.1, 1.5, 2.0],
                                             max_iterations: int = 100,
                                             gradient_tolerance: float = 0.01,
                                             verbose: bool = False,
@@ -447,6 +449,10 @@ class MolecularSystem:
             Bounds for types of degrees of freedom. Example: [(0.1, 10.0, 20.0)] means 
             the distances can be changed by up to 0.1, angles can be changed by up to 10.0, and torsions can be changed by up to 20.0. Multiple tuples can be provided to request any stepwise application of bounds. Example: [(0.1, 10.0, 20.0), (0.01, 1.0, 2.0)] means will make the minimization run with [0.1, 10.0, 20.0] for the first step and [0.01, 1.0, 2.0] for the second step.
             Default is [(10.0, 180.0, 180.0)].
+        max_step_length_per_type : List[float]
+            Maximum step length for each type of degree of freedom. Example: [0.1, 10.0, 20.0] means 
+            the distances can be changed by up to 0.1, angles can be changed by up to 10.0, and torsions can be changed by up to 20.0 in each minimization step. The total change is controlled by the bounds, this is the maximum step length for each step.
+            Default is [0.1, 1.5, 2.0].
         max_iterations : int
             Maximum minimization iterations
         gradient_tolerance : float
@@ -519,6 +525,7 @@ class MolecularSystem:
                     
                     # Write to trajectory (append mode)
                     print(f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
+                    #write_zmatrix_file(f"zmatrix_{iteration_counter[0]}.int", current_zmatrix)
                     write_xyz_file(
                         coords, 
                         elements, 
@@ -531,27 +538,46 @@ class MolecularSystem:
                     # Don't fail minimization if trajectory writing fails
                     if verbose:
                         print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
-        
-        try:           
-            if dof_bounds_per_type is None:
-                dof_bound_coeffs_sequence = [[10.0, 180.0, 180.0]]
-            else:
-                # Check if dof_bounds is already a sequence of coefficient sets
-                # by checking if the first element is itself a sequence (list/tuple)
-                if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
-                    # Already a sequence of coefficient sets
-                    dof_bound_coeffs_sequence = dof_bounds_per_type
-                else:
-                    # Single coefficient set, wrap it in a list
-                    dof_bound_coeffs_sequence = [dof_bounds_per_type]
 
+        if dof_bounds_per_type is None:
+            # Repeat default, just to avoid None cases
+            dof_bound_coeffs_sequence = [[10.0, 180.0, 180.0]]
+        else:
+            # Check if dof_bounds is already a sequence of coefficient sets
+            # by checking if the first element is itself a sequence (list/tuple)
+            if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
+                # Already a sequence of coefficient sets
+                dof_bound_coeffs_sequence = dof_bounds_per_type
+            else:
+                # Create a sequence starting from max_step_length_per_type and incrementing
+                # by max_step_length_per_type each step until reaching dof_bounds_per_type
+                dof_bound_coeffs_sequence = []
+                
+                # Convert to numpy arrays for easier computation
+                dof_bounds_array = np.array(dof_bounds_per_type)
+                max_step_array = np.array(max_step_length_per_type)
+                
+                # Generate sequence: each step adds max_step_length_per_type, capped at dof_bounds_per_type
+                summ_of_bounds = np.zeros_like(dof_bounds_array)
+                while True:
+                    # Add max_step_length_per_type to current bounds
+                    summ_of_bounds = summ_of_bounds + max_step_array
+                    # Cap at dof_bounds_per_type
+                    summ_of_bounds = np.minimum(summ_of_bounds, dof_bounds_array)
+                    # Add to sequence as a tuple
+                    dof_bound_coeffs_sequence.append(max_step_array)
+                    
+                    # Stop if we've reached all bounds
+                    if np.allclose(summ_of_bounds, dof_bounds_array, rtol=1e-6):
+                        break
+                
+        try:           
             initial_energy = objective(initial_dofs)
 
             current_dofs = initial_dofs.copy()
             current_energy = initial_energy
             current_gradient = None
-            current_gradient_norm_check = None
-            current_max_gradient_check = None
+            current_gradient_norm_check = 0.0
 
             for i in range(len(dof_bound_coeffs_sequence)):
                 dof_bound_coeffs = dof_bound_coeffs_sequence[i]
@@ -587,7 +613,7 @@ class MolecularSystem:
                     objective,
                     current_dofs,
                     method='L-BFGS-B',
-                    # This triggers calcualtion of numerica lgradient, which is controlled by the 'eps' option below
+                    # This triggers calcualtion of numerical gradient, which is controlled by the 'eps' option below
                     jac=None,  
                     bounds=current_dof_bounds,
                     callback=callback if trajectory_file else None,
@@ -601,15 +627,29 @@ class MolecularSystem:
                 )
                 
                 # Update step info
-                current_dofs = result.x.copy()
-                current_energy = objective(result.x)
-                current_gradient = result.jac
-                current_gradient_norm_check = np.linalg.norm(current_gradient)
-                current_max_gradient_check = np.max(np.abs(current_gradient))
+                new_dofs = result.x.copy()
+                new_energy = objective(result.x)
+                new_gradient = result.jac
+                new_gradient_norm_check = np.linalg.norm(new_gradient)
+                new_max_gradient_check = np.max(np.abs(new_gradient))
                 
                 if verbose:
-                    print(f"\n  Iteration {i+1}: nfev={result.nfev} nit={result.nit} E={current_energy:.4f} kcal/mol Gnorm={current_gradient_norm_check:.4f} Gmax={current_max_gradient_check:.4f} message={result.message}")
-                    self.report_dof_info(zmatrix, dof_indices, current_dofs, current_dof_bounds, current_gradient)
+                    print(f"\n  Iteration {i+1}: nfev={result.nfev} nit={result.nit} E={new_energy:.4f} kcal/mol Gnorm={new_gradient_norm_check:.4f} Gmax={new_max_gradient_check:.4f} message={result.message}")
+                    self.report_dof_info(zmatrix, dof_indices, new_dofs, current_dof_bounds, new_gradient)
+
+                # converged?
+                converged = False
+                if abs(current_gradient_norm_check - new_gradient_norm_check) < gradient_tolerance:
+                    converged = True
+
+                # Update step info
+                current_dofs = new_dofs
+                current_energy = new_energy
+                current_gradient = new_gradient
+                current_gradient_norm_check = new_gradient_norm_check
+                current_max_gradient_check = new_max_gradient_check
+                if (converged):
+                    break
                 
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)

@@ -280,7 +280,8 @@ class RingClosureOptimizer:
                 refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_zmatrix_space(
                     current_zmatrix,
                     dof_indices=self.system.dof_indices,
-                    dof_bounds_per_type=[[0.05, 7.0, 10.0]],
+                    dof_bounds_per_type=[0.05, 7.0, 15.0],
+                    max_step_length_per_type=[0.1, 1.0, 2.0],
                     max_iterations=zmatrix_iterations,
                     gradient_tolerance=gradient_tolerance,
                     trajectory_file=trajectory_file_zmatrix,
