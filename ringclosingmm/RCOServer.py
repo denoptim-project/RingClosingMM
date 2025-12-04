@@ -419,7 +419,9 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         
         for atom in zmatrix_list:
             atom_1based = atom.copy()
-            # Convert reference indices from 0-based to 1-based
+            # Convert all indices from 0-based to 1-based
+            if ZMatrix.FIELD_ID in atom_1based:
+                atom_1based[ZMatrix.FIELD_ID] = atom_1based[ZMatrix.FIELD_ID] + 1
             if ZMatrix.FIELD_BOND_REF in atom_1based:
                 atom_1based[ZMatrix.FIELD_BOND_REF] = atom_1based[ZMatrix.FIELD_BOND_REF] + 1
             if ZMatrix.FIELD_ANGLE_REF in atom_1based:
@@ -474,7 +476,9 @@ def _handle_optimization_request(request: Dict[str, Any]) -> Dict[str, Any]:
         
         for atom in zmatrix_list:
             atom_1based = atom.copy()
-            # Convert reference indices from 0-based to 1-based
+            # Convert all indices from 0-based to 1-based
+            if ZMatrix.FIELD_ID in atom_1based:
+                atom_1based[ZMatrix.FIELD_ID] = atom_1based[ZMatrix.FIELD_ID] + 1
             if ZMatrix.FIELD_BOND_REF in atom_1based:
                 atom_1based[ZMatrix.FIELD_BOND_REF] = atom_1based[ZMatrix.FIELD_BOND_REF] + 1
             if ZMatrix.FIELD_ANGLE_REF in atom_1based:
