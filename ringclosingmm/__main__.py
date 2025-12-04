@@ -110,7 +110,9 @@ def parse_arguments() -> argparse.Namespace:
     # Minimization option 
     min_group = parser.add_argument_group('Local Energy Minimization')
     min_group.add_argument('--minimize', action='store_true',
-                          help='Perform single-structure minimization instead of GA optimization')
+                          help='Perform single-structure minimization instead of optimization of the ring closure conformation.')
+    min_group.add_argument('--optimize', action='store_true',
+                          help='Perform conformational search to find the global minimum of the ring closure conformation. ')
     min_group.add_argument('--space-type', type=str, default='zmatrix',
                           choices=['torsional', 'zmatrix', 'Cartesian'],
                           help='Define the space type for minimization (default: zmatrix)')
@@ -132,6 +134,19 @@ def parse_arguments() -> argparse.Namespace:
     min_group.add_argument('--zmatrix-dof-bounds', nargs='+', type=float,
                           help='Bounds for the three types of degrees of freedom in Z-matrix space. Example: 0.02 5.0 10.0 means that bond lengths are bound to change by up to 0.02 Å from the current value, angles and 5.0 degrees, and torsions by 10.0 degrees from the current value. Multiple triplets can be provided to request any stepwise application of bounds. Example: 0.02 5.0 10.0 0.01 3.0 8.0 means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is 0.02 20.0 180.0.')
    
+   # Interaction printing options
+    interaction_group = parser.add_argument_group('Force Field Printing Options')
+    interaction_group.add_argument('--print-force-field', action='store_true',
+                          help='Print the force field terms.')
+    interaction_group.add_argument('--max-sample-size', type=int, default=None,
+                          help='Maximum number of sample parameters to print for each force type. '
+                               'If None, all parameters are printed. If specified, only the first '
+                               'max_sample_size parameters are shown, with a message indicating '
+                               'how many more exist.')
+    interaction_group.add_argument('--atom-indices', type=int, nargs='+', default=None,
+                          help='List of atom indices (1-based) to filter forces. Only forces '
+                               'involving any of these atoms will be shown. Example: --atom-indices 1 2 3')
+
    # Server management options
     server_group = parser.add_argument_group('Server Management')
     server_group.add_argument('--server-start', action='store_true',
@@ -162,6 +177,10 @@ def parse_arguments() -> argparse.Namespace:
     if args.rcp_terms and len(args.rcp_terms) % 2 != 0:
         parser.error("RCP terms must be specified as pairs. "
                      f"Got {len(args.rcp_terms)} values, need even number.")
+
+    # Validate that only one of --minimize, --optimize, or --print-force-field is specified
+    if sum([args.minimize, args.optimize, args.print_force_field, args.server_start, args.server_stop, args.server_status]) > 1:
+        parser.error("Only one task can be specified at a time: --minimize, --optimize, --print-force-field, --server-start, --server-stop, or --server-status")
     
     # Note: --space-type can be used with --minimize to specify the minimization space
     
@@ -343,7 +362,7 @@ def main() -> int:
 
             IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
     
-        else:
+        elif args.optimize:
             result = optimizer.optimize(
                 ring_closure_tolerance=args.ring_closure_tolerance,
                 ring_closure_decay_rate=args.ring_closure_decay_rate,
@@ -359,7 +378,18 @@ def main() -> int:
             
             IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
     
-        
+        elif args.print_force_field:
+            # Convert 1-based atom indices from CLI to 0-based for internal use
+            atom_indices_0based = None
+            if args.atom_indices is not None:
+                atom_indices_0based = [idx - 1 for idx in args.atom_indices]
+            optimizer.print_force_field(max_sample_size=args.max_sample_size, 
+                                       atom_indices=atom_indices_0based)
+            return 0
+        else:
+            print("No task specified: specify --minimize, --optimize, or --print-force-field")
+            return 1
+
         print("\n" + "=" * 70)
         print("RESULTS")
         print("=" * 70)

@@ -3,6 +3,8 @@
 import time
 from typing import List, Tuple, Dict, Optional, Any, Union
 
+from ringclosingmm.IOTools import write_xyz_file, write_zmatrix_file
+
 from .CoordinateConversion import (
     zmatrix_to_cartesian,
     cartesian_to_zmatrix
@@ -124,6 +126,280 @@ class RingClosureOptimizer:
         
         return rotatable_indices
     
+
+    def print_force_field(self, max_sample_size: Optional[int] = None, 
+                         atom_indices: Optional[List[int]] = None) -> None:
+        """
+        Print all force field contributions in an organized list.
+        
+        This method iterates through all forces in the OpenMM system and prints
+        detailed information about each force type, including the number of terms,
+        parameters, and other relevant information.
+        
+        Parameters
+        ----------
+        max_sample_size : Optional[int], default=None
+            Maximum number of sample parameters to print for each force type.
+            If None, all parameters are printed. If specified, only the first
+            max_sample_size parameters are shown, with a message indicating
+            how many more exist.
+        atom_indices : Optional[List[int]], default=None
+            List of atom indices (0-based) to filter forces. If specified, only
+            forces involving any of these atoms will be shown. If None, all
+            forces are shown.
+        """
+        import openmm as mm
+        
+        system = self.system.system
+        forces = system.getForces()
+        
+        # Convert atom_indices to set for faster lookup
+        atom_set = set(atom_indices) if atom_indices is not None else None
+        
+        print("=" * 80)
+        print("Force Field Contributions")
+        if atom_indices is not None:
+            # Convert to 1-based for display
+            atom_indices_1based = [idx + 1 for idx in atom_indices]
+            print(f"Filtered to atoms: {atom_indices_1based} (1-based)")
+        print("=" * 80)
+        print(f"Total number of forces: {len(forces)}\n")
+        
+        for i, force in enumerate(forces):
+            force_name = force.getName() if hasattr(force, 'getName') and callable(force.getName) else force.__class__.__name__
+            force_type = force.__class__.__name__
+            
+            print(f"{i+1}. {force_type}")
+            if force_name and force_name != force_type:
+                print(f"   Name: {force_name}")
+            
+            # Handle different force types
+            if isinstance(force, mm.HarmonicBondForce):
+                num_bonds = force.getNumBonds()
+                # Filter bonds involving specified atoms
+                matching_bonds = []
+                for j in range(num_bonds):
+                    p1, p2, length, k = force.getBondParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set:
+                        matching_bonds.append((j, p1, p2, length, k))
+                
+                print(f"   Number of bonds: {num_bonds} (matching filter: {len(matching_bonds)})")
+                if len(matching_bonds) > 0:
+                    sample_size = len(matching_bonds) if max_sample_size is None else min(max_sample_size, len(matching_bonds))
+                    print(f"   Bonds (showing {sample_size} of {len(matching_bonds)}):")
+                    for idx, (orig_idx, p1, p2, length, k) in enumerate(matching_bonds[:sample_size]):
+                        print(f"     Bond {orig_idx+1}: particles {p1}-{p2}, length={length}, k={k}")
+                    if max_sample_size is not None and len(matching_bonds) > max_sample_size:
+                        print(f"     ... and {len(matching_bonds) - max_sample_size} more bonds")
+            
+            elif isinstance(force, mm.HarmonicAngleForce):
+                num_angles = force.getNumAngles()
+                # Filter angles involving specified atoms
+                matching_angles = []
+                for j in range(num_angles):
+                    p1, p2, p3, angle, k = force.getAngleParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set or p3 in atom_set:
+                        matching_angles.append((j, p1, p2, p3, angle, k))
+                
+                print(f"   Number of angles: {num_angles} (matching filter: {len(matching_angles)})")
+                if len(matching_angles) > 0:
+                    sample_size = len(matching_angles) if max_sample_size is None else min(max_sample_size, len(matching_angles))
+                    print(f"   Angles (showing {sample_size} of {len(matching_angles)}):")
+                    for idx, (orig_idx, p1, p2, p3, angle, k) in enumerate(matching_angles[:sample_size]):
+                        print(f"     Angle {orig_idx+1}: particles {p1}-{p2}-{p3}, angle={angle}, k={k}")
+                    if max_sample_size is not None and len(matching_angles) > max_sample_size:
+                        print(f"     ... and {len(matching_angles) - max_sample_size} more angles")
+            
+            elif isinstance(force, mm.PeriodicTorsionForce):
+                num_torsions = force.getNumTorsions()
+                # Filter torsions involving specified atoms
+                matching_torsions = []
+                for j in range(num_torsions):
+                    p1, p2, p3, p4, periodicity, phase, k = force.getTorsionParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set or p3 in atom_set or p4 in atom_set:
+                        matching_torsions.append((j, p1, p2, p3, p4, periodicity, phase, k))
+                
+                print(f"   Number of torsions: {num_torsions} (matching filter: {len(matching_torsions)})")
+                if len(matching_torsions) > 0:
+                    sample_size = len(matching_torsions) if max_sample_size is None else min(max_sample_size, len(matching_torsions))
+                    print(f"   Torsions (showing {sample_size} of {len(matching_torsions)}):")
+                    for idx, (orig_idx, p1, p2, p3, p4, periodicity, phase, k) in enumerate(matching_torsions[:sample_size]):
+                        print(f"     Torsion {orig_idx+1}: particles {p1}-{p2}-{p3}-{p4}, "
+                              f"periodicity={periodicity}, phase={phase}, k={k}")
+                    if max_sample_size is not None and len(matching_torsions) > max_sample_size:
+                        print(f"     ... and {len(matching_torsions) - max_sample_size} more torsions")
+            
+            elif isinstance(force, mm.NonbondedForce):
+                num_particles = force.getNumParticles()
+                num_exceptions = force.getNumExceptions()
+                # Filter particles matching specified atoms
+                matching_particles = []
+                for j in range(num_particles):
+                    if atom_set is None or j in atom_set:
+                        charge, sigma, epsilon = force.getParticleParameters(j)
+                        matching_particles.append((j, charge, sigma, epsilon))
+                
+                print(f"   Number of particles: {num_particles} (matching filter: {len(matching_particles)})")
+                print(f"   Number of exceptions: {num_exceptions}")
+                print(f"   Nonbonded method: {force.getNonbondedMethod()}")
+                print(f"   Cutoff distance: {force.getCutoffDistance()}")
+                if len(matching_particles) > 0:
+                    sample_size = len(matching_particles) if max_sample_size is None else min(max_sample_size, len(matching_particles))
+                    print(f"   Particle parameters (showing {sample_size} of {len(matching_particles)}):")
+                    for idx, (particle_idx, charge, sigma, epsilon) in enumerate(matching_particles[:sample_size]):
+                        print(f"     Particle {particle_idx}: charge={charge}, sigma={sigma}, epsilon={epsilon}")
+                    if max_sample_size is not None and len(matching_particles) > max_sample_size:
+                        print(f"     ... and {len(matching_particles) - max_sample_size} more particles")
+            
+            elif isinstance(force, mm.CustomNonbondedForce):
+                num_particles = force.getNumParticles()
+                num_exclusions = force.getNumExclusions()
+                energy_function = force.getEnergyFunction()
+                num_global_params = force.getNumGlobalParameters()
+                num_per_particle_params = force.getNumPerParticleParameters()
+                # Count matching particles
+                matching_count = sum(1 for j in range(num_particles) if atom_set is None or j in atom_set)
+                print(f"   Number of particles: {num_particles} (matching filter: {matching_count})")
+                print(f"   Number of exclusions: {num_exclusions}")
+                print(f"   Energy function: {energy_function}")
+                print(f"   Global parameters ({num_global_params}):")
+                for j in range(num_global_params):
+                    param_name = force.getGlobalParameterName(j)
+                    param_value = force.getGlobalParameterDefaultValue(j)
+                    print(f"     {param_name} = {param_value}")
+                if num_per_particle_params > 0:
+                    print(f"   Per-particle parameters ({num_per_particle_params}):")
+                    for j in range(num_per_particle_params):
+                        param_name = force.getPerParticleParameterName(j)
+                        print(f"     {param_name}")
+            
+            elif isinstance(force, mm.CustomCompoundBondForce):
+                num_bonds = force.getNumBonds()
+                energy_function = force.getEnergyFunction()
+                num_global_params = force.getNumGlobalParameters()
+                num_per_bond_params = force.getNumPerBondParameters()
+                print(f"   Number of bonds: {num_bonds}")
+                print(f"   Energy function: {energy_function}")
+                print(f"   Global parameters ({num_global_params}):")
+                for j in range(num_global_params):
+                    param_name = force.getGlobalParameterName(j)
+                    param_value = force.getGlobalParameterDefaultValue(j)
+                    print(f"     {param_name} = {param_value}")
+                if num_per_bond_params > 0:
+                    print(f"   Per-bond parameters ({num_per_bond_params}):")
+                    for j in range(num_per_bond_params):
+                        param_name = force.getPerBondParameterName(j)
+                        print(f"     {param_name}")
+                # Filter bonds involving specified atoms
+                matching_bonds = []
+                for j in range(num_bonds):
+                    particles, params = force.getBondParameters(j)
+                    if atom_set is None or any(p in atom_set for p in particles):
+                        matching_bonds.append((j, particles, params))
+                
+                if len(matching_bonds) > 0:
+                    sample_size = len(matching_bonds) if max_sample_size is None else min(max_sample_size, len(matching_bonds))
+                    print(f"   Bonds (showing {sample_size} of {len(matching_bonds)} matching, total: {num_bonds}):")
+                    for idx, (orig_idx, particles, params) in enumerate(matching_bonds[:sample_size]):
+                        print(f"     Bond {orig_idx+1}: particles {particles}, params={params}")
+                    if max_sample_size is not None and len(matching_bonds) > max_sample_size:
+                        print(f"     ... and {len(matching_bonds) - max_sample_size} more bonds")
+            
+            elif isinstance(force, mm.CustomBondForce):
+                num_bonds = force.getNumBonds()
+                energy_function = force.getEnergyFunction()
+                num_global_params = force.getNumGlobalParameters()
+                num_per_bond_params = force.getNumPerBondParameters()
+                print(f"   Number of bonds: {num_bonds}")
+                print(f"   Energy function: {energy_function}")
+                print(f"   Global parameters ({num_global_params}):")
+                for j in range(num_global_params):
+                    param_name = force.getGlobalParameterName(j)
+                    param_value = force.getGlobalParameterDefaultValue(j)
+                    print(f"     {param_name} = {param_value}")
+                if num_per_bond_params > 0:
+                    print(f"   Per-bond parameters ({num_per_bond_params}):")
+                    for j in range(num_per_bond_params):
+                        param_name = force.getPerBondParameterName(j)
+                        print(f"     {param_name}")
+                # Filter bonds involving specified atoms
+                matching_bonds = []
+                for j in range(num_bonds):
+                    p1, p2, params = force.getBondParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set:
+                        matching_bonds.append((j, p1, p2, params))
+                
+                if len(matching_bonds) > 0:
+                    sample_size = len(matching_bonds) if max_sample_size is None else min(max_sample_size, len(matching_bonds))
+                    print(f"   Bonds (showing {sample_size} of {len(matching_bonds)} matching, total: {num_bonds}):")
+                    for idx, (orig_idx, p1, p2, params) in enumerate(matching_bonds[:sample_size]):
+                        print(f"     Bond {orig_idx+1}: particles {p1}-{p2}, params={params}")
+                    if max_sample_size is not None and len(matching_bonds) > max_sample_size:
+                        print(f"     ... and {len(matching_bonds) - max_sample_size} more bonds")
+            
+            elif isinstance(force, mm.CustomAngleForce):
+                num_angles = force.getNumAngles()
+                energy_function = force.getEnergyFunction()
+                num_global_params = force.getNumGlobalParameters()
+                print(f"   Number of angles: {num_angles}")
+                print(f"   Energy function: {energy_function}")
+                print(f"   Global parameters ({num_global_params}):")
+                for j in range(num_global_params):
+                    param_name = force.getGlobalParameterName(j)
+                    param_value = force.getGlobalParameterDefaultValue(j)
+                    print(f"     {param_name} = {param_value}")
+                # Filter angles involving specified atoms
+                matching_angles = []
+                for j in range(num_angles):
+                    p1, p2, p3, params = force.getAngleParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set or p3 in atom_set:
+                        matching_angles.append((j, p1, p2, p3, params))
+                
+                if len(matching_angles) > 0:
+                    sample_size = len(matching_angles) if max_sample_size is None else min(max_sample_size, len(matching_angles))
+                    print(f"   Angles (showing {sample_size} of {len(matching_angles)} matching, total: {num_angles}):")
+                    for idx, (orig_idx, p1, p2, p3, params) in enumerate(matching_angles[:sample_size]):
+                        print(f"     Angle {orig_idx+1}: particles {p1}-{p2}-{p3}, params={params}")
+                    if max_sample_size is not None and len(matching_angles) > max_sample_size:
+                        print(f"     ... and {len(matching_angles) - max_sample_size} more angles")
+            
+            else:
+                # Generic force - try to get basic info
+                print(f"   Force type: {force_type}")
+                if hasattr(force, 'getNumBonds'):
+                    try:
+                        num_bonds = force.getNumBonds()
+                        print(f"   Number of bonds: {num_bonds}")
+                        if num_bonds > 0 and max_sample_size is not None:
+                            sample_size = min(max_sample_size, num_bonds)
+                            print(f"   Sample bonds (showing {sample_size} of {num_bonds})")
+                    except:
+                        pass
+                if hasattr(force, 'getNumAngles'):
+                    try:
+                        num_angles = force.getNumAngles()
+                        print(f"   Number of angles: {num_angles}")
+                        if num_angles > 0 and max_sample_size is not None:
+                            sample_size = min(max_sample_size, num_angles)
+                            print(f"   Sample angles (showing {sample_size} of {num_angles})")
+                    except:
+                        pass
+                if hasattr(force, 'getNumGlobalParameters'):
+                    try:
+                        num_global = force.getNumGlobalParameters()
+                        if num_global > 0:
+                            print(f"   Global parameters ({num_global}):")
+                            for j in range(num_global):
+                                param_name = force.getGlobalParameterName(j)
+                                param_value = force.getGlobalParameterDefaultValue(j)
+                                print(f"     {param_name} = {param_value}")
+                    except:
+                        pass
+            
+            print()  # Empty line between forces
+        
+        print("=" * 80)
+
 
     def optimize(self, 
                 ring_closure_tolerance: float = 0.001,
@@ -395,6 +671,11 @@ class RingClosureOptimizer:
         # Get initial Z-matrix and convert to Cartesian for energy evaluation
         initial_zmatrix = self.system.zmatrix
         initial_coords = zmatrix_to_cartesian(initial_zmatrix)
+
+        #TODOdel
+        write_xyz_file(initial_coords, initial_zmatrix.get_elements(), "/tmp/server_initial.xyz")
+        write_zmatrix_file(initial_zmatrix, "/tmp/server_initial.int")
+
         
         # Determine smoothing sequence to use
         if smoothing is None:
@@ -509,6 +790,9 @@ class RingClosureOptimizer:
             verbose=False
         )
         
+        #TODOdel
+        write_xyz_file(minimized_coords, minimized_zmatrix.get_elements(), "/tmp/server_final.xyz")
+
         self.system.zmatrix = minimized_zmatrix
 
         rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)
