@@ -60,20 +60,25 @@ class TestServerMinimize(unittest.TestCase):
         self.zmatrix_request = [
             {'id': 1, 'element': 'C', 'atomic_num': 6},
             {'id': 2, 'element': 'ATN', 'atomic_num': 1, 'bond_ref': 1, 'bond_length': 1.54},
-            {'id': 3, 'element': 'ATN', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 2.50,
-             'angle_ref': 1, 'angle': 90.0},
-            {'id': 4, 'element': 'C', 'atomic_num': 6, 'bond_ref': 3, 'bond_length': 1.54,
-             'angle_ref': 2, 'angle': 120.0, 'dihedral_ref': 1, 'dihedral': 0.0, 'chirality': 0}
+            {'id': 3, 'element': 'Du', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 1.0, 
+            'angle_ref': 1, 'angle': 120.0},
+            {'id': 4, 'element': 'ATN', 'atomic_num': 1, 'bond_ref': 2, 'bond_length': 2.50,
+             'angle_ref': 1, 'angle': 90.0, 'dihedral_ref': 3, 'dihedral': 120.0, 'chirality': 1},
+            {'id': 5, 'element': 'C', 'atomic_num': 6, 'bond_ref': 4, 'bond_length': 1.54,
+             'angle_ref': 3, 'angle': 120.0, 'dihedral_ref': 2, 'dihedral': 180.0, 'chirality': 0}
         ]
         
-        # RCP terms: 1-based atom indices (atom 1 to atom 3, atom 2 to atom 4)
-        self.rcp_terms = [(1, 3), (2, 4)]
+        # RCP terms: 1-based atom indices (atom 1 to atom 4, atom 2 to atom 5)
+        # Updated after adding Du atom: atom 3 is now Du, atom 4 is ATN (was 3), atom 5 is C (was 4)
+        self.rcp_terms = [(1, 4), (2, 5)]
 
         # bonds_data: 1-based atom indices
         # [atom1, atom2] - must be lists, not tuples
         self.bonds_data = [
             [1, 2],  # bond between atoms 1 and 2
-            [3, 4]   # bond between atoms 3 and 4
+            [2, 3],  # bond between atoms 2 and 3 (Du atom)
+            [3, 4],  # bond between atoms 3 (Du) and 4 (ATN, was atom 3)
+            [4, 5]   # bond between atoms 4 (ATN) and 5 (C, was atom 4)
         ]
     
     def test_minimize_request(self):
@@ -113,8 +118,9 @@ class TestServerMinimize(unittest.TestCase):
         
         # Check coordinates shape
         coords = response['Cartesian_coordinates']
-        self.assertEqual(len(coords), 4)  # 4 atoms
+        self.assertEqual(len(coords), 5)  # 4 atoms
         self.assertEqual(len(coords[0]), 3)  # 3D coordinates
+        self.assertEqual(len(coords[4]), 3)  # 3D coordinates
         
         # Check metadata
         metadata = response['METADATA']

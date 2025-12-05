@@ -239,8 +239,15 @@ class RingClosureOptimizer:
                         charge, sigma, epsilon = force.getParticleParameters(j)
                         matching_particles.append((j, charge, sigma, epsilon))
                 
+                # Filter exceptions involving specified atoms
+                matching_exceptions = []
+                for j in range(num_exceptions):
+                    p1, p2, chargeProd, sigma, epsilon = force.getExceptionParameters(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set:
+                        matching_exceptions.append((j, p1, p2, chargeProd, sigma, epsilon))
+                
                 print(f"   Number of particles: {num_particles} (matching filter: {len(matching_particles)})")
-                print(f"   Number of exceptions: {num_exceptions}")
+                print(f"   Number of exceptions: {num_exceptions} (matching filter: {len(matching_exceptions)})")
                 print(f"   Nonbonded method: {force.getNonbondedMethod()}")
                 print(f"   Cutoff distance: {force.getCutoffDistance()}")
                 if len(matching_particles) > 0:
@@ -250,6 +257,13 @@ class RingClosureOptimizer:
                         print(f"     Particle {particle_idx}: charge={charge}, sigma={sigma}, epsilon={epsilon}")
                     if max_sample_size is not None and len(matching_particles) > max_sample_size:
                         print(f"     ... and {len(matching_particles) - max_sample_size} more particles")
+                if len(matching_exceptions) > 0:
+                    sample_size = len(matching_exceptions) if max_sample_size is None else min(max_sample_size, len(matching_exceptions))
+                    print(f"   Exceptions (showing {sample_size} of {len(matching_exceptions)}):")
+                    for idx, (orig_idx, p1, p2, chargeProd, sigma, epsilon) in enumerate(matching_exceptions[:sample_size]):
+                        print(f"     Exception {orig_idx+1}: particles {p1}-{p2}, chargeProd={chargeProd}, sigma={sigma}, epsilon={epsilon}")
+                    if max_sample_size is not None and len(matching_exceptions) > max_sample_size:
+                        print(f"     ... and {len(matching_exceptions) - max_sample_size} more exceptions")
             
             elif isinstance(force, mm.CustomNonbondedForce):
                 num_particles = force.getNumParticles()
@@ -259,8 +273,16 @@ class RingClosureOptimizer:
                 num_per_particle_params = force.getNumPerParticleParameters()
                 # Count matching particles
                 matching_count = sum(1 for j in range(num_particles) if atom_set is None or j in atom_set)
+                
+                # Filter exclusions involving specified atoms
+                matching_exclusions = []
+                for j in range(num_exclusions):
+                    p1, p2 = force.getExclusionParticles(j)
+                    if atom_set is None or p1 in atom_set or p2 in atom_set:
+                        matching_exclusions.append((j, p1, p2))
+                
                 print(f"   Number of particles: {num_particles} (matching filter: {matching_count})")
-                print(f"   Number of exclusions: {num_exclusions}")
+                print(f"   Number of exclusions: {num_exclusions} (matching filter: {len(matching_exclusions)})")
                 print(f"   Energy function: {energy_function}")
                 print(f"   Global parameters ({num_global_params}):")
                 for j in range(num_global_params):
@@ -272,6 +294,13 @@ class RingClosureOptimizer:
                     for j in range(num_per_particle_params):
                         param_name = force.getPerParticleParameterName(j)
                         print(f"     {param_name}")
+                if len(matching_exclusions) > 0:
+                    sample_size = len(matching_exclusions) if max_sample_size is None else min(max_sample_size, len(matching_exclusions))
+                    print(f"   Exclusions (showing {sample_size} of {len(matching_exclusions)}):")
+                    for idx, (orig_idx, p1, p2) in enumerate(matching_exclusions[:sample_size]):
+                        print(f"     Exclusion {orig_idx+1}: particles {p1}-{p2}")
+                    if max_sample_size is not None and len(matching_exclusions) > max_sample_size:
+                        print(f"     ... and {len(matching_exclusions) - max_sample_size} more exclusions")
             
             elif isinstance(force, mm.CustomCompoundBondForce):
                 num_bonds = force.getNumBonds()
@@ -672,7 +701,7 @@ class RingClosureOptimizer:
         initial_zmatrix = self.system.zmatrix
         initial_coords = zmatrix_to_cartesian(initial_zmatrix)
 
-        #TODOdel
+        #TODO del
         write_xyz_file(initial_coords, initial_zmatrix.get_elements(), "/tmp/server_initial.xyz")
         write_zmatrix_file(initial_zmatrix, "/tmp/server_initial.int")
 

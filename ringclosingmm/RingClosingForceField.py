@@ -83,101 +83,144 @@ def _get_atoms_at_distances(atom_idx: int, neighbors: Dict[int, Set[int]]) -> Tu
     return atoms_a, atoms_b, atoms_c, atoms_d
 
 
-def _get_atoms_in_1_2_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+def _get_atoms_in_1_X_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]], relation_type: int) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
     """
-    Get the atoms in 1-2 relation between p1 and p2.
+    Get the atoms in 1-X relation if p1 and p2 are in 1-1 relation.
+    """
+    if relation_type == 1:
+        p1p2 = (min(p1, p2), max(p1, p2))
+        return set(), set([p1p2])
+    elif relation_type == 2:
+        return _get_atoms_in_1_2_relation(p1, p2, neighbors)
+    elif relation_type == 3:
+        return _get_atoms_in_1_3_relation(p1, p2, neighbors)
+    elif relation_type == 4:
+        return _get_atoms_in_1_4_relation(p1, p2, neighbors)
+    else:
+        raise ValueError(f"Invalid relation type: {relation_type}")
+
+
+def _get_atoms_in_1_2_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
+    """
+    Get the atoms in 1-2 relation if p1 and p2 are in 1-1 relation.
+    
+    Returns
+    -------
+    Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]
+        (noncrossing_relations, crossing_relations)
+        Non-crossing: relations determined by topology (consistent *1 and *2)
+        Crossing: relations crossing p1-p2 boundary (mixing *1 and *2)
     """
     atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
 
-    atoms_in_1_2_relation = set()
+    atoms_in_1_2_relation_noncrossing = set()
+    atoms_in_1_2_relation_crossing = set()
 
+    # Non-crossing: consistent *1 and *2 indexes
     for atm_b1 in atoms_b1:
-        atoms_in_1_2_relation.add((min(p1, atm_b1), max(p1, atm_b1)))
+        atoms_in_1_2_relation_noncrossing.add((min(p1, atm_b1), max(p1, atm_b1)))
     
     for atm_b2 in atoms_b2:
-        atoms_in_1_2_relation.add((min(p2, atm_b2), max(p2, atm_b2)))
+        atoms_in_1_2_relation_noncrossing.add((min(p2, atm_b2), max(p2, atm_b2)))
 
+    # Crossing: mixing *1 and *2 indexes
     for atm_a1 in atoms_a1:
         for atm_b2 in atoms_b2:
-            atoms_in_1_2_relation.add((min(atm_a1, atm_b2), max(atm_a1, atm_b2)))
+            atoms_in_1_2_relation_crossing.add((min(atm_a1, atm_b2), max(atm_a1, atm_b2)))
     
     for atm_a2 in atoms_a2:
         for atm_b1 in atoms_b1:
-            atoms_in_1_2_relation.add((min(atm_a2, atm_b1), max(atm_a2, atm_b1)))
+            atoms_in_1_2_relation_crossing.add((min(atm_a2, atm_b1), max(atm_a2, atm_b1)))
     
-    return atoms_in_1_2_relation
+    return atoms_in_1_2_relation_noncrossing, atoms_in_1_2_relation_crossing
 
 
-def _get_atoms_in_1_3_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+def _get_atoms_in_1_3_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
     """
-    Get the atoms in 1-3 relation between p1 and p2.
+    Get the atoms in 1-3 relation if p1 and p2 are in 1-1 relation..
+    
+    Returns
+    -------
+    Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]
+        (noncrossing_relations, crossing_relations)
+        Non-crossing: relations determined by topology (consistent *1 and *2)
+        Crossing: relations crossing p1-p2 boundary (mixing *1 and *2)
     """
     atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
     
-    atoms_in_1_3_relation = set()
+    atoms_in_1_3_relation_noncrossing = set()
+    atoms_in_1_3_relation_crossing = set()
 
+    # Non-crossing: consistent *1 and *2 indexes
     for atm_c1 in atoms_c1:
-        atoms_in_1_3_relation.add((min(p1, atm_c1), max(p1, atm_c1)))
+        atoms_in_1_3_relation_noncrossing.add((min(p1, atm_c1), max(p1, atm_c1)))
 
     for atm_c2 in atoms_c2:
-        atoms_in_1_3_relation.add((min(p2, atm_c2), max(p2, atm_c2)))
+        atoms_in_1_3_relation_noncrossing.add((min(p2, atm_c2), max(p2, atm_c2)))
 
+    # Crossing: mixing *1 and *2 indexes
     for atm_a1 in atoms_a1:
         for atm_c2 in atoms_c2:
-            atoms_in_1_3_relation.add((min(atm_a1, atm_c2), max(atm_a1, atm_c2)))
+            atoms_in_1_3_relation_crossing.add((min(atm_a1, atm_c2), max(atm_a1, atm_c2)))
     
     for atm_b1 in atoms_b1:
         for atm_b2 in atoms_b2:
-            atoms_in_1_3_relation.add((min(atm_b1, atm_b2), max(atm_b1, atm_b2)))
+            atoms_in_1_3_relation_crossing.add((min(atm_b1, atm_b2), max(atm_b1, atm_b2)))
 
     for atm_a2 in atoms_a2:
         for atm_c1 in atoms_c1:
-            atoms_in_1_3_relation.add((min(atm_a2, atm_c1), max(atm_a2, atm_c1)))
+            atoms_in_1_3_relation_crossing.add((min(atm_a2, atm_c1), max(atm_a2, atm_c1)))
     
     for atm_b2 in atoms_b2:
         for atm_b1 in atoms_b1:
-            atoms_in_1_3_relation.add((min(atm_b2, atm_b1), max(atm_b2, atm_b1)))
+            atoms_in_1_3_relation_crossing.add((min(atm_b2, atm_b1), max(atm_b2, atm_b1)))
     
-    return atoms_in_1_3_relation
+    return atoms_in_1_3_relation_noncrossing, atoms_in_1_3_relation_crossing
 
-def _get_atoms_in_1_4_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Set[int]:
+def _get_atoms_in_1_4_relation(p1: int, p2: int, neighbors: Dict[int, Set[int]]) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
     """
-    Get the atoms in 1-4 relation between p1 and p2.
+    Get the atoms in 1-4 relation if p1 and p2 are in 1-1 relation.
+    
+    Returns
+    -------
+    Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]
+        (noncrossing_relations, crossing_relations)
+        Non-crossing: relations determined by topology (consistent *1 and *2)
+        Crossing: relations crossing p1-p2 boundary (mixing *1 and *2)
     """
     atoms_a1, atoms_b1, atoms_c1, atoms_d1 = _get_atoms_at_distances(p1, neighbors)
     atoms_a2, atoms_b2, atoms_c2, atoms_d2 = _get_atoms_at_distances(p2, neighbors)
     
-    atoms_in_1_4_relation = set()
+    atoms_in_1_4_relation_noncrossing = set()
+    atoms_in_1_4_relation_crossing = set()
 
+    # Non-crossing: consistent *1 and *2 indexes
     for atm_d1 in atoms_d1:
-        atoms_in_1_4_relation.add((min(p1, atm_d1), max(p1, atm_d1)))
+        atoms_in_1_4_relation_noncrossing.add((min(p1, atm_d1), max(p1, atm_d1)))
 
     for atm_d2 in atoms_d2:
-        atoms_in_1_4_relation.add((min(p2, atm_d2), max(p2, atm_d2)))
+        atoms_in_1_4_relation_noncrossing.add((min(p2, atm_d2), max(p2, atm_d2)))
 
+    # Crossing: mixing *1 and *2 indexes
     for atm_a1 in atoms_a1:
         for atm_d2 in atoms_d2:
-            atoms_in_1_4_relation.add((min(atm_a1, atm_d2), max(atm_a1, atm_d2)))
+            atoms_in_1_4_relation_crossing.add((min(atm_a1, atm_d2), max(atm_a1, atm_d2)))
     
     for atm_b1 in atoms_b1:
         for atm_c2 in atoms_c2:
-            atoms_in_1_4_relation.add((min(atm_b1, atm_c2), max(atm_b1, atm_c2)))
+            atoms_in_1_4_relation_crossing.add((min(atm_b1, atm_c2), max(atm_b1, atm_c2)))
     
     for atm_c1 in atoms_c1:
-        for atm_d2 in atoms_d2:
-            atoms_in_1_4_relation.add((min(atm_c1, atm_d2), max(atm_c1, atm_d2)))
+        for atm_b2 in atoms_b2:
+            atoms_in_1_4_relation_crossing.add((min(atm_c1, atm_b2), max(atm_c1, atm_b2)))
 
     for atm_a2 in atoms_a2:
         for atm_d1 in atoms_d1:
-            atoms_in_1_4_relation.add((min(atm_a2, atm_d1), max(atm_a2, atm_d1)))
-    
-    for atm_b2 in atoms_b2:
-        for atm_c1 in atoms_c1:
-            atoms_in_1_4_relation.add((min(atm_b2, atm_c1), max(atm_b2, atm_c1)))
+            atoms_in_1_4_relation_crossing.add((min(atm_a2, atm_d1), max(atm_a2, atm_d1)))
 
-    return atoms_in_1_4_relation
+    return atoms_in_1_4_relation_noncrossing, atoms_in_1_4_relation_crossing
 
 
 def getAngle(p0: Any, p1: Any, p2: Any) -> float:
@@ -189,53 +232,90 @@ def getAngle(p0: Any, p1: Any, p2: Any) -> float:
     u2 = getUnitVector(v2)
     return np.arccos(np.clip(np.dot(u1, u2), -1.0, 1.0))
 
+
 # =============================================================================
 # Registers objects that store topological info related to ring-closing pairs
 # =============================================================================
 class TopologicalInfo:
+    
     def __init__(self):
-        # Store relations per RCP pair: key is (p1, p2) tuple (canonical: min, max)
-        # Value is a dict with keys 'relation12', 'relation13', 'relation14'
-        self.rcp_relations: Dict[Tuple[int, int], Dict[str, Set[Tuple[int, int]]]] = {}
-    
-    def get_relations_for_rcp(self, p1: int, p2: int) -> Dict[str, Set[Tuple[int, int]]]:
-        """Get relations for a specific RCP pair.
+        self.crossing_relations: Dict[int, Set[Tuple[int, int]]] = {1: set(), 2: set(), 3: set(), 4: set()}
+        self.noncrossing_relations: Dict[int, Set[Tuple[int, int]]] = {1: set(), 2: set(), 3: set(), 4: set()}
+
+    @staticmethod
+    def _add_relations(atom_pairs: Set[Tuple[int, int]], relation_type: int, relation_collector: Dict[int, Set[Tuple[int, int]]]) -> None:
+        """Add relations to the topological info. We assume tighter relations are recorded before looser ones, so we do not check if an attempt to record a looser relation is made when a tighter relation is already recorded. This is a performance optimization."""
+        for pair in atom_pairs:
+            sorted_pair = (min(pair[0], pair[1]), max(pair[0], pair[1]))
+            found_in_tigher_relation = False
+            for tigher_relation in range(1, relation_type):
+                if sorted_pair in relation_collector[tigher_relation]:
+                    found_in_tigher_relation = True
+                    break;
+            if not found_in_tigher_relation:
+                relation_collector[relation_type].add(sorted_pair)
+
+
+    def add_crossing_relations(self, relations: Set[Tuple[int, int]], relation_type: int):
+        """Add crossing relations to the topological info."""
+        self._add_relations(relations, relation_type, self.crossing_relations)
+
+
+    def add_noncrossing_relations(self, relations: Set[Tuple[int, int]], relation_type: int):
+        """Add noncrossing relations to the topological info."""
+        self._add_relations(relations, relation_type, self.noncrossing_relations)
+
+    def iter_crossing_relations(self, smallest_relation_type: int, largest_relation_type: int):
+        """
+        Get an iterator over crossing relations for relation types from smallest_relation_type 
+        up to largest_relation_type (inclusive).
+        
+        Relation types: 1 = 1-1 (coincident), 2 = 1-2, 3 = 1-3, 4 = 1-4.
         
         Parameters
         ----------
-        p1, p2 : int
-            Atom indices of the RCP pair. Order is irrelevant.
+        smallest_relation_type : int
+            The smallest relation type to include (inclusive, e.g., 2 for 1-2 relations)
+        largest_relation_type : int
+            The largest relation type to include (inclusive, typically 4 for 1-4 relations)
             
-        Returns
-        -------
-        Dict[str, Set[Tuple[int, int]]]
-            Dictionary with keys 'relation12', 'relation13', 'relation14'
-            containing sets of atom pairs in canonical order (min, max)
+        Yields
+        ------
+        Tuple[int, int]
+            Atom pairs in canonical order (min, max) from crossing relations
+            in the specified range
         """
-        rcp_key = (min(p1, p2), max(p1, p2))
-        return self.rcp_relations.get(rcp_key, {
-            'relation12': set(),
-            'relation13': set(),
-            'relation14': set()
-        })
-    
-    def add_rcp_relations(self, p1: int, p2: int, relation12: Set[Tuple[int, int]], 
-                          relation13: Set[Tuple[int, int]], relation14: Set[Tuple[int, int]]):
-        """Add relations for a specific RCP pair.
+        for relation_type in range(smallest_relation_type, largest_relation_type + 1):
+            if relation_type in self.crossing_relations:
+                for pair in self.crossing_relations[relation_type]:
+                    yield pair
+
+    def iter_noncrossing_relations(self, smallest_relation_type: int, largest_relation_type: int):
+        """
+        Get an iterator over non-crossing relations for relation types from smallest_relation_type 
+        up to largest_relation_type (inclusive).
+        
+        Relation types: 1 = 1-1 (coincident), 2 = 1-2, 3 = 1-3, 4 = 1-4.
         
         Parameters
         ----------
-        p1, p2 : int
-            Atom indices of the RCP pair. Order is irrelevant.
-        relation12, relation13, relation14 : Set[Tuple[int, int]]
-            Sets of atom pairs in canonical order (min, max)
+        smallest_relation_type : int
+            The smallest relation type to include (inclusive, e.g., 2 for 1-2 relations)
+        largest_relation_type : int
+            The largest relation type to include (inclusive, typically 4 for 1-4 relations)
+            
+        Yields
+        ------
+        Tuple[int, int]
+            Atom pairs in canonical order (min, max) from non-crossing relations
+            in the specified range
         """
-        rcp_key = (min(p1, p2), max(p1, p2))
-        self.rcp_relations[rcp_key] = {
-            'relation12': relation12,
-            'relation13': relation13,
-            'relation14': relation14
-        }
+        for relation_type in range(smallest_relation_type, largest_relation_type + 1):
+            if relation_type in self.noncrossing_relations:
+                for pair in self.noncrossing_relations[relation_type]:
+                    yield pair
+
+
 
 
 def _build_neighbors_from_bonds(bonds) -> Dict[int, Set[int]]:
@@ -265,6 +345,19 @@ def _build_neighbors_from_bonds(bonds) -> Dict[int, Set[int]]:
         neighbors[atom1_idx].add(atom2_idx)
         neighbors[atom2_idx].add(atom1_idx)
     return neighbors
+
+
+def _compute_topological_info(topo_info: TopologicalInfo, rcpterms: List[Tuple[int, int]], neighbors: Dict[int, Set[int]]):
+    """
+    Compute relations due to RCP terms. For efficiency, deal with tighter relations first.
+    """
+    for relation_type in range(1, 5):
+        for pair in rcpterms:
+            p1 = int(pair[0])
+            p2 = int(pair[1])
+            relation_noncrossing, relation_crossing = _get_atoms_in_1_X_relation(p1, p2, neighbors, relation_type)
+            topo_info.add_noncrossing_relations(relation_noncrossing, relation_type)
+            topo_info.add_crossing_relations(relation_crossing, relation_type)
 
 
 def _compute_and_store_topological_info(data, args: Dict[str, Any]) -> TopologicalInfo:
@@ -300,19 +393,9 @@ def _compute_and_store_topological_info(data, args: Dict[str, Any]) -> Topologic
     
     # Build a dictionary of bonded neighbors for each atom
     neighbors = _build_neighbors_from_bonds(data.bonds)
-    
-    # Compute relations for each RCP pair
-    for pair in rcpterms:
-        p1 = int(pair[0])
-        p2 = int(pair[1])
-        
-        # Compute relations
-        relation12 = _get_atoms_in_1_2_relation(p1, p2, neighbors)
-        relation13 = _get_atoms_in_1_3_relation(p1, p2, neighbors)
-        relation14 = _get_atoms_in_1_4_relation(p1, p2, neighbors)
-        
-        # Store in TopologicalInfo
-        topo_info.add_rcp_relations(p1, p2, relation12, relation13, relation14)
+
+    # Define all proximity relations due to RCP terms
+    _compute_topological_info(topo_info, rcpterms, neighbors)
     
     # Cache in args for future use
     args['topological_info'] = topo_info
@@ -346,18 +429,8 @@ def _compute_topological_info_from_topology(topo, rcpterms: List[Tuple[int, int]
     # Build a dictionary of bonded neighbors for each atom
     neighbors = _build_neighbors_from_bonds(topo.bonds())
     
-    # Compute relations for each RCP pair
-    for pair in rcpterms:
-        p1 = int(pair[0])
-        p2 = int(pair[1])
-        
-        # Compute relations
-        relation12 = _get_atoms_in_1_2_relation(p1, p2, neighbors)
-        relation13 = _get_atoms_in_1_3_relation(p1, p2, neighbors)
-        relation14 = _get_atoms_in_1_4_relation(p1, p2, neighbors)
-        
-        # Store in TopologicalInfo
-        topo_info.add_rcp_relations(p1, p2, relation12, relation13, relation14)
+    # Define all proximity relations due to RCP terms
+    _compute_topological_info(topo_info, rcpterms, neighbors)
     
     return topo_info
 
@@ -660,14 +733,13 @@ class HeadTailNonbondedGenerator():
 
             # Ignore the RCP pair itself (1-1 relation): do nothing for (p1,p2) and (p2,p1)
             
-            # Get pre-computed relations from TopologicalInfo
-            relations = topo_info.get_relations_for_rcp(p1, p2)
-            
-            for pair in relations['relation12']:
+            # Get pre-computed crossing relations from TopologicalInfo
+            # Relations are now independent of RCP pair
+            for pair in topo_info.iter_crossing_relations(2, 2):
                 addForceOnce(pair[0], pair[1], 2.0)
-            for pair in relations['relation13']:
+            for pair in topo_info.iter_crossing_relations(3, 3):
                 addForceOnce(pair[0], pair[1], 3.0)
-            for pair in relations['relation14']:
+            for pair in topo_info.iter_crossing_relations(4, 4):
                 addForceOnce(pair[0], pair[1], 4.0)
                         
         sys.addForce(force)
@@ -753,13 +825,11 @@ class RCPAtomsNonbondedGenerator():
 
         # Exclude pairs that are related by 1-2, 1-3, or 1-4 relations around the RC bonds
         pairs_excluded_by_rc_bond_relations = set()
-        for rcpterm in rcpterms:
-            p1 = int(rcpterm[0])
-            p2 = int(rcpterm[1])
-            relations = topo_info.get_relations_for_rcp(p1, p2)
-            for relation_type in ['relation12', 'relation13', 'relation14']:
-                for pair in relations[relation_type]:
-                    pairs_excluded_by_rc_bond_relations.add((min(pair[0], pair[1]), max(pair[0], pair[1])))
+        # Iterate over both crossing and non-crossing relations for relation types 1-4
+        for pair in topo_info.iter_crossing_relations(2, 4):
+            pairs_excluded_by_rc_bond_relations.add((min(pair[0], pair[1]), max(pair[0], pair[1])))
+        for pair in topo_info.iter_noncrossing_relations(2, 4):
+            pairs_excluded_by_rc_bond_relations.add((min(pair[0], pair[1]), max(pair[0], pair[1])))
         
         # Utility to ensure we do not add the same force twice
         pairs_added = set()
@@ -1166,21 +1236,20 @@ def create_system(topo: Any, rcpterms: List[Tuple[int, int]], forcefieldfile: st
                     print(f'  RCP term {idx}: excluding vdW between particles {p1} - {p2}')
 
             # Get pre-computed relations from TopologicalInfo
-            relations = topo_info.get_relations_for_rcp(p1, p2)
-            
-            # Exclude atoms in 1-2, 1-3, and 1-4 relations
-            for pair in relations['relation12']:
-                if add_exclusion_once(pair[0], pair[1]):
-                    if verbose:
-                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-2 relation)')
-            for pair in relations['relation13']:
-                if add_exclusion_once(pair[0], pair[1]):
-                    if verbose:
-                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-3 relation)')
-            for pair in relations['relation14']:
-                if add_exclusion_once(pair[0], pair[1]):
-                    if verbose:
-                        print(f'    Also excluding: {pair[0]} - {pair[1]} (1-4 relation)')
+            # Relations are now independent of RCP pair
+            # Iterate over both crossing and non-crossing relations for exclusions
+            for relation_type in range(2, 5):  # from 1-2 to 1-4
+                for pair in topo_info.iter_crossing_relations(relation_type, relation_type):
+                    relation_type_str = f"1-{relation_type}"
+                    if add_exclusion_once(pair[0], pair[1]):
+                        if verbose and relation_type_str:
+                            print(f'    Also excluding: {pair[0]} - {pair[1]} ({relation_type_str} crossing relation)')
+                for pair in topo_info.iter_noncrossing_relations(relation_type, relation_type):
+                    # Determine relation type for verbose output
+                    relation_type_str = f"1-{relation_type}"
+                    if add_exclusion_once(pair[0], pair[1]):
+                        if verbose and relation_type_str:
+                            print(f'    Also excluding: {pair[0]} - {pair[1]} ({relation_type_str} non-crossing relation)')
         
         if verbose:
             print(f'Total of {len(exclusions_added)} unique exclusions added for RCP terms')
