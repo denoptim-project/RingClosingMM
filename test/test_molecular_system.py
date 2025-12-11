@@ -2304,8 +2304,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # After 3 steps: 0.3, 6.0, 12.0 (all bounds reached)
         # All steps are max_step since bounds are exact multiples
         self.assertEqual(len(result), 3)
+        expected_step = np.array(max_step)
         for step in result:
-            self.assertEqual(step, tuple(max_step))
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
     
     def test_progressive_sequence_different_steps(self):
         """Test progressive sequence with different step sizes per DOF."""
@@ -2321,9 +2322,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # step_sizes = [0.5/5, 10.0/5, 20.0/5] = [0.1, 2.0, 4.0]
         # All 5 steps should be [0.1, 2.0, 4.0]
         self.assertEqual(len(result), 5)
-        expected_step = (0.1, 2.0, 4.0)
+        expected_step = np.array([0.1, 2.0, 4.0])
         for step in result:
-            self.assertEqual(step, expected_step)
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
         
         # Verify sum equals bounds exactly
         total_sum = np.zeros(3)
@@ -2348,9 +2349,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # Actually, ceil(20.0/5.0)=4, so step_size=20.0/4=5.0 which equals max_step[2]
         # So num_steps = 4, step_sizes = [0.075, 1.25, 5.0]
         self.assertEqual(len(result), 4)
-        expected_step = (0.075, 1.25, 5.0)
+        expected_step = np.array([0.075, 1.25, 5.0])
         for step in result:
-            self.assertEqual(step, expected_step)
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
         
         # Verify that the sum of all steps equals bounds exactly
         total_sum = np.zeros(3)
@@ -2375,8 +2376,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # ceil(0.2/0.1)=2, ceil(6.0/3.0)=2, ceil(10.0/5.0)=2
         # num_steps = 2, step_sizes = [0.2/2, 6.0/2, 10.0/2] = [0.1, 3.0, 5.0]
         self.assertEqual(len(result_exact), 2)
+        expected_step = np.array(max_step_exact)
         for step in result_exact:
-            self.assertEqual(step, tuple(max_step_exact))  # Exact multiples
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)  # Exact multiples
     
     def test_progressive_sequence_exact_multiple(self):
         """Test when bounds are exact multiples of step size."""
@@ -2389,8 +2391,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         
         # Should take exactly 4 steps: 0.1*4=0.4, 2.0*4=8.0, 4.0*4=16.0
         self.assertEqual(len(result), 4)
+        expected_step = np.array(max_step)
         for step in result:
-            self.assertEqual(step, tuple(max_step))
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
     
     def test_progressive_sequence_step_larger_than_bounds(self):
         """Test when step size is larger than bounds (should still work)."""
@@ -2404,7 +2407,7 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # ceil(0.1/0.2)=1, ceil(2.0/5.0)=1, ceil(4.0/10.0)=1
         # num_steps = 1, step_sizes = [0.1/1, 2.0/1, 4.0/1] = [0.1, 2.0, 4.0]
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], (0.1, 2.0, 4.0))
+        np.testing.assert_allclose(np.array(result[0]), np.array([0.1, 2.0, 4.0]), rtol=1e-10)
     
     def test_progressive_sequence_single_step(self):
         """Test when bounds equal step size (single step)."""
@@ -2417,7 +2420,7 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         
         # Should take exactly 1 step
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], tuple(max_step))
+        np.testing.assert_allclose(np.array(result[0]), np.array(max_step), rtol=1e-10)
     
     def test_progressive_sequence_zero_bounds(self):
         """Test with zero bounds (should be replaced with 0.0001 to avoid division by zero)."""
@@ -2442,15 +2445,20 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
             dof_bounds, max_step
         )
         
-        # Should take many steps (10 steps for DOF 0: 0.001*10=0.01)
-        self.assertGreater(len(result), 1)
-        # For very small steps relative to bounds, most steps should be max_step
-        # Only the last step(s) might be capped
-        # Verify that the sum of all steps doesn't exceed bounds
+        # Calculate expected: ceil(0.01/0.001)=10, ceil(1.0/0.1)=10, ceil(2.0/0.2)=10
+        # num_steps = max(10, 10, 10) = 10
+        # step_sizes = [0.01/10, 1.0/10, 2.0/10] = [0.001, 0.1, 0.2]
+        # All 10 steps should be [0.001, 0.1, 0.2]
+        self.assertEqual(len(result), 10)
+        expected_step = np.array([0.001, 0.1, 0.2])
+        for step in result:
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
+        
+        # Verify that the sum of all steps equals bounds exactly
         total_sum = np.zeros(3)
         for step in result:
             total_sum += np.array(step)
-        np.testing.assert_array_less(total_sum, dof_bounds + 1e-5)
+        np.testing.assert_allclose(total_sum, dof_bounds, rtol=1e-10)
     
     def test_progressive_sequence_mixed_convergence(self):
         """Test when different DOFs need different numbers of steps."""
@@ -2465,9 +2473,9 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         # num_steps = max(3, 3, 4) = 4
         # step_sizes = [0.25/4, 5.0/4, 12.0/4] = [0.0625, 1.25, 3.0]
         self.assertEqual(len(result), 4)
-        expected_step = (0.0625, 1.25, 3.0)
+        expected_step = np.array([0.0625, 1.25, 3.0])
         for step in result:
-            self.assertEqual(step, expected_step)
+            np.testing.assert_allclose(np.array(step), expected_step, rtol=1e-10)
         
         # Verify that the sum of all steps equals bounds exactly
         total_sum = np.zeros(3)
@@ -2488,13 +2496,11 @@ class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
         )
         
         # Empty list is not a sequence (first element check fails), so it should
-        # try to generate progressive sequence, which will fail or return empty
-        # Actually, len(empty_sequence) > 0 check fails, so it goes to progressive generation
-        # But empty array will cause issues - let's see what happens
-        # Actually, it should handle this gracefully
-        if len(empty_sequence) == 0:
-            # Will try to convert to array, which should work but generate empty sequence
-            pass
+        # try to generate progressive sequence
+        # Empty array will result in num_steps = 1 (minimum), step_sizes = [0, 0, 0] -> [MIN_VALUE, MIN_VALUE, MIN_VALUE]
+        # So result should be one step with MIN_VALUE
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], (0.0001, 0.0001, 0.0001))
 
 
 def run_tests(verbosity=2):

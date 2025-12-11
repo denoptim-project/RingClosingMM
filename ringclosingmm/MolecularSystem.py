@@ -816,11 +816,22 @@ class MolecularSystem:
         # by checking if the first element is itself a sequence (list/tuple)
         if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
             # Already a sequence of coefficient sets - just sanitize 0.0 values
+            # Preserve the original type (list or tuple) of each coefficient set
             sanitized_sequence = []
             for coeff_set in dof_bounds_per_type:
-                sanitized = tuple(MIN_VALUE if abs(x) < 1e-10 else x for x in coeff_set)
+                sanitized_values = [MIN_VALUE if abs(x) < 1e-10 else x for x in coeff_set]
+                # Preserve original type: if input was tuple, return tuple; if list, return list
+                if isinstance(coeff_set, tuple):
+                    sanitized = tuple(sanitized_values)
+                else:
+                    sanitized = sanitized_values
                 sanitized_sequence.append(sanitized)
             return sanitized_sequence
+        
+        # Handle empty list case
+        if len(dof_bounds_per_type) == 0:
+            # Empty list: return single step with MIN_VALUE
+            return [(MIN_VALUE, MIN_VALUE, MIN_VALUE)]
         
         # Convert to numpy arrays for easier computation
         dof_bounds_array = np.array(dof_bounds_per_type)
