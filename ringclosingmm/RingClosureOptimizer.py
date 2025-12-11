@@ -791,8 +791,14 @@ class RingClosureOptimizer:
                 try:
                     minimized_coords, step_energy = self.system.minimize_energy(
                         current_zmatrix,
-                        max_iterations=max_iterations
+                        max_iterations=max_iterations,
+                        gradient_tolerance=gradient_tolerance,
+                        trajectory_file=trajectory_file,
+                        verbose=verbose
                     )
+
+                    #TODO del
+                    write_xyz_file(minimized_coords, current_zmatrix.get_elements(), "/tmp/server_minimized.xyz")
                     
                     # Extract refined Z-matrix from minimized coordinates
                     refined_zmatrix = cartesian_to_zmatrix(

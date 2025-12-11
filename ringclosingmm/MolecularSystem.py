@@ -17,6 +17,7 @@ from pathlib import Path
 import copy
 
 import openmm.unit as unit
+import openmm
 from openmm.app import Element, Simulation, Topology
 from ringclosingmm.AnalyticalDistance import AnalyticalDistanceFactory
 
@@ -297,8 +298,8 @@ class MolecularSystem:
             forcefield_file,
             positions=coords,
             smoothing=0.0,
-            scalingNonBonded=1.0,
-            scalingRCP=1.0
+            scalingNonBonded=None,
+            scalingRCP=None
         )
         
         return cls(system, topology, rcp_terms or [], zmatrix, step_length, ring_closure_threshold)
@@ -380,12 +381,16 @@ class MolecularSystem:
             return 1e6
 
 
-    def minimize_energy(self, zmatrix: ZMatrix, max_iterations: int = 100) -> Tuple[np.ndarray, float]:
+    def minimize_energy(self, zmatrix: ZMatrix, max_iterations: int = 500, 
+                       gradient_tolerance: float = 0.01,
+                       trajectory_file: Optional[str] = None,
+                       verbose: bool = False) -> Tuple[np.ndarray, float]:
         """
-        Perform energy minimization with OpenMM engine in Cartesian space and return optimized coordinates.
+        Perform energy minimization with OpenMM engine in Cartesian space using scipy.optimize.minimize.
         
         Uses a cached Simulation for the current smoothing parameter (creating it
-        if necessary on first use), then updates positions and performs minimization.
+        if necessary on first use), then uses scipy.optimize.minimize to optimize
+        all Cartesian coordinates with energy and gradient from OpenMM.
         
         Parameters
         ----------
@@ -393,6 +398,12 @@ class MolecularSystem:
             Starting Z-matrix
         max_iterations : int
             Maximum minimization iterations
+        gradient_tolerance : float
+            Gradient tolerance for convergence (default: 0.01)
+        trajectory_file : Optional[str]
+            If provided, write optimization trajectory to this XYZ file (append mode)
+        verbose : bool
+            Print minimization progress
             
         Returns
         -------
@@ -402,21 +413,129 @@ class MolecularSystem:
         try:
             # Convert to Cartesian and set positions
             coords = zmatrix_to_cartesian(zmatrix)
+            elements = zmatrix.get_elements()
+
             positions = coords * 0.1 * unit.nanometer
             
             # Get or create cached simulation and update positions
             simulation = self._get_or_create_simulation(positions)
+
+            # Clear trajectory file if provided
+            if trajectory_file:
+                Path(trajectory_file).unlink(missing_ok=True)
             
-            # Minimize
-            simulation.minimizeEnergy(maxIterations=max_iterations, tolerance=0.1)
+            # Iteration counter for trajectory
+            iteration_counter = [0]
             
-            # Get minimized state
-            state = simulation.context.getState(getPositions=True, getEnergy=True)
-            minimized_positions = state.getPositions(asNumpy=True).value_in_unit(unit.angstrom)
-            minimized_energy = state.getPotentialEnergy().value_in_unit(unit.kilocalories_per_mole)
+            # Initial state for reference
+            if verbose:
+                state = simulation.context.getState(getEnergy=True, getForces=True)
+                initial_energy = state.getPotentialEnergy().value_in_unit(unit.kilocalories_per_mole)
+                forces = state.getForces(asNumpy=True).value_in_unit(unit.kilojoule_per_mole / unit.nanometer)
+                print(f"Initial energy: {initial_energy:.4f} kcal/mol")
+                print(f"Initial gradient norm: {np.linalg.norm(forces):.4f} kJ/(mol·nm)")
+                rms_force = np.sqrt(np.mean(forces.flatten()**2))
+                print(f"Initial RMS force components: {rms_force:.4f} kJ/(mol·nm)")
             
-            return minimized_positions, minimized_energy
-        except Exception:
+            def objective(x_flat: np.ndarray) -> float:
+                """Objective function: evaluate energy for given Cartesian coordinates."""
+                # x_flat is a flat array [x1, y1, z1, x2, y2, z2, ...] in Angstroms
+                # Reshape to (N, 3) and convert to nanometers
+                coords_array = x_flat.reshape(-1, 3) * 0.1 * unit.nanometer
+                positions = coords_array
+                
+                # Update simulation positions
+                simulation.context.setPositions(positions)
+                
+                # Get energy
+                state = simulation.context.getState(getEnergy=True)
+                energy = state.getPotentialEnergy().value_in_unit(unit.kilocalories_per_mole)
+                
+                return energy
+            
+            def gradient(x_flat: np.ndarray) -> np.ndarray:
+                """Gradient function: compute forces (negative gradient) for given Cartesian coordinates."""
+                # x_flat is a flat array [x1, y1, z1, x2, y2, z2, ...] in Angstroms
+                # Reshape to (N, 3) and convert to nanometers
+                coords_array = x_flat.reshape(-1, 3) * 0.1 * unit.nanometer
+                positions = coords_array
+                
+                # Update simulation positions
+                simulation.context.setPositions(positions)
+                
+                # Get forces (negative of gradient)
+                state = simulation.context.getState(getForces=True)
+                forces = state.getForces(asNumpy=True).value_in_unit(unit.kilojoule_per_mole / unit.nanometer)
+                
+                # Convert forces to gradient (gradient = -force)
+                # Also convert from kJ/(mol·nm) to kcal/(mol·Å) for consistency
+                # 1 kJ/(mol·nm) = 1 kJ/(mol·10Å) = 0.1 kJ/(mol·Å) = 0.1/4.184 kcal/(mol·Å) ≈ 0.0239 kcal/(mol·Å)
+                # But we'll keep in kJ/(mol·nm) and flatten
+                grad = -forces.flatten()  # Negative of forces, flattened
+                
+                return grad
+            
+            def callback(xk: np.ndarray):
+                """Callback function called after each optimizer iteration."""
+                iteration_counter[0] += 1
+                
+                if trajectory_file:
+                    try:
+                        # xk is in Angstroms, reshape to (N, 3)
+                        coords_array = xk.reshape(-1, 3)
+                        energy = objective(xk)
+                        write_xyz_file(
+                            coords_array,
+                            elements,
+                            trajectory_file,
+                            comment=f"Iteration {iteration_counter[0]}, E={energy:.4f} kcal/mol",
+                            append=True
+                        )
+                    except Exception as e:
+                        if verbose:
+                            print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
+                
+                if verbose:
+                    energy = objective(xk)
+                    grad = gradient(xk)
+                    grad_norm = np.linalg.norm(grad)
+                    rms_force = np.sqrt(np.mean(grad**2))
+                    print(f"Iteration {iteration_counter[0]}: Energy={energy:.4f} kcal/mol, "
+                          f"Gradient norm={grad_norm:.4f} kJ/(mol·nm), RMS force={rms_force:.4f} kJ/(mol·nm)")
+            
+            # Initial coordinates as flat array in Angstroms
+            x0 = coords.flatten()
+            
+            # Minimize using scipy.optimize.minimize
+            result = minimize(
+                objective,
+                x0,
+                method='L-BFGS-B',
+                jac=gradient,
+                callback=callback if (trajectory_file or verbose) else None,
+                options={
+                    'maxiter': max_iterations,
+                    'ftol': 0,  # Disable function tolerance
+                    'gtol': gradient_tolerance,  # Gradient tolerance
+                    'disp': verbose
+                }
+            )
+            
+            # Get final state
+            final_coords = result.x.reshape(-1, 3)  # Reshape back to (N, 3) in Angstroms
+            final_energy = result.fun
+            
+            if verbose:
+                print(f"Minimization completed: nfev={result.nfev}, nit={result.nit}, "
+                      f"success={result.success}, message={result.message}")
+                print(f"Final energy: {final_energy:.4f} kcal/mol")
+            
+            return final_coords, final_energy
+            
+        except Exception as e:
+            import traceback
+            print(f"Error minimizing energy: {e}")
+            traceback.print_exc()
             # Return original with high penalty
             coords = zmatrix_to_cartesian(zmatrix)
             return coords, 1e6
@@ -538,7 +657,7 @@ class MolecularSystem:
                     # Don't fail minimization if trajectory writing fails
                     if verbose:
                         print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
-
+        
         dof_bound_coeffs_sequence = self.generate_dof_bound_coeffs_sequence(dof_bounds_per_type, max_step_length_per_type, [[10.0, 180.0, 180.0]])
                 
         try:           
@@ -623,7 +742,7 @@ class MolecularSystem:
                 # Format sequence with one nested list per line for readability
                 sequence_str = ',\n    '.join([str(list(step)) for step in dof_bound_coeffs_sequence])
                 print(f"\n  WARNING: ZMatrix minimization did not converge after {len(dof_bound_coeffs_sequence)} bounds iterations. Reached max DOF bounds for each of the {len(dof_bound_coeffs_sequence)} iterations and each of the 3 DOF types:\n    [{sequence_str}]\nConsider specifying larger DOF bounds.\n")
-
+                
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
             
@@ -986,7 +1105,7 @@ class MolecularSystem:
         iteration_counter = [0]
 
         popsize = min(15 * len(rotatable_indices), 100)  # Cap at 100
-        
+
         def objective(torsions: np.ndarray) -> float:
             """Objective function: evaluate ring closure score for given torsions."""
             try:
@@ -1642,7 +1761,7 @@ class MolecularSystem:
                                         decay_rate: float = 1.0,
                                         verbose: bool = False) -> float:
         return self.ring_closure_score_exponential_from_coords(coords, self.rcpterms, tolerance, decay_rate, verbose)
-
+    
 
     @staticmethod
     def ring_closure_score_exponential_from_coords(coords: np.ndarray, 

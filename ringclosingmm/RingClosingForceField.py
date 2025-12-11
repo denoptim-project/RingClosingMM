@@ -6,6 +6,7 @@ from openmm.app.forcefield import _parseFunctions, _createFunctions, \
     HarmonicBondGenerator, HarmonicAngleGenerator, \
     _convertParameterToNumber, CustomNonbondedGenerator
 from openmm import VerletIntegrator
+import openmm.unit as unit
 from openmm.app.forcefield import parsers
 from collections import defaultdict
 import math

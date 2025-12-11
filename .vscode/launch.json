@@ -346,6 +346,39 @@
             "justMyCode": false,
             "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
         },
+        {
+            "name": "Server minimization",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "mol.int",
+                "-c", "1", "4", "2", "5",
+                "--minimize",
+                "--space-type", "Cartesian",
+                "--trajectory-file", "mol_trj.xyz",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/server_usage",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        }, 
+        {
+            "name": "Server print FF",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "mol.int",
+                "-c", "1", "4", "2", "5",
+                "--print-force-field"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/server_usage",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        }
     ]
 }
 
