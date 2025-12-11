@@ -39,11 +39,17 @@ from .RCOServer import start, stop, status
 
 
 # Default configuration values
-DEFAULT_RING_CLOSURE_TOLERANCE = 0.01  # Angstroms (C-C bond)
-DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  # Exponential decay rate
+DEFAULT_RING_CLOSURE_TOLERANCE = 0.01  
+DEFAULT_RING_CLOSURE_DECAY_RATE = 0.5  
 DEFAULT_TORSIONAL_ITERATIONS = 50
 DEFAULT_ZMATRIX_ITERATIONS = 50
 DEFAULT_GRADIENT_TOLERANCE = 0.01
+DEFAULT_ZMATRIX_MAX_STEP_BOND_STRETCH = 0.01
+DEFAULT_ZMATRIX_MAX_STEP_ANGLE_BEND = 2.0
+DEFAULT_ZMATRIX_MAX_STEP_TORSION = 4.0
+DEFAULT_ZMATRIX_DOF_CHANGE_BOND_STRETCH = 0.02
+DEFAULT_ZMATRIX_DOF_CHANGE_ANGLE_BEND = 10.0
+DEFAULT_ZMATRIX_DOF_CHANGE_TORSION = 15.0
 
 # Default forcefield path (relative to this script's location)
 DEFAULT_FORCEFIELD = str(Path(__file__).parent.parent / 'data' / 'RCP_UFFvdW.xml')
@@ -131,9 +137,25 @@ def parse_arguments() -> argparse.Namespace:
                                'the second index is the degree of freedom index. Example: 1 1 2 3 means '
                                'the first atom\'s first degree of freedom (distance) and the second atom\'s third '
                                'degree of freedom (torsion).')
-    min_group.add_argument('--zmatrix-dof-bounds', nargs='+', type=float,
-                          help='Bounds for the three types of degrees of freedom in Z-matrix space. Example: 0.02 5.0 10.0 means that bond lengths are bound to change by up to 0.02 Å from the current value, angles and 5.0 degrees, and torsions by 10.0 degrees from the current value. Multiple triplets can be provided to request any stepwise application of bounds. Example: 0.02 5.0 10.0 0.01 3.0 8.0 means will make the minimization run with [0.02, 5.0, 10.0] for the first step and [0.01, 3.0, 8.0] for the second step. Default is 0.02 20.0 180.0.')
-   
+    min_group.add_argument('--zmatrix-max-step-bond-stretch', type=float,
+                          default=DEFAULT_ZMATRIX_MAX_STEP_BOND_STRETCH,
+                          help='Maximum step length for bond stretch degrees of freedom in Z-matrix space.')
+    min_group.add_argument('--zmatrix-max-change-bond-stretch', type=float,
+                          default=DEFAULT_ZMATRIX_DOF_CHANGE_BOND_STRETCH,
+                          help='Maximum allowed deformation for bond stretch degrees of freedom in Z-matrix space.')
+    min_group.add_argument('--zmatrix-max-step-angle-bend', type=float,
+                          default=DEFAULT_ZMATRIX_MAX_STEP_ANGLE_BEND,
+                          help='Maximum step length for angle bend degrees of freedom in Z-matrix space.')
+    min_group.add_argument('--zmatrix-max-change-angle-bend', type=float,
+                          default=DEFAULT_ZMATRIX_DOF_CHANGE_ANGLE_BEND,
+                          help='Maximum allowed deformation for angle bend degrees of freedom in Z-matrix space.')
+    min_group.add_argument('--zmatrix-max-step-torsion', type=float,
+                          default=DEFAULT_ZMATRIX_MAX_STEP_TORSION,
+                          help='Maximum step length for torsion degrees of freedom in Z-matrix space.')
+    min_group.add_argument('--zmatrix-max-change-torsion', type=float,
+                          default=DEFAULT_ZMATRIX_DOF_CHANGE_TORSION,
+                          help='Maximum allowed deformation for torsion degrees of freedom in Z-matrix space.')
+
    # Interaction printing options
     interaction_group = parser.add_argument_group('Force Field Printing Options')
     interaction_group.add_argument('--print-force-field', action='store_true',
@@ -286,9 +308,21 @@ def main() -> int:
                        for i in range(0, len(args.dof_indices), 2)]
 
     # Parse Z-matrix DOF bounds from list of floats to list of tuples
-    zmatrix_dof_bounds_per_type = None
-    if args.zmatrix_dof_bounds:
-        zmatrix_dof_bounds_per_type = [(args.zmatrix_dof_bounds[i], args.zmatrix_dof_bounds[i+1], args.zmatrix_dof_bounds[i+2]) for i in range(0, len(args.zmatrix_dof_bounds), 3)]
+    zmatrix_dof_bounds_per_type = [DEFAULT_ZMATRIX_DOF_CHANGE_BOND_STRETCH, DEFAULT_ZMATRIX_DOF_CHANGE_ANGLE_BEND, DEFAULT_ZMATRIX_DOF_CHANGE_TORSION]
+    if args.zmatrix_max_change_bond_stretch:
+        zmatrix_dof_bounds_per_type[0] = args.zmatrix_max_change_bond_stretch
+    if args.zmatrix_max_change_angle_bend:
+        zmatrix_dof_bounds_per_type[1] = args.zmatrix_max_change_angle_bend
+    if args.zmatrix_max_change_torsion:
+        zmatrix_dof_bounds_per_type[2] = args.zmatrix_max_change_torsion
+    
+    zmatrix_max_step_length_per_type = [DEFAULT_ZMATRIX_MAX_STEP_BOND_STRETCH, DEFAULT_ZMATRIX_MAX_STEP_ANGLE_BEND, DEFAULT_ZMATRIX_MAX_STEP_TORSION]
+    if args.zmatrix_max_step_bond_stretch:
+        zmatrix_max_step_length_per_type[0] = args.zmatrix_max_step_bond_stretch
+    if args.zmatrix_max_step_angle_bend:
+        zmatrix_max_step_length_per_type[1] = args.zmatrix_max_step_angle_bend
+    if args.zmatrix_max_step_torsion:
+        zmatrix_max_step_length_per_type[2] = args.zmatrix_max_step_torsion
 
     # Parse rotatable bonds from list of integers to list of tuples (0-based)
     # Convert from 1-based (user input) to 0-based (internal representation)
@@ -368,6 +402,8 @@ def main() -> int:
                 ring_closure_decay_rate=args.ring_closure_decay_rate,
                 enable_pssrot_refinement=not args.no_pssrot_refinement,
                 enable_zmatrix_refinement=not args.no_zmatrix_refinement,
+                zmatrix_dof_bounds_per_type=zmatrix_dof_bounds_per_type,
+                zmatrix_max_step_length_per_type=zmatrix_max_step_length_per_type,
                 smoothing_sequence=None,  # Use default
                 torsional_iterations=args.torsional_iterations,
                 zmatrix_iterations=args.zmatrix_iterations,

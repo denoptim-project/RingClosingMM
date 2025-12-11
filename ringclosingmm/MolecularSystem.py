@@ -524,7 +524,7 @@ class MolecularSystem:
                     energy = objective(dofs)
                     
                     # Write to trajectory (append mode)
-                    print(f"Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
+                    print(f"    Iteration {iteration_counter[0]}, E={energy:.2f} kcal/mol")
                     #write_zmatrix_file(f"zmatrix_{iteration_counter[0]}.int", current_zmatrix)
                     write_xyz_file(
                         coords, 
@@ -539,37 +539,7 @@ class MolecularSystem:
                     if verbose:
                         print(f"  Warning: Failed to write trajectory at iteration {iteration_counter[0]}: {e}")
 
-        if dof_bounds_per_type is None:
-            # Repeat default, just to avoid None cases
-            dof_bound_coeffs_sequence = [[10.0, 180.0, 180.0]]
-        else:
-            # Check if dof_bounds is already a sequence of coefficient sets
-            # by checking if the first element is itself a sequence (list/tuple)
-            if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
-                # Already a sequence of coefficient sets
-                dof_bound_coeffs_sequence = dof_bounds_per_type
-            else:
-                # Create a sequence starting from max_step_length_per_type and incrementing
-                # by max_step_length_per_type each step until reaching dof_bounds_per_type
-                dof_bound_coeffs_sequence = []
-                
-                # Convert to numpy arrays for easier computation
-                dof_bounds_array = np.array(dof_bounds_per_type)
-                max_step_array = np.array(max_step_length_per_type)
-                
-                # Generate sequence: each step adds max_step_length_per_type, capped at dof_bounds_per_type
-                summ_of_bounds = np.zeros_like(dof_bounds_array)
-                while True:
-                    # Add max_step_length_per_type to current bounds
-                    summ_of_bounds = summ_of_bounds + max_step_array
-                    # Cap at dof_bounds_per_type
-                    summ_of_bounds = np.minimum(summ_of_bounds, dof_bounds_array)
-                    # Add to sequence as a tuple
-                    dof_bound_coeffs_sequence.append(max_step_array)
-                    
-                    # Stop if we've reached all bounds
-                    if np.allclose(summ_of_bounds, dof_bounds_array, rtol=1e-6):
-                        break
+        dof_bound_coeffs_sequence = self.generate_dof_bound_coeffs_sequence(dof_bounds_per_type, max_step_length_per_type, [[10.0, 180.0, 180.0]])
                 
         try:           
             initial_energy = objective(initial_dofs)
@@ -577,7 +547,6 @@ class MolecularSystem:
             current_dofs = initial_dofs.copy()
             current_energy = initial_energy
             current_gradient = None
-            current_gradient_norm_check = 0.0
 
             for i in range(len(dof_bound_coeffs_sequence)):
                 dof_bound_coeffs = dof_bound_coeffs_sequence[i]
@@ -634,23 +603,27 @@ class MolecularSystem:
                 new_max_gradient_check = np.max(np.abs(new_gradient))
                 
                 if verbose:
-                    print(f"\n  Iteration {i+1}: nfev={result.nfev} nit={result.nit} E={new_energy:.4f} kcal/mol Gnorm={new_gradient_norm_check:.4f} Gmax={new_max_gradient_check:.4f} message={result.message}")
+                    print(f"  Bound Iteration {i+1}/{len(dof_bound_coeffs_sequence)}: nfev={result.nfev} nit={result.nit} E={new_energy:.4f} kcal/mol Gnorm={new_gradient_norm_check:.4f} Gmax={new_max_gradient_check:.4f} message={result.message}")
                     self.report_dof_info(zmatrix, dof_indices, new_dofs, current_dof_bounds, new_gradient)
 
                 # converged?
                 converged = False
-                if abs(current_gradient_norm_check - new_gradient_norm_check) < gradient_tolerance:
+                if new_gradient_norm_check < gradient_tolerance:
+                    print(f"  Gradient norm converged: {new_gradient_norm_check:.6f} < {gradient_tolerance:.6f}")
                     converged = True
 
                 # Update step info
                 current_dofs = new_dofs
                 current_energy = new_energy
                 current_gradient = new_gradient
-                current_gradient_norm_check = new_gradient_norm_check
-                current_max_gradient_check = new_max_gradient_check
                 if (converged):
                     break
                 
+            if not converged:
+                # Format sequence with one nested list per line for readability
+                sequence_str = ',\n    '.join([str(list(step)) for step in dof_bound_coeffs_sequence])
+                print(f"\n  WARNING: ZMatrix minimization did not converge after {len(dof_bound_coeffs_sequence)} bounds iterations. Reached max DOF bounds for each of the {len(dof_bound_coeffs_sequence)} iterations and each of the 3 DOF types:\n    [{sequence_str}]\nConsider specifying larger DOF bounds.\n")
+
             # Create optimized zmatrix
             optimized_zmatrix = get_updated_zmatrix(zmatrix, result.x)
             
@@ -685,6 +658,92 @@ class MolecularSystem:
                 'final_dofs': initial_dofs.copy() if 'initial_dofs' in locals() else np.array([])
             }
             return zmatrix.copy(), 1e6, info
+
+
+    @staticmethod
+    def generate_dof_bound_coeffs_sequence(dof_bounds_per_type: List[Tuple[float, float, float]], max_step_length_per_type: List[float], default_sequence: List[Tuple[float, float, float]] = [[10.0, 180.0, 180.0]]) -> List[Tuple[float, float, float]]:
+        """
+        Generate a sequence of DOF bound coefficients that evenly distribute the total bounds
+        across steps, ensuring the sum equals exactly the bounds (never exceeding them).
+        
+        The number of steps is determined by the maximum number of steps needed across all DOF types,
+        calculated as ceil(bound / max_step) for each type. Each step then contains an equal fraction
+        of the total bound for each DOF type, ensuring the sum equals the bound exactly.
+        
+        Parameters
+        ----------
+        dof_bounds_per_type : List[Tuple[float, float, float]]
+            Maximum allowed deformation for each DOF type [bond_length, angle, dihedral].
+            If this is already a sequence of tuples (list of lists), it's returned as-is (sanitized).
+        max_step_length_per_type : List[float]
+            Maximum step length for each DOF type [bond_length, angle, dihedral].
+        default_sequence : List[Tuple[float, float, float]]
+            Default sequence to return if dof_bounds_per_type is None.
+            
+        Returns
+        -------
+        List[Tuple[float, float, float]]
+            Sequence of step coefficients, where each tuple represents [bond_length_step, angle_step, dihedral_step].
+            The sum of all steps for each DOF type equals exactly the corresponding bound.
+        """
+        # Minimum value to replace 0.0 (used as denominator, so cannot be zero)
+        MIN_VALUE = 0.0001
+        
+        if dof_bounds_per_type is None:
+            # Return default sequence
+            return default_sequence
+
+        # Check if dof_bounds is already a sequence of coefficient sets
+        # by checking if the first element is itself a sequence (list/tuple)
+        if len(dof_bounds_per_type) > 0 and isinstance(dof_bounds_per_type[0], (list, tuple)):
+            # Already a sequence of coefficient sets - just sanitize 0.0 values
+            sanitized_sequence = []
+            for coeff_set in dof_bounds_per_type:
+                sanitized = tuple(MIN_VALUE if abs(x) < 1e-10 else x for x in coeff_set)
+                sanitized_sequence.append(sanitized)
+            return sanitized_sequence
+        
+        # Convert to numpy arrays for easier computation
+        dof_bounds_array = np.array(dof_bounds_per_type)
+        max_step_array = np.array(max_step_length_per_type)
+        
+        # Replace any 0.0 values in bounds with MIN_VALUE (cannot be used as denominator)
+        dof_bounds_array = np.where(np.abs(dof_bounds_array) < 1e-10, MIN_VALUE, dof_bounds_array)
+        # Also ensure max_step_array doesn't have 0.0 values
+        max_step_array = np.where(np.abs(max_step_array) < 1e-10, MIN_VALUE, max_step_array)
+        
+        # Calculate minimum number of steps needed for each DOF type
+        # This is ceil(bound / max_step) to ensure we can reach the bound
+        steps_per_dof = np.ceil(dof_bounds_array / max_step_array).astype(int)
+        
+        # Use the maximum number of steps across all DOF types
+        # This ensures all DOF types can reach their bounds
+        num_steps = int(np.max(steps_per_dof))
+        
+        # Ensure at least one step
+        if num_steps == 0:
+            num_steps = 1
+        
+        # Calculate step size for each DOF type: evenly distribute the total bound
+        # This ensures sum(step_sizes) = bound exactly, and each step <= max_step (by construction)
+        step_sizes = dof_bounds_array / num_steps
+        
+        # Verify that step sizes don't exceed max_step (they shouldn't by construction, but check anyway)
+        # If they do, we need more steps
+        while np.any(step_sizes > max_step_array + 1e-10):
+            num_steps += 1
+            step_sizes = dof_bounds_array / num_steps
+        
+        # Ensure no step size is 0.0 (replace with MIN_VALUE if needed)
+        step_sizes = np.where(np.abs(step_sizes) < 1e-10, MIN_VALUE, step_sizes)
+        
+        # Generate the sequence: all steps have the same size
+        # The sum of all steps equals exactly dof_bounds_array
+        sequence = []
+        for _ in range(num_steps):
+            sequence.append(tuple(step_sizes.tolist()))
+        
+        return sequence
 
 
     def report_dof_info(self, zmatrix: ZMatrix, dof_indices: List[Tuple[int,int]], dofs: np.ndarray, dof_bounds: List[Tuple[float, float]], gradient: Optional[np.ndarray]):

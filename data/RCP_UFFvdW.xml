@@ -256,10 +256,10 @@
    <Atom type="115" sigma="0.32360" epsilon="0.0110"/>
    <Atom type="116" sigma="0.32360" epsilon="0.0110"/>
    <!-- NB: sigma must be != 0 as it is used as denominator.-->
-   <Atom type="ATM" sigma="1.0" epsilon="0.0"/>
-   <Atom type="ATP" sigma="1.0" epsilon="0.0"/>
-   <Atom type="ATN" sigma="1.0" epsilon="0.0"/>
-   <Atom type="Du" sigma="1.0" epsilon="0.0"/>
+   <Atom type="ATM" sigma="0.1" epsilon="0.0"/>
+   <Atom type="ATP" sigma="0.1" epsilon="0.0"/>
+   <Atom type="ATN" sigma="0.1" epsilon="0.0"/>
+   <Atom type="Du" sigma="0.1" epsilon="0.0"/>
  </CustomNonbondedForce>
  <RCPAtomsNonbondedForce energy="scalingRCPAtomsNonBonded*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplNbA*epsilonPerBond; bA=widthNbA/sigmaDep; aB=amplNbB*epsilonPerBond; bB=widthNbB/sigmaDep; sigmaDep=sgm*(1+fourthWeight*(sgm^3)); sgm=min(sigmaPerBond,distance(p2,p3))">
    <GlobalParameter name="scalingRCPAtomsNonBonded" defaultValue="1.0"/>
@@ -277,9 +277,12 @@
    <PerBondParameter name="sigmaPerBond"/>
    <PerBondParameter name="epsilonPerBond"/>
   </RCPAtomsNonbondedForce>
-  <HeadTailNonbondedForce energy="scalingHT*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplHTA*eps; bA=widthHTA/sigmaDep; aB=amplHTB*eps; bB=widthHTB/sigmaDep; eps=epsilon*htRadFraction*bondDistanceFactor; sigmaDep=sigma*(1+fourthWeightHT*sigma^3)">
+  <HeadTailNonbondedForce energy="scalingHT*calToJoule*(gA+gB); gA=(aA/tb)*exp(-bA*((distance(p1,p2))^2)/ta); gB=(aB/tb)*exp(-bB*((distance(p1,p2))^2)/ta); tb=sqrt(ta^3); ta=1.0+4.0*smoothing; aA=amplHTA*epsilon; bA=widthHTA/sigmaDep; aB=amplHTB*epsilon; bB=widthHTB/sigmaDep; sigmaDep=sigma*(1+fourthWeightHT*sigma^3)">
    <GlobalParameter name="scalingHT" defaultValue="0.25"/>
-   <GlobalParameter name="htRadFraction" defaultValue="0.1"/>
+   <GlobalParameter name="htEpsFactor" defaultValue="1.0"/>
+   <!-- NB: 'htCoreRadFactor' is the fraction of the vdW sigma on which we add the dependency on the 1-N relation. 'htTopoRadFactor' is the fraction of the vdW sigma that is added for each bond distance.  head_tail_sigma = vdW_sigma*htCoreRadFactor + vdW_sigma*htTopoRadFactor*(bondDistanceFactor-1.0)-->
+   <GlobalParameter name="htCoreRadFactor" defaultValue="0.25"/>
+   <GlobalParameter name="htTopoRadFactor" defaultValue="0.15"/>
    <GlobalParameter name="amplHTA" defaultValue="35500.0"/>
    <GlobalParameter name="widthHTA" defaultValue="60.0"/>
    <GlobalParameter name="amplHTB" defaultValue="-3.0"/>
@@ -288,6 +291,7 @@
    <GlobalParameter name="smoothing" defaultValue="0.0"/>
    <!-- NB: do not change the name of the 'smoothing' parameter as it is used in the code to identify smoothable potential energy terms.-->
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
+   <!-- 'bondDistanceFactor' is not used in the actual calculation of the energy, but we keep it as a per-bond parameter to allow for easy reporting of which factor is used for each atom pair.-->
    <PerBondParameter name="bondDistanceFactor"/>
    <PerBondParameter name="sigma"/>
    <PerBondParameter name="epsilon"/>

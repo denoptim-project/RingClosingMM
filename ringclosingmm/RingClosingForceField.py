@@ -718,7 +718,8 @@ class HeadTailNonbondedGenerator():
             sigma0 = self.params.getAtomParameters(data.atoms[pair[0]], data)[0]
             sigma1 = self.params.getAtomParameters(data.atoms[pair[1]], data)[0]
             sigmaPerBond = 0.5 * (sigma0 + sigma1)
-            epsilonPerBond = math.sqrt(eps0) * math.sqrt(eps1)
+            sigmaPerBond = sigmaPerBond * self.globalParams['htCoreRadFactor'] + (sigmaPerBond * self.globalParams['htTopoRadFactor'] * (bondFactor - 1.0))
+            epsilonPerBond = math.sqrt(eps0) * math.sqrt(eps1) * self.globalParams['htEpsFactor']
             if pair not in pairs_added:
                 pairs_added.add(pair)
                 if self.verbose:

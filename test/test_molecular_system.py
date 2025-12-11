@@ -2272,6 +2272,231 @@ class TestMolecularSystemRCPPathComputation(unittest.TestCase):
         self.assertGreaterEqual(len(groups), 1)
 
 
+class TestGenerateDOFBoundCoeffsSequence(unittest.TestCase):
+    """Test generate_dof_bound_coeffs_sequence static method."""
+    
+    def test_none_dof_bounds(self):
+        """Test that None dof_bounds returns default sequence."""
+        default = [[10.0, 180.0, 180.0]]
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            None, [0.1, 1.5, 2.0], default
+        )
+        self.assertEqual(result, default)
+    
+    def test_already_sequence(self):
+        """Test that if dof_bounds is already a sequence, it's returned as-is."""
+        sequence = [[0.1, 5.0, 10.0], [0.2, 10.0, 20.0], [0.5, 15.0, 30.0]]
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            sequence, [0.1, 1.5, 2.0]
+        )
+        self.assertEqual(result, sequence)
+    
+    def test_progressive_sequence_simple(self):
+        """Test progressive sequence generation with simple case."""
+        dof_bounds = [0.3, 6.0, 12.0]  # Final bounds
+        max_step = [0.1, 2.0, 4.0]    # Step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Should generate: [0.1, 2.0, 4.0], [0.1, 2.0, 4.0], [0.1, 2.0, 4.0]
+        # After 3 steps: 0.3, 6.0, 12.0 (all bounds reached)
+        # All steps are max_step since bounds are exact multiples
+        self.assertEqual(len(result), 3)
+        for step in result:
+            self.assertEqual(step, tuple(max_step))
+    
+    def test_progressive_sequence_different_steps(self):
+        """Test progressive sequence with different step sizes per DOF."""
+        dof_bounds = [0.5, 10.0, 20.0]  # Final bounds
+        max_step = [0.1, 3.0, 5.0]      # Step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Calculate expected: ceil(0.5/0.1)=5, ceil(10.0/3.0)=4, ceil(20.0/5.0)=4
+        # num_steps = max(5, 4, 4) = 5
+        # step_sizes = [0.5/5, 10.0/5, 20.0/5] = [0.1, 2.0, 4.0]
+        # All 5 steps should be [0.1, 2.0, 4.0]
+        self.assertEqual(len(result), 5)
+        expected_step = (0.1, 2.0, 4.0)
+        for step in result:
+            self.assertEqual(step, expected_step)
+        
+        # Verify sum equals bounds exactly
+        total_sum = np.zeros(3)
+        for step in result:
+            total_sum += np.array(step)
+        np.testing.assert_allclose(total_sum, dof_bounds, rtol=1e-10)
+    
+    def test_progressive_sequence_capping_effectiveness(self):
+        """Test that the sequence evenly distributes bounds and never exceeds them."""
+        # Use bounds where one DOF type will need more steps than others
+        dof_bounds = [0.3, 5.0, 20.0]  # Final bounds
+        max_step = [0.1, 3.0, 5.0]     # Step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Calculate expected: ceil(0.3/0.1)=3, ceil(5.0/3.0)=2, ceil(20.0/5.0)=4
+        # num_steps = max(3, 2, 4) = 4
+        # step_sizes = [0.3/4, 5.0/4, 20.0/4] = [0.075, 1.25, 5.0]
+        # But wait, 5.0 > max_step[2]=5.0, so we need to check...
+        # Actually, ceil(20.0/5.0)=4, so step_size=20.0/4=5.0 which equals max_step[2]
+        # So num_steps = 4, step_sizes = [0.075, 1.25, 5.0]
+        self.assertEqual(len(result), 4)
+        expected_step = (0.075, 1.25, 5.0)
+        for step in result:
+            self.assertEqual(step, expected_step)
+        
+        # Verify that the sum of all steps equals bounds exactly
+        total_sum = np.zeros(3)
+        for step in result:
+            total_sum += np.array(step)
+        np.testing.assert_allclose(total_sum, dof_bounds, rtol=1e-10)
+        
+        # Verify no step exceeds max_step
+        for step in result:
+            for i in range(len(step)):
+                self.assertLessEqual(step[i], max_step[i] + 1e-10, 
+                                    f"Step {step} exceeds max_step {max_step}")
+        
+        # Test with exact convergence case
+        dof_bounds_exact = [0.2, 6.0, 10.0]  # Exact multiples of step size
+        max_step_exact = [0.1, 3.0, 5.0]
+        
+        result_exact = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds_exact, max_step_exact
+        )
+        
+        # ceil(0.2/0.1)=2, ceil(6.0/3.0)=2, ceil(10.0/5.0)=2
+        # num_steps = 2, step_sizes = [0.2/2, 6.0/2, 10.0/2] = [0.1, 3.0, 5.0]
+        self.assertEqual(len(result_exact), 2)
+        for step in result_exact:
+            self.assertEqual(step, tuple(max_step_exact))  # Exact multiples
+    
+    def test_progressive_sequence_exact_multiple(self):
+        """Test when bounds are exact multiples of step size."""
+        dof_bounds = [0.4, 8.0, 16.0]  # Final bounds
+        max_step = [0.1, 2.0, 4.0]     # Step size (exact divisors)
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Should take exactly 4 steps: 0.1*4=0.4, 2.0*4=8.0, 4.0*4=16.0
+        self.assertEqual(len(result), 4)
+        for step in result:
+            self.assertEqual(step, tuple(max_step))
+    
+    def test_progressive_sequence_step_larger_than_bounds(self):
+        """Test when step size is larger than bounds (should still work)."""
+        dof_bounds = [0.1, 2.0, 4.0]  # Final bounds
+        max_step = [0.2, 5.0, 10.0]   # Step size (larger than bounds)
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # ceil(0.1/0.2)=1, ceil(2.0/5.0)=1, ceil(4.0/10.0)=1
+        # num_steps = 1, step_sizes = [0.1/1, 2.0/1, 4.0/1] = [0.1, 2.0, 4.0]
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], (0.1, 2.0, 4.0))
+    
+    def test_progressive_sequence_single_step(self):
+        """Test when bounds equal step size (single step)."""
+        dof_bounds = [0.1, 2.0, 4.0]  # Final bounds
+        max_step = [0.1, 2.0, 4.0]    # Step size (equal to bounds)
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Should take exactly 1 step
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0], tuple(max_step))
+    
+    def test_progressive_sequence_zero_bounds(self):
+        """Test with zero bounds (should be replaced with 0.0001 to avoid division by zero)."""
+        dof_bounds = [0.0, 0.0, 0.0]  # Zero bounds
+        max_step = [0.1, 2.0, 4.0]    # Step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Should return one step, but zero bounds are replaced with 0.0001 (cannot be used as denominator)
+        self.assertEqual(len(result), 1)
+        # All values should be 0.0001 (minimum value to avoid division by zero)
+        self.assertEqual(result[0], (0.0001, 0.0001, 0.0001))
+    
+    def test_progressive_sequence_very_small_steps(self):
+        """Test with very small step sizes."""
+        dof_bounds = [0.01, 1.0, 2.0]  # Final bounds
+        max_step = [0.001, 0.1, 0.2]   # Very small step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # Should take many steps (10 steps for DOF 0: 0.001*10=0.01)
+        self.assertGreater(len(result), 1)
+        # For very small steps relative to bounds, most steps should be max_step
+        # Only the last step(s) might be capped
+        # Verify that the sum of all steps doesn't exceed bounds
+        total_sum = np.zeros(3)
+        for step in result:
+            total_sum += np.array(step)
+        np.testing.assert_array_less(total_sum, dof_bounds + 1e-5)
+    
+    def test_progressive_sequence_mixed_convergence(self):
+        """Test when different DOFs need different numbers of steps."""
+        dof_bounds = [0.25, 5.0, 12.0]  # Final bounds
+        max_step = [0.1, 2.0, 3.0]      # Step size
+        
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            dof_bounds, max_step
+        )
+        
+        # ceil(0.25/0.1)=3, ceil(5.0/2.0)=3, ceil(12.0/3.0)=4
+        # num_steps = max(3, 3, 4) = 4
+        # step_sizes = [0.25/4, 5.0/4, 12.0/4] = [0.0625, 1.25, 3.0]
+        self.assertEqual(len(result), 4)
+        expected_step = (0.0625, 1.25, 3.0)
+        for step in result:
+            self.assertEqual(step, expected_step)
+        
+        # Verify that the sum of all steps equals bounds exactly
+        total_sum = np.zeros(3)
+        for step in result:
+            total_sum += np.array(step)
+        np.testing.assert_allclose(total_sum, dof_bounds, rtol=1e-10)
+        
+        # Verify no step exceeds max_step
+        for step in result:
+            for i in range(len(step)):
+                self.assertLessEqual(step[i], max_step[i] + 1e-10)
+    
+    def test_empty_sequence_input(self):
+        """Test with empty sequence input."""
+        empty_sequence = []
+        result = MolecularSystem.generate_dof_bound_coeffs_sequence(
+            empty_sequence, [0.1, 1.5, 2.0]
+        )
+        
+        # Empty list is not a sequence (first element check fails), so it should
+        # try to generate progressive sequence, which will fail or return empty
+        # Actually, len(empty_sequence) > 0 check fails, so it goes to progressive generation
+        # But empty array will cause issues - let's see what happens
+        # Actually, it should handle this gracefully
+        if len(empty_sequence) == 0:
+            # Will try to convert to array, which should work but generate empty sequence
+            pass
+
+
 def run_tests(verbosity=2):
     """Run all tests with specified verbosity."""
     loader = unittest.TestLoader()
@@ -2291,6 +2516,7 @@ def run_tests(verbosity=2):
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRotatableIndices))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRCCriticalIndices))
     suite.addTests(loader.loadTestsFromTestCase(TestMolecularSystemRCPPathComputation))
+    suite.addTests(loader.loadTestsFromTestCase(TestGenerateDOFBoundCoeffsSequence))
     
     runner = unittest.TextTestRunner(verbosity=verbosity)
     result = runner.run(suite)

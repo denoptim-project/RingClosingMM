@@ -438,6 +438,8 @@ class RingClosureOptimizer:
                 smoothing_sequence: List[float] = None,
                 torsional_iterations: int = 50,
                 zmatrix_iterations: int = 50,
+                zmatrix_dof_bounds_per_type: Optional[List[Tuple[float, float, float]]] = [[0.05, 7.0, 15.0]],
+                zmatrix_max_step_length_per_type: Optional[List[float]] = [0.1, 1.0, 2.0],
                 gradient_tolerance: float = 0.01,
                 trajectory_file: Optional[str] = None,
                 verbose: bool = False) -> Dict[str, Any]:
@@ -573,7 +575,7 @@ class RingClosureOptimizer:
             if len(self.system.dof_indices) == 0:
                 print("\nWarning: No DOFs to refine. Skipping Z-matrix refinement.")
             else:
-                print(f"\nApplying Z-matrix refinement ({len(self.system.dof_indices)} DOFs) to top candidates...")
+                print(f"\nApplying Z-matrix refinement ({len(self.system.dof_indices)} DOFs)...")
 
                 current_zmatrix = best_zmatrix
                 current_energy = best_energy
@@ -585,8 +587,8 @@ class RingClosureOptimizer:
                 refined_zmatrix, refined_energy, info = self.system.minimize_energy_in_zmatrix_space(
                     current_zmatrix,
                     dof_indices=self.system.dof_indices,
-                    dof_bounds_per_type=[0.05, 7.0, 15.0],
-                    max_step_length_per_type=[0.1, 1.0, 2.0],
+                    dof_bounds_per_type=zmatrix_dof_bounds_per_type,
+                    max_step_length_per_type=zmatrix_max_step_length_per_type,
                     max_iterations=zmatrix_iterations,
                     gradient_tolerance=gradient_tolerance,
                     trajectory_file=trajectory_file_zmatrix,

@@ -199,9 +199,32 @@
             "request": "launch",
             "module": "ringclosingmm",
             "args": [
+                "--optimize",
                 "-i", "c4.int",
                 "-c", "1", "11", "2", "14",
                 "-o", "c4_min.xyz",
+                "--trajectory-file", "c4_trj.xyz",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/strained_ring_closure",
+            "justMyCode": false,
+        },
+        {
+            "name": "Python: c4 w large bounds",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "--optimize",
+                "-i", "c4.int",
+                "-c", "1", "11", "2", "14",
+                "-o", "c4_min.xyz",
+                "--zmatrix-max-change-bond-stretch", "0.0",
+                "--zmatrix-max-change-angle-bend", "30.0",
+                "--zmatrix-max-change-torsion", "10.0",
+                "--zmatrix-max-step-angle-bend", "30.0",
+                "--trajectory-file", "c4_trj.xyz",
                 "-v"
             ],
             "console": "integratedTerminal",
@@ -278,6 +301,7 @@
                 "-r", "1", "2", "5", "31", "31", "32", "32", "35", "35", "40", "35", "41", "32", "36", "32", "37",
                 "-c", "7", "39", "77", "35",
                 "-o", "distorted_complex_min",
+                "--optimize",
                 "--trajectory-file", "distorted_complex_trj.xyz"
             ],
             "console": "integratedTerminal",
@@ -306,7 +330,22 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "justMyCode": false
-        }
+        },
+        {
+            "name": "Print force field",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "mol-1.int",
+                "-c", "1", "3", "2", "4",
+                "--print-force-field"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/print_force_field",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        },
     ]
 }
 

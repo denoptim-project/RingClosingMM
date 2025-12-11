@@ -2,11 +2,12 @@
   "zmatrix": [
     {"id": 1, "element": "C", "atomic_num": 6},
     {"id": 2, "element": "ATN", "atomic_num": 1, "bond_ref": 1, "bond_length": 1.54},
-    {"id": 3, "element": "ATN", "atomic_num": 2, "bond_ref": 2, "bond_length": 2.50, "angle_ref": 1, "angle": 90.0},
-    {"id": 4, "element": "C", "atomic_num": 6, "bond_ref": 3, "bond_length": 1.54, "angle_ref": 2, "angle": 90.0, "dihedral_ref": 1, "dihedral": 180.0, "chirality": 0}
+    {"id": 3, "element": "Du", "atomic_num": 1, "bond_ref": 2, "bond_length": 1.0, "angle_ref": 1, "angle": 120.0},
+    {"id": 4, "element": "ATN", "atomic_num": 1, "bond_ref": 2, "bond_length": 2.50, "angle_ref": 1, "angle": 90.0, "dihedral_ref": 3, "dihedral": 120.0, "chirality": 1},
+    {"id": 5, "element": "C", "atomic_num": 6, "bond_ref": 4, "bond_length": 1.54, "angle_ref": 3, "angle": 120.0, "dihedral_ref": 2, "dihedral": 180.0, "chirality": 0}
   ],
-  "bonds_data": [[1, 2], [3, 4]],
-  "rcp_terms": [[1, 3], [2, 4]],
+  "bonds_data": [[1, 2], [2, 3], [4, 5]],
+  "rcp_terms": [[1, 4], [2, 5]],
   "mode": "minimize",
   "verbose": true
 }

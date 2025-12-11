@@ -73,12 +73,10 @@ class TestServerMinimize(unittest.TestCase):
         self.rcp_terms = [(1, 4), (2, 5)]
 
         # bonds_data: 1-based atom indices
-        # [atom1, atom2] - must be lists, not tuples
         self.bonds_data = [
-            [1, 2],  # bond between atoms 1 and 2
-            [2, 3],  # bond between atoms 2 and 3 (Du atom)
-            [3, 4],  # bond between atoms 3 (Du) and 4 (ATN, was atom 3)
-            [4, 5]   # bond between atoms 4 (ATN) and 5 (C, was atom 4)
+            [1, 2], 
+            [2, 3],    
+            [4, 5]   
         ]
     
     def test_minimize_request(self):
