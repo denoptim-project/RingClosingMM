@@ -1106,7 +1106,6 @@ class MolecularSystem:
 
         # We work on a reduced version of the ZMatrix, only containing the rotatable indices
         reduced_zmatrix = zmatrix.copy()
-        #TOD
 
         # Clear trajectory file if provided
         if trajectory_file:
