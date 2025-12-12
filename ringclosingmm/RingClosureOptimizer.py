@@ -703,11 +703,6 @@ class RingClosureOptimizer:
         initial_zmatrix = self.system.zmatrix
         initial_coords = zmatrix_to_cartesian(initial_zmatrix)
 
-        #TODO del
-        write_xyz_file(initial_coords, initial_zmatrix.get_elements(), "/tmp/server_initial.xyz")
-        write_zmatrix_file(initial_zmatrix, "/tmp/server_initial.int")
-
-        
         # Determine smoothing sequence to use
         if smoothing is None:
             # Default: no smoothing (0.0)
@@ -797,9 +792,6 @@ class RingClosureOptimizer:
                         verbose=verbose
                     )
 
-                    #TODO del
-                    write_xyz_file(minimized_coords, current_zmatrix.get_elements(), "/tmp/server_minimized.xyz")
-                    
                     # Extract refined Z-matrix from minimized coordinates
                     refined_zmatrix = cartesian_to_zmatrix(
                         minimized_coords,
@@ -827,9 +819,6 @@ class RingClosureOptimizer:
             verbose=False
         )
         
-        #TODOdel
-        write_xyz_file(minimized_coords, minimized_zmatrix.get_elements(), "/tmp/server_final.xyz")
-
         self.system.zmatrix = minimized_zmatrix
 
         rmsd_bond_lengths, rmsd_angles, rmsd_dihedrals = MolecularSystem._calculate_rmsd(initial_zmatrix, minimized_zmatrix)

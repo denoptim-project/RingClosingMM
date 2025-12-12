@@ -583,9 +583,6 @@ class TestAnalyticalDistanceFactory(unittest.TestCase):
         branch_ref_bonds = [(0, 1), (1, 2), (2, 3), (2, 4), (4, 5), (4, 6), (6, 7)]
         branch_ref_zmatrix = ZMatrix(branch_ref_atoms, branch_ref_bonds)
 
-        #TODO del
-        write_xyz_file(CoordinateConversion.zmatrix_to_cartesian(branch_ref_zmatrix), branch_ref_zmatrix.get_elements(), "/tmp/branch_ref_zmatrix.xyz")
-        
         from openmm.app import Topology, Element, Residue
         branch_ref_topology = Topology()
         residue = branch_ref_topology.addResidue("MOL", branch_ref_topology.addChain())
@@ -693,9 +690,6 @@ class TestAnalyticalDistanceFactory(unittest.TestCase):
         rotatable_indices=[4, 6, 7, 8, 9, 11, 12, 13]
         branch_ref_zmatrix = ZMatrix(branch_ref_atoms, branch_ref_bonds)
 
-        #TODO del
-        write_xyz_file(CoordinateConversion.zmatrix_to_cartesian(branch_ref_zmatrix), branch_ref_zmatrix.get_elements(), "/tmp/branch_ref_zmatrix.xyz")
-        
         from openmm.app import Topology, Element, Residue
         branch_ref_topology = Topology()
         residue = branch_ref_topology.addResidue("MOL", branch_ref_topology.addChain())
