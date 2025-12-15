@@ -157,6 +157,19 @@
             "justMyCode": false
         },
         {
+            "name": "Python: test_minimize_energy_cartesian",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "test/test_molecular_system.py::TestMolecularSystemMinimization::test_minimize_energy_cartesian",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false
+        },
+        {
             "name": "Python: TestIOToolsSDF Tests",
             "type": "debugpy",
             "request": "launch",
@@ -376,6 +389,41 @@
             ],
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}/examples/server_usage",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        },
+        {
+            "name": "Planarity",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "mol.sdf",
+                "--minimize",
+                "--space-type", "Cartesian",
+                "--trajectory-file", "mol_trj.xyz",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/planarity",
+            "justMyCode": false,
+            "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
+        },
+        {
+            "name": "Planarity PT",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ringclosingmm",
+            "args": [
+                "-i", "pt.sdf",
+                "--minimize",
+                "--space-type", "Cartesian",
+                "--trajectory-file", "pt_trj.xyz",
+                "-o", "pt_min.xyz",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/examples/planarity",
             "justMyCode": false,
             "python": "/Users/marcof/miniforge3/envs/rco_devel/bin/python"
         }

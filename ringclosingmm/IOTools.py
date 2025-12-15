@@ -284,7 +284,7 @@ def write_sdf_file(zmatrix: ZMatrix, filepath: str) -> None:
         f.write("$$$$\n")
 
 
-def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> None:
+def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float, coords: np.ndarray = None) -> None:
     """
     Save structure to file.
     
@@ -296,6 +296,8 @@ def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> No
         Z-matrix to save
     energy : float
         Energy of the structure (default: None)
+    coords : np.ndarray
+        Cartesian coordinates of the structure (default: None)
     """
     filename_xyz = None;
     filename_int = None;
@@ -315,7 +317,10 @@ def save_structure_to_file(filepath: str, zmatrix: ZMatrix, energy: float) -> No
             filename_sdf = filepath + '.sdf';
 
     if filename_xyz is not None:
-        optimized_coords = zmatrix_to_cartesian(zmatrix)
+        if coords is None:
+            optimized_coords = zmatrix_to_cartesian(zmatrix)
+        else:
+            optimized_coords = coords
         elements = zmatrix.get_elements()
         comment = f"E={energy:.2f} kcal/mol" if energy is not None else ""
         write_xyz_file(optimized_coords, elements, filename_xyz, comment=comment)

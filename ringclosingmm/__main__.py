@@ -394,7 +394,7 @@ def main() -> int:
                     verbose=verbose
                 )
 
-            IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
+            IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'], coords=result['final_coords'])
     
         elif args.optimize:
             result = optimizer.optimize(
@@ -412,7 +412,7 @@ def main() -> int:
                 verbose=verbose
             )
             
-            IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'])
+            IOTools.save_structure_to_file(args.output, result['final_zmatrix'], result['final_energy'], coords=result['final_coords'])
     
         elif args.print_force_field:
             # Convert 1-based atom indices from CLI to 0-based for internal use

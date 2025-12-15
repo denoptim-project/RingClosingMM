@@ -263,7 +263,7 @@ class TestMolecularSystemMinimization(unittest.TestCase):
         
         # Minimize
         final_coords, final_energy = system.minimize_energy(
-            initial_zmatrix, max_iterations=50
+            initial_coords, system.elements, max_iterations=100
         )
         
         # Energy should decrease or stay the same

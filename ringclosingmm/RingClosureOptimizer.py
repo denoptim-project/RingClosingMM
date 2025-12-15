@@ -731,6 +731,8 @@ class RingClosureOptimizer:
                 print(f"Minimizing in {space_type} space with {max_iterations} max iterations (smoothing={smoothing_values[0]:.2f})...")
         
         current_zmatrix = initial_zmatrix
+        current_coords = initial_coords
+        current_elements = initial_zmatrix.get_elements()
         current_energy = initial_energy
         all_opt_info = []
         
@@ -785,19 +787,14 @@ class RingClosureOptimizer:
                 # Work in Cartesian space, even though results are in Z-matrix space
                 try:
                     minimized_coords, step_energy = self.system.minimize_energy(
-                        current_zmatrix,
+                        current_coords,
+                        current_elements,
                         max_iterations=max_iterations,
                         gradient_tolerance=gradient_tolerance,
                         trajectory_file=trajectory_file,
                         verbose=verbose
                     )
-
-                    # Extract refined Z-matrix from minimized coordinates
-                    refined_zmatrix = cartesian_to_zmatrix(
-                        minimized_coords,
-                        current_zmatrix
-                    )
-                    current_zmatrix = refined_zmatrix
+                    current_coords = minimized_coords
                     current_energy = step_energy
                     opt_info = {'success': True}
                 except Exception as e:
@@ -808,10 +805,18 @@ class RingClosureOptimizer:
         
             all_opt_info.append(opt_info)   
 
+
         # Final state after all smoothing steps
-        minimized_zmatrix = current_zmatrix
         minimized_energy = current_energy
-        minimized_coords = zmatrix_to_cartesian(minimized_zmatrix)
+        if space_type == 'Cartesian':
+            # Extract refined Z-matrix from minimized coordinates
+            minimized_zmatrix = cartesian_to_zmatrix(
+                minimized_coords,
+                current_zmatrix
+            )
+        else:
+            minimized_zmatrix = current_zmatrix
+            minimized_coords = zmatrix_to_cartesian(minimized_zmatrix)
         
         # Calculate ring closure score
         final_ring_closure_score = self.system.ring_closure_score_exponential(

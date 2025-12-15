@@ -311,21 +311,33 @@
    <GlobalParameter name="calToJoule" defaultValue="4.1840"/>
   </RingClosingForce>
   <ConstrainedBondForce>
-   <!-- NB: dummy values for bond stretching. This term is here only to enable
-       the generation of constraints.-->
-   <!-- NB: the values of equilibrium length is added programamtically.-->
-   <Bond class1="Atom" class2="Atom" k="1500"/>
-   <Bond class1="ATR"  class2="Atom" k="1500"/>
-   <Bond class1="Dummy" class2=""    k="1500"/>
+   <!-- Constrained bond stretching.
+       The equilibrium length is computed from the input structure
+       The force constant k=1500 still allows for closure of 4-membered ring starting from acyclic bond angles.-->
+    <Bond class1="Atom" class2="Atom" k="150000"/>
+    <Bond class1="ATR"  class2="Atom" k="150000"/>
+    <Bond class1="Dummy" class2=""    k="150000"/>
   </ConstrainedBondForce>
   <ConstrainedAngleForce>
-   <!-- NB: dummy values for bending. This term is here only to enable
-        the generation of constraints.-->
-   <!-- NB: the values of equilibrium angle is added programamtically.-->
-  <!-- k=40 still allows for closure of 4-membered ring starting from acyclic bond angles.-->
-   <Angle class1="" class2="Atom" class3=""  k="40"/>
-   <Angle class1="" class2="ATR"  class3=""  k="40"/>  
-   <Angle class1="Dummy" class2="" class3="" k="1000"/>
-   <Angle class1="" class2="Dummy" class3="" k="1000"/>
+    <!-- Constrained bending.
+        The equilibrium angle is computed from the input structure.
+        The force constant k=40 still allows for closure of 4-membered ring starting from acyclic bond angles.-->
+    <Angle class1="" class2="Atom" class3=""  k="40"/>
+    <Angle class1="" class2="ATR"  class3=""  k="40"/>  
+  <Angle class1="Dummy" class2="" class3="" k="100000"/>
+  <Angle class1="" class2="Dummy" class3="" k="100000"/>
   </ConstrainedAngleForce>
+  <ConstrainedOutOfPlaneForce>
+    <!-- Constrained out-of-plane forces maintain planarity of trigonal planar sites.
+        Planar sites are identified from input geometry (atoms with 3 neighbors
+        that are approximately planar within planarityThreshold).
+        The equilibrium improper dihedral angle theta0 is computed from the input structure
+        (similar to ConstrainedAngleForce), so the force maintains the initial geometry.
+        Wildcard matching: empty class means match any atom type. -->
+    <!-- Default planarity threshold: 0.1 nm (can be overridden with planarityThreshold attribute) -->
+    <Improper class1="" class2="Atom" class3="" class4="" k="80"/>
+    <Improper class1="" class2="ATR" class3="" class4="" k="80"/>
+    <Improper class1="Dummy" class2="" class3="" class4="" k="100000"/>
+    <Improper class1="" class2="Dummy" class3="" class4="" k="100000"/>
+  </ConstrainedOutOfPlaneForce>
 </ForceField>

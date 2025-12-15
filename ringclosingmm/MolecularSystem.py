@@ -282,7 +282,7 @@ class MolecularSystem:
         """
         # Convert Z-matrix to Cartesian and convert to nm
         coords = zmatrix_to_cartesian(zmatrix) * 0.1 * unit.nanometer  # Angstroms to nm
-        
+
         # Build topology from Z-matrix data
         atoms_data = [(zmatrix[i][ZMatrix.FIELD_ELEMENT], i) for i in range(len(zmatrix))]
 
@@ -381,7 +381,7 @@ class MolecularSystem:
             return 1e6
 
 
-    def minimize_energy(self, zmatrix: ZMatrix, max_iterations: int = 500, 
+    def minimize_energy(self, coords: np.ndarray, elements: List[str], max_iterations: int = 500, 
                        gradient_tolerance: float = 0.01,
                        trajectory_file: Optional[str] = None,
                        verbose: bool = False) -> Tuple[np.ndarray, float]:
@@ -394,8 +394,10 @@ class MolecularSystem:
         
         Parameters
         ----------
-        zmatrix : ZMatrix
-            Starting Z-matrix
+        coords : np.ndarray
+            Starting Cartesian coordinates
+        elements : List[str]
+            Elements of the atoms
         max_iterations : int
             Maximum minimization iterations
         gradient_tolerance : float
@@ -411,10 +413,6 @@ class MolecularSystem:
             Minimized Cartesian coordinates (Angstroms) and energy (kcal/mol)
         """
         try:
-            # Convert to Cartesian and set positions
-            coords = zmatrix_to_cartesian(zmatrix)
-            elements = zmatrix.get_elements()
-
             positions = coords * 0.1 * unit.nanometer
             
             # Get or create cached simulation and update positions
@@ -424,8 +422,14 @@ class MolecularSystem:
             if trajectory_file:
                 Path(trajectory_file).unlink(missing_ok=True)
             
+            # Initialize counter for objective
+            iteration_objective = [0]
+            # Maximum number of function evaluations
+            max_fev = 10*max_iterations
             # Iteration counter for trajectory
             iteration_counter = [0]
+            # Flag to stop optimization when max function evaluations reached
+            max_fev_reached = [False]
             
             # Initial state for reference
             if verbose:
@@ -436,14 +440,24 @@ class MolecularSystem:
                 print(f"Initial gradient norm: {np.linalg.norm(forces):.4f} kJ/(mol·nm)")
                 rms_force = np.sqrt(np.mean(forces.flatten()**2))
                 print(f"Initial RMS force components: {rms_force:.4f} kJ/(mol·nm)")
+                #print("Initial forces:")
+                #for i,force in enumerate(forces):
+                #    print(f"{i+1}: {force[0]:.4f}, {force[1]:.4f}, {force[2]:.4f}")
             
             def objective(x_flat: np.ndarray) -> float:
                 """Objective function: evaluate energy for given Cartesian coordinates."""
+                iteration_objective[0] += 1
+                
+                # Check if we've exceeded the maximum function evaluations
+                if iteration_objective[0] >= max_fev:
+                    max_fev_reached[0] = True
+                    # This triggers setting the gradient to 0 to force termination
+                
                 # x_flat is a flat array [x1, y1, z1, x2, y2, z2, ...] in Angstroms
                 # Reshape to (N, 3) and convert to nanometers
                 coords_array = x_flat.reshape(-1, 3) * 0.1 * unit.nanometer
                 positions = coords_array
-                
+
                 # Update simulation positions
                 simulation.context.setPositions(positions)
                 
@@ -455,6 +469,12 @@ class MolecularSystem:
             
             def gradient(x_flat: np.ndarray) -> np.ndarray:
                 """Gradient function: compute forces (negative gradient) for given Cartesian coordinates."""
+                
+                # This is to force termination if we entered a loop in the interanl searches that are not counted as iterations,
+                # i.e., the internal searches are not terminating and we are stuck in a loop.
+                if max_fev_reached[0]:
+                    return np.zeros_like(x_flat)
+                
                 # x_flat is a flat array [x1, y1, z1, x2, y2, z2, ...] in Angstroms
                 # Reshape to (N, 3) and convert to nanometers
                 coords_array = x_flat.reshape(-1, 3) * 0.1 * unit.nanometer
@@ -506,21 +526,38 @@ class MolecularSystem:
             # Initial coordinates as flat array in Angstroms
             x0 = coords.flatten()
             
-            # Minimize using scipy.optimize.minimize
-            result = minimize(
-                objective,
-                x0,
-                method='L-BFGS-B',
-                jac=gradient,
-                callback=callback if (trajectory_file or verbose) else None,
-                options={
-                    'maxiter': max_iterations,
-                    'ftol': 0,  # Disable function tolerance
-                    'gtol': gradient_tolerance,  # Gradient tolerance
-                    'disp': verbose
-                }
-            )
-            
+            restart_counter = 0
+            while restart_counter < 5:
+                # Reset the flag for this minimization attempt
+                max_fev_reached[0] = False
+                
+                result = minimize(
+                    objective,
+                    x0,
+                    method='L-BFGS-B',
+                    jac=gradient,
+                    callback=callback if (trajectory_file or verbose) else None,
+                    options={
+                        'maxiter': max_iterations,
+                        'ftol': 0,  # Disable function tolerance
+                        'gtol': gradient_tolerance,  # Gradient tolerance
+                        'disp': verbose
+                    }
+                )
+                
+                # Check if we stopped due to max function evaluations
+                if max_fev_reached[0] or iteration_objective[0] >= max_fev:
+                    if verbose:
+                        print(f"  Stopped: Maximum function evaluations ({max_iterations}) reached")
+                    break
+                
+                if result.success:
+                    break
+                else:
+                    print(f"  Warning: Minimization failed at iteration {iteration_counter[0]}: {result.message}. Restarting from current position.")
+                restart_counter += 1
+                x0 = result.x
+                
             # Get final state
             final_coords = result.x.reshape(-1, 3)  # Reshape back to (N, 3) in Angstroms
             final_energy = result.fun
@@ -537,7 +574,6 @@ class MolecularSystem:
             print(f"Error minimizing energy: {e}")
             traceback.print_exc()
             # Return original with high penalty
-            coords = zmatrix_to_cartesian(zmatrix)
             return coords, 1e6
 
 

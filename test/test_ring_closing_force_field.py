@@ -8,8 +8,10 @@ Tests geometry calculation functions, TopologicalInfo, and topological relation 
 import unittest
 import numpy as np
 import sys
+import math
 from pathlib import Path
 from collections import defaultdict
+from openmm import unit
 
 # Add parent directory to path for package imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -18,6 +20,7 @@ from ringclosingmm.RingClosingForceField import (
     getDistance,
     getAngle,
     getUnitVector,
+    getOutOfPlaneDistance,
     TopologicalInfo,
     _build_neighbors_from_bonds,
     _compute_and_store_topological_info,
@@ -34,7 +37,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getDistance(self):
         """Test distance calculation."""
-        from openmm import unit
         
         p1 = np.array([0.0, 0.0, 0.0]) * unit.angstroms
         p2 = np.array([1.0, 0.0, 0.0]) * unit.angstroms
@@ -45,7 +47,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getDistance_diagonal(self):
         """Test distance calculation for diagonal."""
-        from openmm import unit
         
         p1 = np.array([0.0, 0.0, 0.0]) * unit.angstroms
         p2 = np.array([1.0, 1.0, 1.0]) * unit.angstroms
@@ -57,8 +58,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getAngle_right_angle(self):
         """Test angle calculation for right angle."""
-        from openmm import unit
-        import math
         
         # For 90-degree angle: p1 at vertex, p0 and p2 perpendicular
         # Vectors: p0-p1 should be perpendicular to p2-p1
@@ -74,8 +73,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getAngle_straight_line(self):
         """Test angle calculation for straight line."""
-        from openmm import unit
-        import math
         
         p0 = np.array([0.0, 0.0, 0.0]) * unit.angstroms
         p1 = np.array([1.0, 0.0, 0.0]) * unit.angstroms
@@ -88,7 +85,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getUnitVector(self):
         """Test unit vector calculation."""
-        from openmm import unit
         
         vector = np.array([3.0, 4.0, 0.0]) * unit.angstroms
         unit_vec = getUnitVector(vector)
@@ -99,7 +95,6 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
     
     def test_getUnitVector_direction(self):
         """Test unit vector preserves direction."""
-        from openmm import unit
         
         vector = np.array([1.0, 0.0, 0.0]) * unit.angstroms
         unit_vec = getUnitVector(vector)
@@ -108,6 +103,156 @@ class TestRingClosingForceFieldGeometry(unittest.TestCase):
         self.assertAlmostEqual(unit_vec._value[0], 1.0, places=5)
         self.assertAlmostEqual(unit_vec._value[1], 0.0, places=5)
         self.assertAlmostEqual(unit_vec._value[2], 0.0, places=5)
+    
+    def test_getOutOfPlaneDistance_perfectly_planar(self):
+        """Test out-of-plane distance for perfectly planar case (distance = 0)."""
+        
+        # Define a plane in XY plane: p1=(0,0,0), p2=(1,0,0), p3=(0,1,0)
+        # Central atom at (0.5, 0.5, 0) should be in the plane
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 1.0, 0.0]) * unit.nanometers
+        central = np.array([0.5, 0.5, 0.0]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, 0.0, places=6)
+    
+    def test_getOutOfPlaneDistance_out_of_plane(self):
+        """Test out-of-plane distance for atom above the plane."""
+        
+        # Define a plane in XY plane: p1=(0,0,0), p2=(1,0,0), p3=(0,1,0)
+        # Central atom at (0.5, 0.5, 1.0) should be 1.0 nm above the plane
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 1.0, 0.0]) * unit.nanometers
+        central = np.array([0.5, 0.5, 1.0]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, 1.0, places=6)
+    
+    def test_getOutOfPlaneDistance_below_plane(self):
+        """Test out-of-plane distance for atom below the plane."""
+        
+        # Define a plane in XY plane: p1=(0,0,0), p2=(1,0,0), p3=(0,1,0)
+        # Central atom at (0.5, 0.5, -0.5) should be 0.5 nm below the plane
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 1.0, 0.0]) * unit.nanometers
+        central = np.array([0.5, 0.5, -0.5]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, 0.5, places=6)
+    
+    def test_getOutOfPlaneDistance_rotated_plane(self):
+        """Test out-of-plane distance for a rotated plane."""
+        
+        # Define a plane in XZ plane: p1=(0,0,0), p2=(1,0,0), p3=(0,0,1)
+        # Central atom at (0.5, 1.0, 0.5) should be 1.0 nm from the plane (in Y direction)
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 0.0, 1.0]) * unit.nanometers
+        central = np.array([0.5, 1.0, 0.5]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, 1.0, places=6)
+    
+    def test_getOutOfPlaneDistance_small_distance(self):
+        """Test out-of-plane distance for small deviation."""
+        
+        # Define a plane in XY plane: p1=(0,0,0), p2=(1,0,0), p3=(0,1,0)
+        # Central atom slightly out of plane
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 1.0, 0.0]) * unit.nanometers
+        central = np.array([0.5, 0.5, 0.01]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, 0.01, places=6)
+    
+    def test_getOutOfPlaneDistance_collinear_points(self):
+        """Test out-of-plane distance with collinear plane-defining points (degenerate case)."""
+        
+        # p1, p2, p3 are collinear (all on X-axis)
+        # Should fall back to distance from central to line
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([2.0, 0.0, 0.0]) * unit.nanometers
+        # Central at (1.0, 1.0, 0.0) - distance to line should be 1.0
+        central = np.array([1.0, 1.0, 0.0]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        # Distance from point (1,1,0) to line along x-axis through (1,0,0) is 1.0
+        self.assertAlmostEqual(distance, 1.0, places=6)
+    
+    def test_getOutOfPlaneDistance_same_points(self):
+        """Test out-of-plane distance when all plane points are the same (degenerate case)."""
+        
+        # All three plane points are the same
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        central = np.array([1.0, 1.0, 1.0]) * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        # Should return distance from central to p1
+        expected = np.sqrt(1.0**2 + 1.0**2 + 1.0**2)
+        self.assertAlmostEqual(distance, expected, places=6)
+    
+    def test_getOutOfPlaneDistance_arbitrary_plane(self):
+        """Test out-of-plane distance for an arbitrary plane orientation."""
+        
+        # Define an arbitrary plane: p1=(0,0,0), p2=(1,1,0), p3=(0,1,1)
+        # This creates a plane with normal not aligned to axes
+        p1 = np.array([0.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([1.0, 1.0, 0.0]) * unit.nanometers
+        p3 = np.array([0.0, 1.0, 1.0]) * unit.nanometers
+        
+        # Compute plane normal manually for verification
+        # Vectors in plane: v1 = p2 - p1, v2 = p3 - p1
+        v1 = np.array([1.0, 1.0, 0.0])
+        v2 = np.array([0.0, 1.0, 1.0])
+        normal = np.cross(v1, v2)
+        normal = normal / np.linalg.norm(normal)
+        
+        # Find a point that is actually on the plane
+        # Points on plane: p1 + a*v1 + b*v2 = (a, a+b, b)
+        # For example, a=0.5, b=0.25 gives (0.5, 0.75, 0.25)
+        # Verify: (0.5, 0.75, 0.25) - (0,0,0) = (0.5, 0.75, 0.25)
+        # Dot with normal: (0.5, 0.75, 0.25) · normal should be ~0
+        point_on_plane = np.array([0.5, 0.75, 0.25])
+        
+        # Place central atom at a known distance from plane
+        # Use a point on the plane + distance * normal
+        distance_expected = 0.3
+        central_pos = point_on_plane + distance_expected * normal
+        central = central_pos * unit.nanometers
+        
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+        
+        self.assertAlmostEqual(distance, distance_expected, places=5)
+
+    def test_getOutOfPlaneDistance_arbitrary_plane_2(self):
+        """Test out-of-plane distance for an arbitrary plane orientation."""
+
+        p1 = np.array([10.0, 0.0, 0.0]) * unit.nanometers
+        p2 = np.array([0.0, 10.0, 0.0]) * unit.nanometers
+        p3 = np.array([-10.0, -10.0, 0.0]) * unit.nanometers
+
+        # Central atom is at z=-1.123456789, and the plane is at z=0 (all three plane points have z=0)
+        # So the distance should be the absolute value of the z-coordinate: 1.123456789
+        central = np.array([-10.0, 20.0, -1.123456789]) * unit.nanometers
+        distance_expected = 1.123456789
+
+        distance = getOutOfPlaneDistance(central, p1, p2, p3)
+
+        self.assertAlmostEqual(distance, distance_expected, places=5)
 
 
 class TestTopologicalInfo(unittest.TestCase):
