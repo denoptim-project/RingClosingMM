@@ -54,5 +54,5 @@ conda config --add channels file://<path_to_conda-bld>
 conda install --use-local ringclosingmm
 
 # Veryfy the Installation
-rc-optimized -h
+rc-optimizer -h
 ```
