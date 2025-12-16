@@ -541,7 +541,6 @@ class MolecularSystem:
                         'maxiter': max_iterations,
                         'ftol': 0,  # Disable function tolerance
                         'gtol': gradient_tolerance,  # Gradient tolerance
-                        'disp': verbose
                     }
                 )
                 
@@ -745,7 +744,6 @@ class MolecularSystem:
                         'maxiter': max_iterations,
                         'ftol': 0,  # 0 disables the function tolerance
                         'gtol': gradient_tolerance, 
-                        'disp': True,
                         'eps': eps  # step size for numerical gradient calculation
                     }
                 )
