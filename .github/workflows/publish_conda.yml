@@ -34,7 +34,7 @@ jobs:
         auto-update-conda: true
         auto-activate-base: false
         activate-environment: anaconda-client-env
-        environment-file: conda/environment.yml
+        environment-file: conda-recipe/environment.yml
 
     - name: Build package and publish
       run: |
