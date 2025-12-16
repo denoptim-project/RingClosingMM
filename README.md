@@ -4,6 +4,10 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
+[![Anaconda_Platforms](https://anaconda.org/denoptim-project/ringclosingmm/badges/platforms.svg)](https://anaconda.org/denoptim-project/ringclosingmm)
+[![Anaconda_Version](https://anaconda.org/denoptim-project/ringclosingmm/badges/version.svg)](https://anaconda.org/denoptim-project/ringclosingmm)
+[![Anaconda_last](https://anaconda.org/denoptim-project/ringclosingmm/badges/latest_release_date.svg)](https://anaconda.org/denoptim-project/ringclosingmm)
+
 ## Overview
 
 The Ring Closure Optimizer is a molecular modeling tool meant to identify conformations that allow to close molecular ring, i.e., modify the geometry to bring the two ends of a chain in a relative position suitable to define a bond between selected atoms. It builds on an [OpenMM](https://openmm.org/) molecular mechanics engine and [scipy](https://scipy.org/) optimizers.
