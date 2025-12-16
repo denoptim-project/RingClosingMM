@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import IOTools
+from . import __version__
 
 # Custom formatter that removes "(default: False)" from boolean flags
 class CustomHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
@@ -185,6 +186,9 @@ def parse_arguments() -> argparse.Namespace:
                                    'optional for --server-start: 0 = auto-select)')
     
     # Other options
+    parser.add_argument('--version', action='version',
+                        version=f'%(prog)s {__version__}',
+                        help='Show version number and exit')
     parser.add_argument('-v', '--verbose', action='store_true',
                         default=False,
                         help='Print verbose progress output')
