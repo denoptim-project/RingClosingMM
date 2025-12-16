@@ -18,7 +18,11 @@ source:
 build:
   number: 0
   noarch: python
-  script: {{ PYTHON }} -m pip install . -vv
+  script: |
+    set -e
+    # Set version for setuptools-scm to use during build
+    export SETUPTOOLS_SCM_PRETEND_VERSION={{ environ.get('RINGCLOSINGMM_VERSION', '') }}
+    {{ PYTHON }} -m pip install . -vv
   entry_points:
     - rc-optimizer = ringclosingmm.__main__:main
 
@@ -27,6 +31,7 @@ requirements:
     - python
     - pip
     - setuptools >=61.0
+    - setuptools-scm >=7.0
     - wheel
   
   run:
