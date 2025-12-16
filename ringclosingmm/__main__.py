@@ -7,7 +7,7 @@ for optimizing molecular ring closing conformations using a divide and conquer s
 exploration of the torsional space with subsequent local refinement.
 
 Example usage:
-    # After installation: pip install -e .
+    # After installation via conda: conda install ringclosingmm
     rc-optimizer -i molecule.int -r bonds.txt -c rcp.txt -o output.xyz
     
     # As a Python module

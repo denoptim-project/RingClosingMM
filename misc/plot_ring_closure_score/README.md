@@ -4,7 +4,7 @@ This directory contains a script to visualize the ring closure score as a functi
 
 ### Prerequisites
 
-The package must be installed (either via `pip install -e .` for development or `pip install ringclosingmm` from PyPI).
+The package must be installed. For development, install in editable mode within a conda environment. For regular use, install via conda: `conda install ringclosingmm`.
 
 ### Usage
 

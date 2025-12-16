@@ -7,7 +7,12 @@ This package provides tools for molecular ring closing optimization using:
 - Internal coordinates (Z-matrix) for efficient torsional optimization
 """
 
-__version__ = "1.0.0"
+try:
+    from ._version import version as __version__
+except ImportError:
+    # Fallback for when _version.py doesn't exist (e.g., installed from sdist)
+    __version__ = "0.0.0.dev0"
+
 __author__ = "Marco Foscato"
 
 # Import main classes for easier access

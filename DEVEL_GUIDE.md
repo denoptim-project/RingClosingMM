@@ -11,7 +11,8 @@ cd <folder-name>
 conda env create -f environment.yml
 conda activate rco_devel
 
-# Local installation in editable mode as to reflects changes made in the code
+# Local installation in editable mode to reflect changes made in the code
+# Note: Editable installs are done within the conda environment using pip
 pip install -e .  
 ```
 

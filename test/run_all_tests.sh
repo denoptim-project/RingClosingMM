@@ -94,7 +94,7 @@ cd "$SCRIPT_DIR/.."
 # Check if pytest is available
 if ! python -m pytest --version &> /dev/null; then
     echo -e "${RED}Error: pytest not found${NC}"
-    echo "Please install pytest: pip install pytest"
+    echo "Please install pytest: conda install pytest"
     exit 1
 fi
 

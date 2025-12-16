@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm>=7.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ringclosingmm"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Ring closing molecular modeling using an OpenMM engine"
 readme = "README.md"
 license = {text = "AGPL-3.0-or-later"}
@@ -77,6 +77,11 @@ rc-optimizer = "ringclosingmm.__main__:main"
 [tool.setuptools]
 # Package discovery
 packages = ["ringclosingmm"]
+
+[tool.setuptools_scm]
+# Version will be derived from git tags
+# Format: v1.2.3 or 1.2.3 (both supported)
+write_to = "ringclosingmm/_version.py"
 
 [tool.setuptools.package-data]
 # Include data files with the package

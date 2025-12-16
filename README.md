@@ -26,13 +26,10 @@ The conformational search implements a divide and conquer strategy:
 
 Install with `Conda`:
 ```
-conda install rc-optimizer
+conda install ringclosingmm
 ```
-or `pip`:
-```
-pip install rc-optimizer
-```
-Next, see below for a (quick start)[#quick-start] guide.
+
+Next, see below for a [quick start](#quick-start) guide.
 
 ### Development Mode
 

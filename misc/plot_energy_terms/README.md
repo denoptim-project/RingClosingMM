@@ -4,7 +4,7 @@ This is a collection of scripts used to plot the energy terms in various systems
 
 ### Prerequisites
 
-The package must be installed (either via `pip install -e .` for development or `pip install ringclosingmm` from PyPI).
+The package must be installed. For development, install in editable mode within a conda environment. For regular use, install via conda: `conda install ringclosingmm`.
 
 ### Usage
 

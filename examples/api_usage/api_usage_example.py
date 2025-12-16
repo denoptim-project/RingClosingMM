@@ -6,8 +6,8 @@ This script demonstrates how to use the RingClosureOptimizer module
 programmatically for custom workflows.
 
 Prerequisites:
-    The package must be installed (either via `pip install -e .` for development
-    or `pip install ringclosingmm` from PyPI).
+    The package must be installed (via conda: `conda install ringclosingmm`,
+    or in editable mode for development within a conda environment).
 """
 
 import sys

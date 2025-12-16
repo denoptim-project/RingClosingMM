@@ -2,7 +2,7 @@
 
 This directory contains example demonstrating how to use the RingClosureOptimizer module programmatically.
 
-All examples include a `run.sh` script that uses the `rc-optimizer` command. The package must be installed (either via `pip install -e .` for development or `pip install ringclosingmm` from PyPI) for the `rc-optimizer` command to be available.
+All examples include a `run.sh` script that uses the `rc-optimizer` command. The package must be installed (via conda: `conda install ringclosingmm`, or in editable mode for development within a conda environment) for the `rc-optimizer` command to be available.
 
 Each `run.sh` includes a minimal evaluation of the outcome meant to verify the expected behaviour. To run all the examples do the following:
 
