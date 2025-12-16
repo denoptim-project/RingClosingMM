@@ -58,6 +58,7 @@ rc-optimizer \
     -i zmatrix.int \
     -r 1 2 3 4 \
     -c 4 5 6 7 \
+    --optimize \
     -o optimized.xyz \
     --verbose
 ```
@@ -67,6 +68,7 @@ rc-optimizer \
     -i zmatrix.sdf \
     -r 1 2 3 4 \
     -c 4 5 6 7 \
+    --optimize \
     -o optimized.xyz \
     --verbose
 ```
