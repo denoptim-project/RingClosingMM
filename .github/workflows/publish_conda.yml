@@ -10,10 +10,9 @@ env:
 
 jobs:
   build-and-publish:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    # Build on a single OS since this is a noarch: python package
+    # noarch packages can be installed on any platform
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash -l {0}
