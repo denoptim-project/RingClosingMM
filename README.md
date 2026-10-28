@@ -115,7 +115,7 @@ For example, here is the content of a JSON file defining the request:
 ```
 The JSON file can be sent to the server from a terminal as follows:
 ```bash
-echo  <path_to_json_file> | nc localhost <port>
+cat  <path_to_json_file> | nc localhost <port>
 ```
 
 
